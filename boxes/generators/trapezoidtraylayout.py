@@ -77,18 +77,49 @@ class TrapezoidTrayLayout(boxes.Boxes):
         # Move down for walls
         self.moveTo(0, side_length + 20)
         
-        # Generate walls in sequence
-        self.rectangularWall(front_length, h, edges="FfFF", move="right")  # Front wall
-        self.rectangularWall(side_length, h, edges="FfFF", move="right")   # Right wall
-        self.rectangularWall(back_length, h, edges="FfFF", move="right")   # Back wall
-        self.rectangularWall(side_length, h, edges="FfFF", move="right")   # Left wall
-
-        # Generate support wings
+        # Calculate wing parameters
         wing_length = self.adjustSize(self.support_wing_length) if self.outside else self.support_wing_length
         wings_per_side = self.support_wings_per_side
         
-        self.moveTo(0 - front_length - side_length - back_length - side_length - wing_length/2, h + 30)
+        # Calculate positions for wing slots
+        spacing = side_length / (wings_per_side + 1)
         
-        # Draw all wings in sequence starting at left edge
+        def wing_hole_callback():
+            """Create holes in the side walls for support wings.
+            Wings are evenly distributed along the wall length (e.g., at 1/3 and 2/3 for 2 wings)
+            and aligned with the nearest finger joint."""
+            # Calculate ideal positions for wings
+            target_positions = [
+                side_length * ((i + 1) / (wings_per_side + 1))
+                for i in range(wings_per_side)
+            ]
+            
+            # Calculate all valid finger positions
+            pattern_width = 2 * self.thickness  # finger + space width
+            usable_length = side_length - 2 * self.thickness  # exclude edge spaces
+            num_patterns = int(usable_length // pattern_width)
+            finger_positions = [
+                self.thickness + i * pattern_width + self.thickness/2  # start after first space
+                for i in range(num_patterns)
+                if self.thickness < (self.thickness + i * pattern_width) < (side_length - self.thickness)
+            ]
+            
+            # Create holes at nearest valid finger positions
+            for target in target_positions:
+                pos = min(finger_positions, key=lambda x: abs(x - target))
+                self.fingerHolesAt(pos - self.thickness/2, self.thickness/2, h - self.thickness, 90)
+        
+        # Generate walls in sequence
+        self.rectangularWall(front_length, h, edges="FfFF", move="right")  # Front wall
+        self.rectangularWall(side_length, h, edges="FfFF", callback=[wing_hole_callback], move="right")   # Right wall with wing holes
+        self.rectangularWall(back_length, h, edges="FfFF", move="right")   # Back wall
+        self.rectangularWall(side_length, h, edges="FfFF", callback=[wing_hole_callback], move="right")   # Left wall with wing holes
+        
+        # Move down and back for the support wings
+        self.moveTo(0 - front_length - side_length - back_length - side_length - wing_length, h + 30)
+        
+        # Draw all wings in sequence
         for _ in range(wings_per_side * 2):  # Total number of wings (2 per side)
-            self.rectangularWall(wing_length, h, edges="FFFF", move="right")
+            # Use F edge on the long edges that slot into the walls
+            # Use f edges on all corners to accept fingers rather than protrude them
+            self.rectangularWall(wing_length, h, edges="ffff", move="right")
