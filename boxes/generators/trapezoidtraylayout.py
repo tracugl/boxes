@@ -81,8 +81,6 @@ class TrapezoidTrayLayout(boxes.Boxes):
         wing_length = self.adjustSize(self.support_wing_length) if self.outside else self.support_wing_length
         wings_per_side = self.support_wings_per_side
         
-        # Calculate positions for wing slots
-        spacing = side_length / (wings_per_side + 1)
         
         def wing_hole_callback():
             """Create holes in the side walls for support wings.
@@ -110,16 +108,17 @@ class TrapezoidTrayLayout(boxes.Boxes):
                 self.fingerHolesAt(pos - self.thickness/2, self.thickness/2, h - self.thickness, 90)
         
         # Generate walls in sequence
-        self.rectangularWall(front_length, h, edges="FfFF", move="right")  # Front wall
-        self.rectangularWall(side_length, h, edges="FfFF", callback=[wing_hole_callback], move="right")   # Right wall with wing holes
-        self.rectangularWall(back_length, h, edges="FfFF", move="right")   # Back wall
-        self.rectangularWall(side_length, h, edges="FfFF", callback=[wing_hole_callback], move="right")   # Left wall with wing holes
+        # Edge order is right, top, left, bottom - we want flat bottom edges
+        self.rectangularWall(front_length, h, edges="eFFF", move="right")  # Front wall
+        self.rectangularWall(side_length, h, edges="eFFF", callback=[wing_hole_callback], move="right")   # Right wall with wing holes
+        self.rectangularWall(back_length, h, edges="eFFF", move="right")   # Back wall
+        self.rectangularWall(side_length, h, edges="eFFF", callback=[wing_hole_callback], move="right")   # Left wall with wing holes
         
         # Move down and back for the support wings
-        self.moveTo(0 - front_length - side_length - back_length - side_length - wing_length, h + 30)
+        self.moveTo(0 - front_length - side_length - back_length - side_length - wing_length + 30, h + 30)
         
         # Draw all wings in sequence
         for _ in range(wings_per_side * 2):  # Total number of wings (2 per side)
-            # Use F edge on the long edges that slot into the walls
-            # Use f edges on all corners to accept fingers rather than protrude them
-            self.rectangularWall(wing_length, h, edges="ffff", move="right")
+            # Edge order is right, top, left, bottom
+            # All sides need female joints to connect with walls, bottom is flat
+            self.rectangularWall(wing_length, h, edges="efff", move="right")
