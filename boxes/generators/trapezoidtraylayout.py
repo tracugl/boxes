@@ -61,9 +61,61 @@ class TrapezoidTrayLayout(boxes.Boxes):
 
         # Begin the box rendering
         
+        # Calculate wing parameters
+        wing_length = self.adjustSize(self.support_wing_length) if self.outside else self.support_wing_length
+        wings_per_side = self.support_wings_per_side
+        
+        # Helper function to calculate wing positions that align with finger joints
+        def calc_positions(length, num_wings):
+            """Calculate positions that align with finger joints"""
+            pattern_width = 2 * self.thickness
+            usable_length = length - 2 * self.thickness
+            num_patterns = int(usable_length // pattern_width)
+            finger_positions = [
+                self.thickness + i * pattern_width + self.thickness/2
+                for i in range(num_patterns)
+                if self.thickness < (self.thickness + i * pattern_width) < (length - self.thickness)
+            ]
+            # Calculate ideal positions
+            target_positions = [
+                length * ((i + 1) / (num_wings + 1))
+                for i in range(num_wings)
+            ]
+            # Find nearest valid finger positions
+            return [min(finger_positions, key=lambda x: abs(x - target)) for target in target_positions]
+        
+        # Calculate wing positions once to be used by both base plate and walls
+        wing_positions = calc_positions(side_length, wings_per_side)
+        
         # Draw base plate as a separate object
         self.moveTo(0, 10)  # Add 10mm spacing to avoid burn guide overlap
         
+        # Draw base plate with finger holes for wings
+        def base_wing_holes_callback():
+            """Add finger holes for wing tops, perpendicular to edges pointing inward"""
+            angle_rad = math.radians(self.angle)
+            
+            for pos in wing_positions:
+                # Calculate positions along the angled sides
+                # pos is the distance from the corner along the side_length
+                base_x = pos * math.cos(angle_rad)
+                base_y = pos * math.sin(angle_rad)
+                
+                # Right side
+                # Start from the back-right corner (back_length, 0) and move along the angled edge
+                self.fingerHolesAt(
+                    back_length - base_x, 
+                    base_y,
+                    wing_length, 270 - self.angle) # Perpendicular to the wall, pointing inward
+                
+                # Left side (mirrored)
+                # Start from the back-left corner (0, 0) and move along the angled edge
+                self.fingerHolesAt(
+                    base_x,
+                    base_y,
+                    wing_length, 270 + self.angle) # Perpendicular to the wall, pointing inward
+
+        # Draw the base plate outline
         self.edges["f"](back_length)           # Back edge (slots)
         self.corner(180 - self.angle)          # Back right corner
         self.edges["f"](side_length)           # Right side (slots)
@@ -74,37 +126,18 @@ class TrapezoidTrayLayout(boxes.Boxes):
         self.corner(180 - self.angle)          # Back left corner
         self.ctx.stroke()                      # End base plate path as separate object
         
+        # Add finger holes for wing tops
+        base_wing_holes_callback()
+        
         # Move down for walls
         self.moveTo(0, side_length + 20)
-        
-        # Calculate wing parameters
-        wing_length = self.adjustSize(self.support_wing_length) if self.outside else self.support_wing_length
-        wings_per_side = self.support_wings_per_side
         
         
         def wing_hole_callback():
             """Create holes in the side walls for support wings.
-            Wings are evenly distributed along the wall length (e.g., at 1/3 and 2/3 for 2 wings)
-            and aligned with the nearest finger joint."""
-            # Calculate ideal positions for wings
-            target_positions = [
-                side_length * ((i + 1) / (wings_per_side + 1))
-                for i in range(wings_per_side)
-            ]
-            
-            # Calculate all valid finger positions
-            pattern_width = 2 * self.thickness  # finger + space width
-            usable_length = side_length - 2 * self.thickness  # exclude edge spaces
-            num_patterns = int(usable_length // pattern_width)
-            finger_positions = [
-                self.thickness + i * pattern_width + self.thickness/2  # start after first space
-                for i in range(num_patterns)
-                if self.thickness < (self.thickness + i * pattern_width) < (side_length - self.thickness)
-            ]
-            
-            # Create holes at nearest valid finger positions
-            for target in target_positions:
-                pos = min(finger_positions, key=lambda x: abs(x - target))
+            Uses pre-calculated wing positions to ensure alignment with base plate holes."""
+            # Create holes at the pre-calculated positions
+            for pos in wing_positions:
                 self.fingerHolesAt(pos - self.thickness/2, self.thickness/2, h - self.thickness, 90)
         
         # Generate walls in sequence
