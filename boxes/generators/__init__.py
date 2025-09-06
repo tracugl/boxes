@@ -49,7 +49,7 @@ ui_groups: list[UIGroup] = [
 ]
 
 
-def getAllBoxGenerators() -> dict[str, type[boxes.Boxes]]:
+def getAllBoxGenerators() -> dict[str, boxes.Boxes]:
     generators = {}
     path = __path__
     if "BOXES_GENERATOR_PATH" in os.environ:
