@@ -50,6 +50,9 @@ The lids needs to be glued. For the bayonet lid all outside rings attach to the 
             "--bottom",  action="store", type=str, default="closed",
             choices=["none", "closed", "hole", "angled hole", "angled lid", "angled lid2", "round lid"],
             help="style of the bottom and bottom lid")
+        self.argparser.add_argument(
+            "--angled_hole_rim", action="store", type=float, default=-1.0,
+            help="Rim width for angled hole (use -1 to default to material thickness)")
 
         self.lugs=6
         self.n = 6
@@ -107,9 +110,12 @@ The lids needs to be glued. For the bayonet lid all outside rings attach to the 
                 self.regularPolygonWall(corners=n, r=r, edges='e', move="right")
                 self.regularPolygonWall(corners=n, r=r, edges='E', move="right")
             elif top_type in ("angled hole", "angled lid2"):
-                self.regularPolygonWall(corners=n, r=r, edges=joint_type[1], move="right",
-                                        callback=[lambda:self.regularPolygonAt(
-                                            0, 0, n, h=sh-t)])
+                rim_w = self.angled_hole_rim if self.angled_hole_rim > 0 else t
+                inner_sh = sh - rim_w
+                callbacks = []
+                if inner_sh > 0:
+                    callbacks.append(lambda: self.regularPolygonAt(0, 0, n, h=inner_sh))
+                self.regularPolygonWall(corners=n, r=r, edges=joint_type[1], move="right", callback=callbacks if callbacks else None)
                 if top_type == "angled lid2":
                     self.regularPolygonWall(corners=n, r=r, edges='E', move="right")
             elif top_type in ("hole", "round lid"):
