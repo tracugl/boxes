@@ -52,10 +52,10 @@ class HalfHexagonBox(Boxes):
 
     # --- rendering -------------------------------------------------------
     def render(self):
-        r0, h, t = self.radius, self.h, self.thickness
+        r0, h, t, n = self.radius, self.h, self.thickness, self.n
         if self.outside:
             # mimic hexagon: subtract thickness so outside size matches given *inner* radius
-            r0 -= t
+            #r0 = r0 - self.thickness / math.cos(math.radians(360/(2*n)))
             h = self.adjustSize(h)
 
         borders, (long_base, side_len, short_base, _) = self.trapezoidBorders(r0)
