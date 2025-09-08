@@ -17,7 +17,21 @@ import math
 import copy
 from boxes import Boxes, edges
 from boxes.generators.bayonetbox import BayonetBox
+from boxes.Color import *
+from boxes.qrcode_factory import BoxesQrCodeFactory
+from boxes.vectors import kerf
+"""Hexagon generator with optional 'spoke' bottom pattern.
 
+The 'spoke' style draws a hexagonal frame (outer and inner hex cut) plus six
+identical kite shaped cutouts. This avoids boolean geometry libraries so it
+works robustly with the existing drawing context (no shapely dependency).
+"""
+
+### Helpers
+
+def dist(dx, dy):
+    """distance function for sorting"""
+    return (dx*dx + dy*dy)**0.5
 
 class HexagonBox(BayonetBox):
     """Box with regular hexagon as base"""
@@ -47,9 +61,15 @@ The lids needs to be glued. For the bayonet lid all outside rings attach to the 
             "--alignment_pins",  action="store", type=float, default=1.0,
             help="diameter of the alignment pins for bayonet lid")
         self.argparser.add_argument(
-            "--bottom",  action="store", type=str, default="closed",
-            choices=["none", "closed", "hole", "angled hole", "angled lid", "angled lid2", "round lid"],
+            "--bottom",  action="store", type=str, default="spoke",
+            choices=["none", "closed", "hole", "angled hole", "angled lid", "angled lid2", "round lid", "spoke"],
             help="style of the bottom and bottom lid")
+        self.argparser.add_argument(
+            "--edge_width", action="store", type=float, default=5.0,
+            help="Width of the outer hexagonal frame for spoke bottom.")
+        self.argparser.add_argument(
+            "--spoke_width", action="store", type=float, default=5.0,
+            help="Width of the spokes for spoke bottom.")
         self.argparser.add_argument(
             "--angled_hole_rim", action="store", type=float, default=-1.0,
             help="Rim width for angled hole (use -1 to default to material thickness)")
@@ -104,6 +124,75 @@ The lids needs to be glued. For the bayonet lid all outside rings attach to the 
 
 
         def drawTop(r, sh, top_type, joint_type):
+            if top_type == "spoke":
+                outer_radius = r
+                edge_width = self.edge_width
+                spoke_width = self.spoke_width
+
+                # Geometry translated from provided JavaScript sample.
+                sqrt3 = math.sqrt(3)
+                cos30 = sqrt3 / 2.0
+                A_outer = outer_radius * cos30            # outer apothem
+                A_inner = A_outer - edge_width            # inner apothem after frame
+                if A_inner <= 0:
+                    # Frame would vanish – fallback to closed polygon
+                    self.regularPolygonWall(corners=n, r=outer_radius, edges=joint_type[1], move="right")
+                    return
+                R_inner = A_inner / cos30                 # inner radius at corners
+                # Short side length helper (derived from JS logic)
+                s = (A_inner / sqrt3) - (spoke_width / 2.0)
+                if s <= 0:
+                    # Spokes collapse – fallback
+                    self.regularPolygonWall(corners=n, r=outer_radius, edges=joint_type[1], move="right")
+                    return
+
+                def hex_points(R):
+                    # Keep orientation consistent with other parts (point to the right at angle 0)
+                    return [(R*math.cos(math.radians(60*i)), R*math.sin(math.radians(60*i))) for i in range(6)]
+
+                outer_hex = hex_points(outer_radius)
+
+                # Master kite (pointing upward in our coordinate system, y positive)
+                P1 = (0.0, R_inner)                               # top vertex (120°)
+                P2 = (s*sqrt3/2.0, R_inner - s/2.0)               # right 90° vertex
+                P3 = (0.0, R_inner - 2.0*s)                       # inner 60° vertex
+                P4 = (-s*sqrt3/2.0, R_inner - s/2.0)              # left 90° vertex
+                def rotate_points(pts, angle_deg):
+                    ang = math.radians(angle_deg)
+                    ca, sa = math.cos(ang), math.sin(ang)
+                    return [(x*ca - y*sa, x*sa + y*ca) for x, y in pts]
+
+                kite_master = [P1, P2, P3, P4]
+                # Rotate master kite by 30° so that its edges align with the flat orientation of the outer hex
+                kite_master = rotate_points(kite_master, 30)
+
+                kites = [rotate_points(kite_master, 60*i) for i in range(6)]
+
+                # Bounding box based on outer hex
+                xs = [p[0] for p in outer_hex]
+                ys = [p[1] for p in outer_hex]
+                minx, maxx = min(xs), max(xs)
+                miny, maxy = min(ys), max(ys)
+                w = maxx - minx
+                h = maxy - miny
+                if self.move(w, h, "right", before=True):
+                    return
+                ox, oy = -minx, -miny
+
+                def draw_polygon(points):
+                    self.ctx.move_to(points[0][0] + ox, points[0][1] + oy)
+                    for x_, y_ in points[1:]:
+                        self.ctx.line_to(x_ + ox, y_ + oy)
+                    self.ctx.line_to(points[0][0] + ox, points[0][1] + oy)
+                    self.ctx.stroke()
+
+                # Cut outer boundary
+                draw_polygon(outer_hex)
+                # Cut kite voids (leave spokes + inner hub material intact)
+                for kite in kites:
+                    draw_polygon(kite)
+                self.move(w, h, "right")
+                return
             if top_type == "closed":
                 self.regularPolygonWall(corners=n, r=r, edges=joint_type[1], move="right")
             elif top_type == "angled lid":
@@ -133,6 +222,7 @@ The lids needs to be glued. For the bayonet lid all outside rings attach to the 
 
 
         with self.saved_context():
+            # Draw bottom (may be 'spoke') then top
             drawTop(r0, sh0, self.bottom, "yY")
             drawTop(r1, sh1, self.top, "zZ")
 
