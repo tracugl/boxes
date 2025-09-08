@@ -70,10 +70,7 @@ The lids needs to be glued. For the bayonet lid all outside rings attach to the 
         self.argparser.add_argument(
             "--spoke_width", action="store", type=float, default=5.0,
             help="Width of the spokes for spoke bottom.")
-        self.argparser.add_argument(
-            "--angled_hole_rim", action="store", type=float, default=-1.0,
-            help="Rim width for angled hole (use -1 to default to material thickness)")
-
+        
         self.lugs=6
         self.n = 6
 
@@ -150,8 +147,6 @@ The lids needs to be glued. For the bayonet lid all outside rings attach to the 
                     # Keep orientation consistent with other parts (point to the right at angle 0)
                     return [(R*math.cos(math.radians(60*i)), R*math.sin(math.radians(60*i))) for i in range(6)]
 
-                outer_hex = hex_points(outer_radius)
-
                 # Master kite (pointing upward in our coordinate system, y positive)
                 P1 = (0.0, R_inner)                               # top vertex (120°)
                 P2 = (s*sqrt3/2.0, R_inner - s/2.0)               # right 90° vertex
@@ -168,30 +163,16 @@ The lids needs to be glued. For the bayonet lid all outside rings attach to the 
 
                 kites = [rotate_points(kite_master, 60*i) for i in range(6)]
 
-                # Bounding box based on outer hex
-                xs = [p[0] for p in outer_hex]
-                ys = [p[1] for p in outer_hex]
-                minx, maxx = min(xs), max(xs)
-                miny, maxy = min(ys), max(ys)
-                w = maxx - minx
-                h = maxy - miny
-                if self.move(w, h, "right", before=True):
-                    return
-                ox, oy = -minx, -miny
+                def draw_kites():
+                    for kite in kites:
+                        self.ctx.move_to(kite[0][0], kite[0][1])
+                        for x_, y_ in kite[1:]:
+                            self.ctx.line_to(x_, y_)
+                        self.ctx.line_to(kite[0][0], kite[0][1])
+                        self.ctx.stroke()
 
-                def draw_polygon(points):
-                    self.ctx.move_to(points[0][0] + ox, points[0][1] + oy)
-                    for x_, y_ in points[1:]:
-                        self.ctx.line_to(x_ + ox, y_ + oy)
-                    self.ctx.line_to(points[0][0] + ox, points[0][1] + oy)
-                    self.ctx.stroke()
-
-                # Cut outer boundary
-                draw_polygon(outer_hex)
-                # Cut kite voids (leave spokes + inner hub material intact)
-                for kite in kites:
-                    draw_polygon(kite)
-                self.move(w, h, "right")
+                # Use regularPolygonWall to get finger joints on outer perimeter; kites are cutouts
+                self.regularPolygonWall(corners=n, r=outer_radius, edges=joint_type[1], move="right", callback=[draw_kites])
                 return
             if top_type == "closed":
                 self.regularPolygonWall(corners=n, r=r, edges=joint_type[1], move="right")
@@ -199,7 +180,7 @@ The lids needs to be glued. For the bayonet lid all outside rings attach to the 
                 self.regularPolygonWall(corners=n, r=r, edges='e', move="right")
                 self.regularPolygonWall(corners=n, r=r, edges='E', move="right")
             elif top_type in ("angled hole", "angled lid2"):
-                rim_w = self.angled_hole_rim if self.angled_hole_rim > 0 else t
+                rim_w = self.edge_width if self.edge_width > 0 else t
                 inner_sh = sh - rim_w
                 callbacks = []
                 if inner_sh > 0:
@@ -231,7 +212,7 @@ The lids needs to be glued. For the bayonet lid all outside rings attach to the 
         fingers_top = self.top in ("closed", "hole", "angled hole",
                                    "round lid", "angled lid2", "bayonet mount")
         fingers_bottom = self.bottom in ("closed", "hole", "angled hole",
-                                         "round lid", "angled lid2")
+                                         "round lid", "angled lid2", "spoke")
 
         t_ = self.edges["G"].startwidth()
         bottom_edge = ('y' if fingers_bottom else 'e')
