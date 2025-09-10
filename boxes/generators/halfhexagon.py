@@ -1,19 +1,37 @@
-import math
-import copy
-from boxes import Boxes, edges
-
-
-# Copyright (C) 2024 Florian Festi
+# Copyright (C) 2025 Travis Cugley
 #
 #   This program is free software: you can redistribute it and/or modify
 #   it under the terms of the GNU General Public License as published by
 #   the Free Software Foundation, either version 3 of the License, or
-class HalfHexagonBox(Boxes):
-    """Half Hexagon (isosceles trapezoid) box – vertical walls.
+#   (at your option) any later version.
+#
+#   This program is distributed in the hope that it will be useful,
+#   but WITHOUT ANY WARRANTY; without even the implied warranty of
+#   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+#   GNU General Public License for more details.
+#
+#   You should have received a copy of the GNU General Public License
+#   along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-    Geometry: derived from a regular hexagon with circum radius *r*.
-    Long base = 2*r, short base = r, side legs = r, height = r*sqrt(3)/2.
-    """
+import math
+import copy
+from boxes import Boxes, edges, boolarg
+from boxes.generators.bayonetbox import BayonetBox
+from boxes.Color import *
+from boxes.generators.hexagon import *
+
+"""Isosceles trapezoid (half-hexagon) generator with optional 'spoke' bottom pattern."""
+
+### Helpers
+
+def dist(dx, dy):
+    """distance function for sorting"""
+    return (dx*dx + dy*dy)**0.5
+
+class HalfHexagonBox(HexagonBox):
+    """Box with an isosceles trapezoid as base"""
+
+    description = """For short side walls that don't fit a connecting finger reduce *surroundingspaces* and *finger* in the Finger Joint Settings."""
 
     ui_group = "Box"
 
@@ -22,123 +40,150 @@ class HalfHexagonBox(Boxes):
         self.addSettingsArgs(edges.FingerJointSettings, surroundingspaces=1)
         self.buildArgParser("h", "outside")
         self.argparser.add_argument(
-            "--radius", action="store", type=float, default=50.0,
-            help="Inner radius")
+            "--radius_bottom",  action="store", type=float, default=50.0,
+            help="inner radius of the box bottom (at the corners)")
         self.argparser.add_argument(
-            "--top", action="store", type=str, default="closed",
-            choices=["none", "closed"], help="Top style")
+            "--radius_top",  action="store", type=float, default=50.0,
+            help="inner radius of the box top (at the corners)")
         self.argparser.add_argument(
-            "--bottom", action="store", type=str, default="spoke",
-            choices=["none", "closed", "angled hole", "spoke"], help="Bottom style (angled hole creates rim + inner trapezoid hole; spoke adds 3 kite cutouts)")
+            "--top",  action="store", type=str, default="none",
+            choices=["none", "hole", "angled hole", "angled lid", "angled lid2", "round lid", "bayonet mount", "closed"],
+            help="style of the top and lid")
+        self.argparser.add_argument(
+            "--alignment_pins",  action="store", type=float, default=1.0,
+            help="diameter of the alignment pins for bayonet lid")
+        self.argparser.add_argument(
+            "--bottom",  action="store", type=str, default="spoke",
+            choices=["none", "closed", "hole", "angled hole", "angled lid", "angled lid2", "round lid", "spoke"],
+            help="style of the bottom and bottom lid")
         self.argparser.add_argument(
             "--edge_width", action="store", type=float, default=5.0,
-            help="Frame width for spoke bottom")
+            help="Width of the outer hexagonal frame for spoke bottom.")
         self.argparser.add_argument(
             "--spoke_width", action="store", type=float, default=5.0,
-            help="Spoke width controlling kite shape for spoke bottom")
-        self.n = 4  # number of edges of trapezoid
+            help="Width of the spokes for spoke bottom.")
+        self.argparser.add_argument(
+            "--trapezoid", action="store", type=boolarg, default=True,
+            help="If true, only draw a half-hexagon.")
+        
+        self.lugs=6
+        self.n = 6
 
-    # --- geometry helper -------------------------------------------------
-    def trapezoidBorders(self, r):
-        """Return polygonWall borders list for half-hexagon trapezoid.
 
-        Format matches examples (heart, console, tetris): alternating length, angle.
-        Angles are turning angles. We use 120,60,60,120 which closes with last implicit edge.
-        """
-        long_base = 2*r
-        side = r
-        short_base = r
-        return [long_base, 120, side, 60, short_base, 60, side, 120], (long_base, side, short_base, side)
-
-    # --- rendering -------------------------------------------------------
     def render(self):
-        r0, h, t, n = self.radius, self.h, self.thickness, self.n
+
+        r0, r1, h, n, isTrapezoid = self.radius_bottom, self.radius_top, self.h, self.n, self.trapezoid
+
         if self.outside:
-            # mimic hexagon: subtract thickness so outside size matches given *inner* radius
-            #r0 = r0 - self.thickness / math.cos(math.radians(360/(2*n)))
-            h = self.adjustSize(h)
+            r0 = r0 - self.thickness / math.cos(math.radians(360/(2*n)))
+            r1 = r1 - self.thickness / math.cos(math.radians(360/(2*n)))
+            if self.top == "none":
+                h = self.adjustSize(h, False)
+            elif "lid" in self.top and self.top != "angled lid":
+                h = self.adjustSize(h) - self.thickness
+            else:
+                h = self.adjustSize(h)
 
-        borders, (long_base, side_len, short_base, _) = self.trapezoidBorders(r0)
+        t = self.thickness
 
-        # Ensure y/z finger edges exist with 90° angle for bottom/top joints
-        fj_bottom = copy.deepcopy(self.edges["f"].settings)
-        fj_bottom.setValues(t, angle=90)
-        fj_bottom.edgeObjects(self, "yY")
-        fj_top = copy.deepcopy(self.edges["f"].settings)
-        fj_top.setValues(t, angle=90)
-        fj_top.edgeObjects(self, "zZ")
 
-        # Draw bottom/top plates first (like roundedregularbox pattern)
+        r0, sh0, side0  = self.regularPolygon(n, radius=r0)
+        r1, sh1, side1  = self.regularPolygon(n, radius=r1)
+
+        # length of side edges
+        #l = (((side0-side1)/2)**2 + (sh0-sh1)**2 + h**2)**0.5
+        l = ((r0-r1)**2 + h**2)**.5
+        # angles of sides -90° aka half of top angle of the full pyramid sides
+        a = math.degrees(math.asin((side1-side0)/2/l))
+        # angle between sides (in boxes style change of travel)
+        phi = 180 - 2 * math.degrees(
+            math.asin(math.cos(math.pi/n) / math.cos(math.radians(a))))
+
+        fingerJointSettings = copy.deepcopy(self.edges["f"].settings)
+        fingerJointSettings.setValues(self.thickness, angle=phi)
+        fingerJointSettings.edgeObjects(self, chars="gGH")
+
+        beta = math.degrees(math.atan((sh1-sh0)/h))
+        angle_bottom = 90 + beta
+        angle_top = 90 - beta
+
+        fingerJointSettings = copy.deepcopy(self.edges["f"].settings)
+        fingerJointSettings.setValues(self.thickness, angle=angle_bottom)
+        fingerJointSettings.edgeObjects(self, chars="yYH")
+
+        fingerJointSettings = copy.deepcopy(self.edges["f"].settings)
+        fingerJointSettings.setValues(self.thickness, angle=angle_top)
+        fingerJointSettings.edgeObjects(self, chars="zZH")
+
+
+        def drawTop(r, sh, top_type, joint_type):
+            if top_type == "closed":
+                self.regularPolygonWall(corners=n, r=r, edges=joint_type[1], move="right")
+            elif  top_type == "spoke":
+                self.regularPolygonWall(corners=n, r=r, edges=joint_type[1], move="right",callback=[lambda: self.drawKites(r=r, joint_type=joint_type, isTrapezoid=isTrapezoid)])
+            elif top_type == "angled lid":
+                self.regularPolygonWall(corners=n, r=r, edges='e', move="right")
+                self.regularPolygonWall(corners=n, r=r, edges='E', move="right")
+            elif top_type in ("angled hole", "angled lid2"):
+                rim_w = self.edge_width if self.edge_width > 0 else t
+                inner_sh = sh - rim_w
+                callbacks = []
+                if inner_sh > 0:
+                    callbacks.append(lambda: self.regularPolygonAt(0, 0, n, h=inner_sh))
+                self.regularPolygonWall(corners=n, r=r, edges=joint_type[1], move="right", callback=callbacks if callbacks else None)
+                if top_type == "angled lid2":
+                    self.regularPolygonWall(corners=n, r=r, edges='E', move="right")
+            elif top_type in ("hole", "round lid"):
+                self.regularPolygonWall(corners=n, r=r, edges=joint_type[1], move="right",
+                                        hole=(sh-t)*2)
+            if top_type == "round lid":
+                self.parts.disc(sh*2, move="right")
+            if self.top == "bayonet mount":
+                self.diameter = 2*sh
+                self.parts.disc(sh*2-0.1*t, callback=self.lowerCB,
+                                move="right")
+                self.regularPolygonWall(corners=n, r=r, edges='F',
+                                        callback=[self.upperCB], move="right")
+                self.parts.disc(sh*2, move="right")
+
+
         with self.saved_context():
-            if self.bottom != "none":
-                if self.bottom == "closed":
-                    # solid bottom
-                    self.polygonWall(borders, edge="Y", move="right")
-                elif self.bottom == "angled hole":
-                    # Outer rim with centered inner trapezoid hole (scaled by thickness)
-                    rim_w = self.edge_width if self.edge_width > 0 else t
-                    r_inner = max(r0 - rim_w, 0)
-                    inner_borders, _ = self.trapezoidBorders(r_inner)
-                    if r_inner > 0:
-                        h_outer = r0 * math.sqrt(3)/2.0
-                        h_inner = r_inner * math.sqrt(3)/2.0
-                        dx = (r0 - r_inner)  # centers horizontally
-                        dy = (h_outer - h_inner)/2.0  # centers vertically
-                        def _inner():
-                            self.moveTo(dx, dy)
-                            self.polygonWall(inner_borders, edge="eeee", turtle=True)
-                        self.polygonWall(borders, edge="Y", move="right", callback=[_inner])
-                    else:
-                        self.polygonWall(borders, edge="Y", move="right")
-                elif self.bottom == "spoke":
-                    # Two kite cutouts inside half-hex/trapezoid
-                    edge_w = self.edge_width
-                    spoke_w = self.spoke_width
-                    H = r0 * math.sqrt(3)/2.0  # trapezoid height (apothem of full hex)
-                    A_inner = H - edge_w
-                    if A_inner <= 0:
-                        self.polygonWall(borders, edge="Y", move="right")
-                    else:
-                        sqrt3 = math.sqrt(3)
-                        s = (A_inner / sqrt3) - (spoke_w / 2.0)
-                        if s <= 0:
-                            self.polygonWall(borders, edge="Y", move="right")
-                        else:
-                            # Center of trapezoid
-                            cx = r0
-                            # Equivalent inner radius along centerline
-                            R_inner = A_inner * 2.0 / sqrt3
-                            # Master kite oriented upward (angle 90°)
-                            P1 = (0.0, R_inner)
-                            P2 = (s*sqrt3/2.0, R_inner - s/2.0)
-                            P3 = (0.0, R_inner - 2.0*s)
-                            P4 = (-s*sqrt3/2.0, R_inner - s/2.0)
-                            master = [P1, P2, P3, P4]
-                            def rot(pts, ang_deg):
-                                ang = math.radians(ang_deg)
-                                ca, sa = math.cos(ang), math.sin(ang)
-                                return [(x*ca - y*sa, x*sa + y*ca) for x,y in pts]
-                            # Use two kites (omit center) symmetric about vertical axis
-                            kite_angles = [120, 60]
-                            kites = [rot(master, a) for a in kite_angles]
-                            kites = [rot(kite, 90) for kite in kites]  # orient
-                            kites = [[(x, -y) for (x, y) in kite] for kite in kites]  # flip vertical
-                            # Reposition vertically: ensure nearest kite edge is edge_w from long base (y=0)
-                            min_y = min(y for kite in kites for (_, y) in kite)
-                            cy = edge_w - min_y
-                            def draw_kites():
-                                for kite in kites:
-                                    # translate to center
-                                    self.ctx.move_to(kite[0][0] + cx, kite[0][1] + cy)
-                                    for x_, y_ in kite[1:]:
-                                        self.ctx.line_to(x_ + cx, y_ + cy)
-                                    self.ctx.line_to(kite[0][0] + cx, kite[0][1] + cy)
-                                    self.ctx.stroke()
-                            self.polygonWall(borders, edge="Y", move="right", callback=[draw_kites])
-            if self.top == "closed":
-                self.polygonWall(borders, edge="Z", move="right")
+            # Draw bottom (may be 'spoke') then top
+            drawTop(r0, sh0, self.bottom, "yY")
+            drawTop(r1, sh1, self.top, "zZ")
 
-        # Place outline (for reference) and create walls; use y/z fingers for bottom/top like hexagon
-        self.polygonWall(borders, move="up only")
-        self.polygonWalls(borders, h, bottom="y", top="z")
+        self.regularPolygonWall(corners=n, r=max(r0, r1), edges='F', move="up only")
 
+        fingers_top = self.top in ("closed", "hole", "angled hole",
+                                   "round lid", "angled lid2", "bayonet mount")
+        fingers_bottom = self.bottom in ("closed", "hole", "angled hole",
+                                         "round lid", "angled lid2", "spoke")
+
+        t_ = self.edges["G"].startwidth()
+        bottom_edge = ('y' if fingers_bottom else 'e')
+        top_edge = ('z' if fingers_top else 'e')
+        d_top = max(0, -t_ * math.sin(math.radians(a)))
+        d_bottom = max(0.0, t_ * math.sin(math.radians(a)))
+        l -= (d_top + d_bottom)
+
+        if n % 2:
+            e = bottom_edge + 'ege' + top_edge + 'eeGee'
+            borders = [side0, 90-a, d_bottom, 0, l, 0, d_top, 90+a, side1,
+                       90+a, d_top, -90, t_, 90, l, 90, t_, -90, d_bottom, 90-a]
+            for i in range(n):
+                self.polygonWall(borders, edge=e, correct_corners=False,
+                                 move="right")
+        else:
+            borders0 = [side0, 90-a,
+                        d_bottom, -90, t_, 90, l, 90, t_, -90, d_top,
+                        90+a, side1, 90+a,
+                        d_top, -90, t_, 90, l, 90, t_, -90, d_bottom, 90-a]
+            e0 = bottom_edge + 'eeGee' + top_edge + 'eeGee'
+            borders1 = [side0, 90-a, d_bottom, 0, l, 0, d_top, 90+a, side1,
+                        90+a, d_top, 0, l, 0, d_bottom, 90-a]
+            e1 = bottom_edge + 'ege' + top_edge + 'ege'
+            for i in range(n//2):
+                self.polygonWall(borders0, edge=e0, correct_corners=False,
+                                 move="right")
+                self.polygonWall(borders1, edge=e1, correct_corners=False,
+                                 move="right")

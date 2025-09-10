@@ -1,4 +1,4 @@
-# Copyright (C) 2013-2014 Florian Festi
+# Copyright (C) 2025 Travis Cugley
 #
 #   This program is free software: you can redistribute it and/or modify
 #   it under the terms of the GNU General Public License as published by
@@ -15,16 +15,14 @@
 
 import math
 import copy
-from boxes import Boxes, edges
+from boxes import Boxes, edges, boolarg
 from boxes.generators.bayonetbox import BayonetBox
 from boxes.Color import *
-from boxes.qrcode_factory import BoxesQrCodeFactory
-from boxes.vectors import kerf
+
 """Hexagon generator with optional 'spoke' bottom pattern.
 
 The 'spoke' style draws a hexagonal frame (outer and inner hex cut) plus six
-identical kite shaped cutouts. This avoids boolean geometry libraries so it
-works robustly with the existing drawing context (no shapely dependency).
+identical kite shaped cutouts. 
 """
 
 ### Helpers
@@ -48,10 +46,10 @@ The lids needs to be glued. For the bayonet lid all outside rings attach to the 
         self.addSettingsArgs(edges.FingerJointSettings, surroundingspaces=1)
         self.buildArgParser("h", "outside")
         self.argparser.add_argument(
-            "--radius_bottom",  action="store", type=float, default=50.0,
+            "--radius_bottom",  action="store", type=float, default=150.0,
             help="inner radius of the box bottom (at the corners)")
         self.argparser.add_argument(
-            "--radius_top",  action="store", type=float, default=50.0,
+            "--radius_top",  action="store", type=float, default=150.0,
             help="inner radius of the box top (at the corners)")
         self.argparser.add_argument(
             "--top",  action="store", type=str, default="none",
@@ -65,18 +63,90 @@ The lids needs to be glued. For the bayonet lid all outside rings attach to the 
             choices=["none", "closed", "hole", "angled hole", "angled lid", "angled lid2", "round lid", "spoke"],
             help="style of the bottom and bottom lid")
         self.argparser.add_argument(
-            "--edge_width", action="store", type=float, default=5.0,
+            "--edge_width", action="store", type=float, default=20.0,
             help="Width of the outer hexagonal frame for spoke bottom.")
         self.argparser.add_argument(
-            "--spoke_width", action="store", type=float, default=5.0,
+            "--spoke_width", action="store", type=float, default=30.0,
             help="Width of the spokes for spoke bottom.")
+        self.argparser.add_argument(
+            "--support_length", action="store", type=float, default=30.0,
+            help="length of the internal supports.")
+        self.argparser.add_argument(
+            "--trapezoid", action="store", type=boolarg, default=False,
+            help="If true, only draw a half-hexagon.")
         
         self.lugs=6
         self.n = 6
 
+    def drawSupports(self):
+        h = self.h
+        sl = self.support_length
+        self.rectangularWall(sl, h, "fefe", move="right")
+
+    def drawSupportHoles(self, r):
+        
+        sl = self.support_length
+
+        H = r * math.sqrt(3)/2.0  # trapezoid height (apothem of full hex)
+
+        self.fingerHolesAt(r/2 ,H-sl/2, sl,angle=90)
+
+    def drawKites(self, r, joint_type, isTrapezoid):
+
+        n = self.n
+        
+        edge_width = self.edge_width
+        spoke_width = self.spoke_width
+
+
+        sqrt3 = math.sqrt(3)
+        cos30 = sqrt3 / 2.0
+        A_outer = r * cos30            # outer apothem
+        A_inner = A_outer - edge_width # inner apothem after frame
+        if A_inner <= 0:
+            # Frame would vanish – fallback to closed polygon
+            self.regularPolygonWall(corners=n, r=r, edges=joint_type[1], move="right")
+            return
+        R_inner = A_inner / cos30                 # inner radius at corners
+        # Short side length helper (derived from JS logic)
+        s = (A_inner / sqrt3) - (spoke_width / 2.0)
+        if s <= 0:
+            # Spokes collapse – fallback
+            self.regularPolygonWall(corners=n, r=r, edges=joint_type[1], move="right")
+            return
+
+        # Master kite (pointing upward in our coordinate system, y positive)
+        P1 = (0.0, R_inner)                               # top vertex (120°)
+        P2 = (s*sqrt3/2.0, R_inner - s/2.0)               # right 90° vertex
+        P3 = (0.0, R_inner - 2.0*s)                       # inner 60° vertex
+        P4 = (-s*sqrt3/2.0, R_inner - s/2.0)              # left 90° vertex
+        def rotate_points(pts, angle_deg):
+            ang = math.radians(angle_deg)
+            ca, sa = math.cos(ang), math.sin(ang)
+            return [(x*ca - y*sa, x*sa + y*ca) for x, y in pts]
+
+        kite_master = [P1, P2, P3, P4]
+        # Rotate master kite by 30° so that its edges align with the flat orientation of the outer hex
+        kite_master = rotate_points(kite_master, 30)
+
+        kites = [rotate_points(kite_master, 60*i) for i in range(6)]
+
+        kite_counter = 0
+        for kite in kites:
+            self.ctx.move_to(kite[0][0], kite[0][1])
+            if isTrapezoid and kite_counter not in (0, 5):
+                kite_counter += 1
+                continue
+            
+            for x_, y_ in kite[1:]:
+                self.ctx.line_to(x_, y_)
+            self.ctx.line_to(kite[0][0], kite[0][1])
+            self.ctx.stroke()
+            kite_counter += 1
+
     def render(self):
 
-        r0, r1, h, n = self.radius_bottom, self.radius_top, self.h, self.n
+        r0, r1, h, n, isTrapezoid = self.radius_bottom, self.radius_top, self.h, self.n, self.trapezoid
 
         if self.outside:
             r0 = r0 - self.thickness / math.cos(math.radians(360/(2*n)))
@@ -121,61 +191,15 @@ The lids needs to be glued. For the bayonet lid all outside rings attach to the 
 
 
         def drawTop(r, sh, top_type, joint_type):
-            if top_type == "spoke":
-                outer_radius = r
-                edge_width = self.edge_width
-                spoke_width = self.spoke_width
-
-                # Geometry translated from provided JavaScript sample.
-                sqrt3 = math.sqrt(3)
-                cos30 = sqrt3 / 2.0
-                A_outer = outer_radius * cos30            # outer apothem
-                A_inner = A_outer - edge_width            # inner apothem after frame
-                if A_inner <= 0:
-                    # Frame would vanish – fallback to closed polygon
-                    self.regularPolygonWall(corners=n, r=outer_radius, edges=joint_type[1], move="right")
-                    return
-                R_inner = A_inner / cos30                 # inner radius at corners
-                # Short side length helper (derived from JS logic)
-                s = (A_inner / sqrt3) - (spoke_width / 2.0)
-                if s <= 0:
-                    # Spokes collapse – fallback
-                    self.regularPolygonWall(corners=n, r=outer_radius, edges=joint_type[1], move="right")
-                    return
-
-                def hex_points(R):
-                    # Keep orientation consistent with other parts (point to the right at angle 0)
-                    return [(R*math.cos(math.radians(60*i)), R*math.sin(math.radians(60*i))) for i in range(6)]
-
-                # Master kite (pointing upward in our coordinate system, y positive)
-                P1 = (0.0, R_inner)                               # top vertex (120°)
-                P2 = (s*sqrt3/2.0, R_inner - s/2.0)               # right 90° vertex
-                P3 = (0.0, R_inner - 2.0*s)                       # inner 60° vertex
-                P4 = (-s*sqrt3/2.0, R_inner - s/2.0)              # left 90° vertex
-                def rotate_points(pts, angle_deg):
-                    ang = math.radians(angle_deg)
-                    ca, sa = math.cos(ang), math.sin(ang)
-                    return [(x*ca - y*sa, x*sa + y*ca) for x, y in pts]
-
-                kite_master = [P1, P2, P3, P4]
-                # Rotate master kite by 30° so that its edges align with the flat orientation of the outer hex
-                kite_master = rotate_points(kite_master, 30)
-
-                kites = [rotate_points(kite_master, 60*i) for i in range(6)]
-
-                def draw_kites():
-                    for kite in kites:
-                        self.ctx.move_to(kite[0][0], kite[0][1])
-                        for x_, y_ in kite[1:]:
-                            self.ctx.line_to(x_, y_)
-                        self.ctx.line_to(kite[0][0], kite[0][1])
-                        self.ctx.stroke()
-
-                # Use regularPolygonWall to get finger joints on outer perimeter; kites are cutouts
-                self.regularPolygonWall(corners=n, r=outer_radius, edges=joint_type[1], move="right", callback=[draw_kites])
-                return
             if top_type == "closed":
                 self.regularPolygonWall(corners=n, r=r, edges=joint_type[1], move="right")
+            elif  top_type == "spoke":
+
+                
+                self.regularPolygonWall(corners=n, r=r, edges=joint_type[1], move="right",
+                                        callback=[lambda: self.drawKites(r=r, joint_type=joint_type, isTrapezoid=isTrapezoid),lambda: self.drawSupportHoles(r=r)])
+                self.drawSupports()
+                
             elif top_type == "angled lid":
                 self.regularPolygonWall(corners=n, r=r, edges='e', move="right")
                 self.regularPolygonWall(corners=n, r=r, edges='E', move="right")
