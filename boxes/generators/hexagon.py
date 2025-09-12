@@ -43,16 +43,16 @@ The lids needs to be glued. For the bayonet lid all outside rings attach to the 
 
     def __init__(self) -> None:
         Boxes.__init__(self)
-        self.addSettingsArgs(edges.FingerJointSettings, surroundingspaces=1)
+        self.addSettingsArgs(edges.FingerJointSettings, finger=5, space=5,surroundingspaces=2)
         self.buildArgParser("h", "outside")
         self.argparser.add_argument(
-            "--radius_bottom",  action="store", type=float, default=150.0,
+            "--radius_bottom",  action="store", type=float, default=500.0,
             help="inner radius of the box bottom (at the corners)")
         self.argparser.add_argument(
-            "--radius_top",  action="store", type=float, default=150.0,
+            "--radius_top",  action="store", type=float, default=500.0,
             help="inner radius of the box top (at the corners)")
         self.argparser.add_argument(
-            "--top",  action="store", type=str, default="none",
+            "--top",  action="store", type=str, default="closed",
             choices=["none", "hole", "angled hole", "angled lid", "angled lid2", "round lid", "bayonet mount", "closed"],
             help="style of the top and lid")
         self.argparser.add_argument(
@@ -63,17 +63,18 @@ The lids needs to be glued. For the bayonet lid all outside rings attach to the 
             choices=["none", "closed", "hole", "angled hole", "angled lid", "angled lid2", "round lid", "spoke"],
             help="style of the bottom and bottom lid")
         self.argparser.add_argument(
-            "--edge_width", action="store", type=float, default=20.0,
+            "--edge_width", action="store", type=float, default=60.0,
             help="Width of the outer hexagonal frame for spoke bottom.")
         self.argparser.add_argument(
-            "--spoke_width", action="store", type=float, default=30.0,
+            "--spoke_width", action="store", type=float, default=120.0,
             help="Width of the spokes for spoke bottom.")
         self.argparser.add_argument(
-            "--support_length", action="store", type=float, default=30.0,
+            "--support_length", action="store", type=float, default=120.0,
             help="length of the internal supports.")
         self.argparser.add_argument(
             "--trapezoid", action="store", type=boolarg, default=False,
             help="If true, only draw a half-hexagon.")
+        
         
         self.lugs=6
         self.n = 6
@@ -88,8 +89,77 @@ The lids needs to be glued. For the bayonet lid all outside rings attach to the 
         sl = self.support_length
 
         H = r * math.sqrt(3)/2.0  # trapezoid height (apothem of full hex)
+        H1 = H/2
+        H2 = H+H/2
 
-        self.fingerHolesAt(r/2 ,H-sl/2, sl,angle=90)
+        self.fingerHolesAt(r/2 ,H1-sl/2, sl,angle=90)
+        self.fingerHolesAt(r/2 ,H2-sl/2, sl,angle=90)
+
+    def drawMarkers2(self,s,l,text):
+        h = self.h
+        r = self.radius_bottom
+
+        #self.hole(l-10, s-10, 12)
+
+        # self.rectangularHole(r/2, h/2, 5, 5, r=0, center_x=True, center_y=True)
+        # self.rectangularHole(r/5, h/2, 5, 5, r=0, center_x=True, center_y=True)
+        # self.rectangularHole(4*r/5, h/2, 5, 5, r=0, center_x=True, center_y=True)
+
+    def drawAlignmentHoles(self,s,l, text):
+
+        h = self.h
+        spacer = 15
+
+        r1=(h - spacer- spacer)/2
+        
+        self.hole(l/2, s/2, r1)
+        self.hole(l/2, s/5, r1)
+        self.hole(l/2, 4*s/5, r1)
+
+        r2=12.5
+        self.hole(l-r2/2-spacer, 7*s/20, r2)
+        self.hole(l-r2/2-spacer, 13*s/20, r2)
+        
+        self.hole(spacer+r2/2, 7*s/20, r2)
+        self.hole(spacer+r2/2, 13*s/20, r2)
+
+        r3=3
+        self.hole(l-spacer, 7*s/20 + 2*spacer, r3)
+        self.hole(l-spacer, 7*s/20 - 2*spacer, r3)
+        self.hole(spacer, 7*s/20 + 2*spacer, r3)
+        self.hole(spacer, 7*s/20 - 2*spacer, r3)
+
+        self.hole(l-spacer, 13*s/20 + 2*spacer, r3)
+        self.hole(l-spacer, 13*s/20 - 2*spacer, r3)
+        self.hole(spacer, 13*s/20 + 2*spacer, r3)
+        self.hole(spacer, 13*s/20 - 2*spacer, r3)
+
+        # corners
+        self.hole(l-spacer, s-spacer, r3)
+        self.hole(l-spacer, s-2*spacer, r3)
+        self.hole(l-2*spacer, s-spacer, r3)
+
+        self.hole(l-spacer, s-3*spacer, r3)
+        self.hole(l/2, s-3*spacer, r2)
+        self.hole(l-spacer, 3*spacer, r3)
+        self.hole(l/2, 3*spacer, r2)
+
+        #self.hole(spacer, s-3*spacer, r3)
+        self.text(text=text,x=spacer-1, y=s-3*spacer,angle=-90,fontsize = 8, align="middle center", color=Color.ETCHING)
+        
+        
+
+        self.hole(spacer, s-spacer, r3)
+        self.hole(spacer, s-2*spacer, r3)
+        self.hole(2*spacer, s-spacer, r3)
+
+        self.hole(l-spacer, spacer, r3)
+        self.hole(l-spacer, 2*spacer, r3)
+        self.hole(l-2*spacer, spacer, r3)
+
+        self.hole(spacer, spacer, r3)
+        self.hole(spacer, 2*spacer, r3)
+        self.hole(2*spacer, spacer, r3)
 
     def drawKites(self, r, joint_type, isTrapezoid):
 
@@ -250,8 +320,7 @@ The lids needs to be glued. For the bayonet lid all outside rings attach to the 
             borders = [side0, 90-a, d_bottom, 0, l, 0, d_top, 90+a, side1,
                        90+a, d_top, -90, t_, 90, l, 90, t_, -90, d_bottom, 90-a]
             for i in range(n):
-                self.polygonWall(borders, edge=e, correct_corners=False,
-                                 move="right")
+                self.polygonWall(borders, edge=e, correct_corners=False,  move="right")
         else:
             borders0 = [side0, 90-a,
                         d_bottom, -90, t_, 90, l, 90, t_, -90, d_top,
@@ -262,7 +331,5 @@ The lids needs to be glued. For the bayonet lid all outside rings attach to the 
                         90+a, d_top, 0, l, 0, d_bottom, 90-a]
             e1 = bottom_edge + 'ege' + top_edge + 'ege'
             for i in range(n//2):
-                self.polygonWall(borders0, edge=e0, correct_corners=False,
-                                 move="right")
-                self.polygonWall(borders1, edge=e1, correct_corners=False,
-                                 move="right")
+                self.polygonWall(borders0, edge=e0, correct_corners=False, move="right",callback=[lambda: self.drawMarkers2(side0,l,"A"),lambda: self.drawAlignmentHoles(side0,l,"A")])
+                self.polygonWall(borders1, edge=e1, correct_corners=False,  move="right",callback=[lambda: self.drawMarkers2(side0,l,"B"),lambda: self.drawAlignmentHoles(side0,l,"B")])
