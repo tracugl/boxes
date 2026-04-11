@@ -5,7 +5,9 @@ WORKDIR /app
 RUN python3 -m venv env
 RUN /app/env/bin/pip install gunicorn
 
-ADD https://github.com/florianfesti/boxes.git /app
+# Copy the local fork's source so the venv is built from its requirements,
+# not from upstream (which may be missing dependencies added to this fork).
+COPY . /app
 RUN /app/env/bin/pip install .
 RUN mv scripts/boxesserver scripts/boxesserver.py
 
