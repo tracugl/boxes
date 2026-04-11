@@ -465,7 +465,8 @@ class Boxes:
             self.set_source_color(Color.BLUE)
         else:
             self.ctx.set_line_width(max(2 * self.burn, 0.05))
-            self.set_source_color(Color.BLACK)
+            #self.set_source_color(Color.BLACK)
+            self.set_source_color(Color.OUTER_CUT)
 
         self.spacing = 2 * self.burn + self.spacing[0] * self.thickness + self.spacing[1]
         self.set_font("sans-serif")

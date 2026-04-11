@@ -34,16 +34,18 @@ def dist(dx, dy):
 class HexagonBox(BayonetBox):
     """Box with regular hexagon as base"""
 
-    description = """For short side walls that don't fit a connecting finger reduce *surroundingspaces* and *finger* in the Finger Joint Settings.
-
-The lids needs to be glued. For the bayonet lid all outside rings attach to the bottom, all inside rings to the top.
-"""
-
     ui_group = "Box"
 
     def __init__(self) -> None:
         Boxes.__init__(self)
-        self.addSettingsArgs(edges.FingerJointSettings, finger=5, space=5,surroundingspaces=2)
+
+        defaultgroup = self.argparser._action_groups[1]
+        for action in defaultgroup._actions:
+            if action.dest == 'thickness':
+                action.default = 6.0
+
+        self.addSettingsArgs(edges.FingerJointSettings, finger=5, space=5,surroundingspaces=2,play=0.15)
+        
         self.buildArgParser("h", "outside")
         self.argparser.add_argument(
             "--radius_bottom",  action="store", type=float, default=500.0,
@@ -79,8 +81,11 @@ The lids needs to be glued. For the bayonet lid all outside rings attach to the 
         self.lugs=6
         self.n = 6
 
+
     def drawSupports(self):
         h = self.h
+        if self.outside:
+            h = self.adjustSize(h)
         sl = self.support_length
         self.rectangularWall(sl, h, "fefe", move="right")
 
@@ -109,6 +114,8 @@ The lids needs to be glued. For the bayonet lid all outside rings attach to the 
 
         h = self.h
         spacer = 15
+
+        self.text(text=str(s),x=spacer-1, y=s-3*spacer,angle=-90,fontsize = 8, align="middle center", color=Color.ETCHING)
 
         r1=(h - spacer- spacer)/2
         
@@ -144,9 +151,9 @@ The lids needs to be glued. For the bayonet lid all outside rings attach to the 
         self.hole(l-spacer, 3*spacer, r3)
         self.hole(l/2, 3*spacer, r2)
 
-        #self.hole(spacer, s-3*spacer, r3)
-        self.text(text=text,x=spacer-1, y=s-3*spacer,angle=-90,fontsize = 8, align="middle center", color=Color.ETCHING)
-        
+        self.hole(spacer, s-3*spacer, r3)
+        self.hole(spacer, 3*spacer, r3)
+        #self.text(text=text,x=spacer-1, y=s-3*spacer,angle=-90,fontsize = 8, align="middle center", color=Color.ETCHING)
         
 
         self.hole(spacer, s-spacer, r3)
@@ -160,6 +167,8 @@ The lids needs to be glued. For the bayonet lid all outside rings attach to the 
         self.hole(spacer, spacer, r3)
         self.hole(spacer, 2*spacer, r3)
         self.hole(2*spacer, spacer, r3)
+
+        
 
     def drawKites(self, r, joint_type, isTrapezoid):
 
@@ -233,6 +242,9 @@ The lids needs to be glued. For the bayonet lid all outside rings attach to the 
 
         r0, sh0, side0  = self.regularPolygon(n, radius=r0)
         r1, sh1, side1  = self.regularPolygon(n, radius=r1)
+
+        side0 = side0-2*t
+        side1 = side1-2*t
 
         # length of side edges
         #l = (((side0-side1)/2)**2 + (sh0-sh1)**2 + h**2)**0.5
@@ -326,10 +338,15 @@ The lids needs to be glued. For the bayonet lid all outside rings attach to the 
                         d_bottom, -90, t_, 90, l, 90, t_, -90, d_top,
                         90+a, side1, 90+a,
                         d_top, -90, t_, 90, l, 90, t_, -90, d_bottom, 90-a]
-            e0 = bottom_edge + 'eeGee' + top_edge + 'eeGee'
+            e0 = bottom_edge + 'E' + top_edge + 'E'
             borders1 = [side0, 90-a, d_bottom, 0, l, 0, d_top, 90+a, side1,
                         90+a, d_top, 0, l, 0, d_bottom, 90-a]
-            e1 = bottom_edge + 'ege' + top_edge + 'ege'
+            e1 = bottom_edge + 'e' + top_edge + 'e'
             for i in range(n//2):
-                self.polygonWall(borders0, edge=e0, correct_corners=False, move="right",callback=[lambda: self.drawMarkers2(side0,l,"A"),lambda: self.drawAlignmentHoles(side0,l,"A")])
-                self.polygonWall(borders1, edge=e1, correct_corners=False,  move="right",callback=[lambda: self.drawMarkers2(side0,l,"B"),lambda: self.drawAlignmentHoles(side0,l,"B")])
+
+                self.polygonWall(borders0, edge=e0, correct_corners=False, move="right")
+                self.polygonWall(borders0, edge=e0, correct_corners=False, move="right")
+
+                #self.polygonWall(borders0, edge=e0, correct_corners=False, move="right",callback=[lambda: self.drawMarkers2(side0,l,"A"),lambda: self.drawAlignmentHoles(side0,l,"A")])
+                #self.polygonWall(borders0, edge=e0, correct_corners=False, move="right",callback=[lambda: self.drawMarkers2(side0,l,"A"),lambda: self.drawAlignmentHoles(side0,l,"A")])
+                #self.polygonWall(borders1, edge=e1, correct_corners=False,  move="right",callback=[lambda: self.drawMarkers2(side0,l,"C"),lambda: self.drawAlignmentHoles(side0,l,"C")])

@@ -9,8 +9,14 @@ class Color:
     WHITE   = [ 1.0, 1.0, 1.0 ]
 
     # TODO: Make this configurable
-    OUTER_CUT = BLACK
-    INNER_CUT = BLUE
-    ANNOTATIONS = RED
-    ETCHING = GREEN
+    # OUTER_CUT = BLACK
+    # INNER_CUT = BLUE
+    # ANNOTATIONS = RED
+    # ETCHING = GREEN
+    # ETCHING_DEEP = CYAN
+    
+    OUTER_CUT = RED
+    INNER_CUT = RED
+    ANNOTATIONS = CYAN
+    ETCHING = BLUE
     ETCHING_DEEP = CYAN
