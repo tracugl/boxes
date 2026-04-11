@@ -1,3 +1,9 @@
+"""Hexagon box generator with optional 'spoke' bottom pattern.
+
+The 'spoke' style draws a hexagonal frame (outer and inner hex cut) plus six
+identical kite-shaped cutouts arranged symmetrically around the centre.
+"""
+
 # Copyright (C) 2025 Travis Cugley
 #
 #   This program is free software: you can redistribute it and/or modify
@@ -17,51 +23,57 @@ import math
 import copy
 from boxes import Boxes, edges, boolarg
 from boxes.generators.bayonetbox import BayonetBox
-from boxes.Color import *
 
-"""Hexagon generator with optional 'spoke' bottom pattern.
-
-The 'spoke' style draws a hexagonal frame (outer and inner hex cut) plus six
-identical kite shaped cutouts. 
-"""
 
 ### Helpers
 
 def dist(dx, dy):
-    """distance function for sorting"""
-    return (dx*dx + dy*dy)**0.5
+    """Return the Euclidean distance for a 2-D offset vector.
+
+    @param dx - Horizontal component of the offset.
+    @param dy - Vertical component of the offset.
+    @returns  Float distance, always non-negative.
+    """
+    return (dx * dx + dy * dy) ** 0.5
+
 
 class HexagonBox(BayonetBox):
-    """Box with regular hexagon as base"""
+    """Box with a regular hexagon as the base.
+
+    Supports tapered (top radius != bottom radius) geometry, several lid
+    styles inherited from BayonetBox, and an optional decorative 'spoke'
+    pattern on the bottom panel.
+    """
 
     ui_group = "Box"
 
     def __init__(self) -> None:
         Boxes.__init__(self)
 
+        # Override the default material thickness to suit typical hex box use.
         defaultgroup = self.argparser._action_groups[1]
         for action in defaultgroup._actions:
             if action.dest == 'thickness':
                 action.default = 6.0
 
-        self.addSettingsArgs(edges.FingerJointSettings, finger=5, space=5,surroundingspaces=2,play=0.15)
-        
+        self.addSettingsArgs(edges.FingerJointSettings, finger=5, space=5, surroundingspaces=2, play=0.15)
+
         self.buildArgParser("h", "outside")
         self.argparser.add_argument(
-            "--radius_bottom",  action="store", type=float, default=500.0,
+            "--radius_bottom", action="store", type=float, default=500.0,
             help="inner radius of the box bottom (at the corners)")
         self.argparser.add_argument(
-            "--radius_top",  action="store", type=float, default=500.0,
+            "--radius_top", action="store", type=float, default=500.0,
             help="inner radius of the box top (at the corners)")
         self.argparser.add_argument(
-            "--top",  action="store", type=str, default="closed",
+            "--top", action="store", type=str, default="closed",
             choices=["none", "hole", "angled hole", "angled lid", "angled lid2", "round lid", "bayonet mount", "closed"],
             help="style of the top and lid")
         self.argparser.add_argument(
-            "--alignment_pins",  action="store", type=float, default=1.0,
+            "--alignment_pins", action="store", type=float, default=1.0,
             help="diameter of the alignment pins for bayonet lid")
         self.argparser.add_argument(
-            "--bottom",  action="store", type=str, default="spoke",
+            "--bottom", action="store", type=str, default="spoke",
             choices=["none", "closed", "hole", "angled hole", "angled lid", "angled lid2", "round lid", "spoke"],
             help="style of the bottom and bottom lid")
         self.argparser.add_argument(
@@ -76,13 +88,16 @@ class HexagonBox(BayonetBox):
         self.argparser.add_argument(
             "--trapezoid", action="store", type=boolarg, default=False,
             help="If true, only draw a half-hexagon.")
-        
-        
-        self.lugs=6
+
+        self.lugs = 6
         self.n = 6
 
-
     def drawSupports(self):
+        """Draw rectangular internal support walls, one per spoke bottom.
+
+        The support is a simple rectangular wall whose height matches the box
+        body height, finger-jointed on both long edges ('fefe' pattern).
+        """
         h = self.h
         if self.outside:
             h = self.adjustSize(h)
@@ -90,146 +105,97 @@ class HexagonBox(BayonetBox):
         self.rectangularWall(sl, h, "fefe", move="right")
 
     def drawSupportHoles(self, r):
-        
+        """Cut finger-joint slots into the bottom panel for the internal supports.
+
+        Two slots are placed symmetrically along the apothem axis so that the
+        rectangular support walls slot perpendicularly into the bottom panel.
+
+        @param r - Inner corner radius of the hexagon bottom panel.
+        """
         sl = self.support_length
 
-        H = r * math.sqrt(3)/2.0  # trapezoid height (apothem of full hex)
-        H1 = H/2
-        H2 = H+H/2
+        H = r * math.sqrt(3) / 2.0  # apothem of the full hexagon
+        H1 = H / 2
+        H2 = H + H / 2
 
-        self.fingerHolesAt(r/2 ,H1-sl/2, sl,angle=90)
-        self.fingerHolesAt(r/2 ,H2-sl/2, sl,angle=90)
-
-    def drawMarkers2(self,s,l,text):
-        h = self.h
-        r = self.radius_bottom
-
-        #self.hole(l-10, s-10, 12)
-
-        # self.rectangularHole(r/2, h/2, 5, 5, r=0, center_x=True, center_y=True)
-        # self.rectangularHole(r/5, h/2, 5, 5, r=0, center_x=True, center_y=True)
-        # self.rectangularHole(4*r/5, h/2, 5, 5, r=0, center_x=True, center_y=True)
-
-    def drawAlignmentHoles(self,s,l, text):
-
-        h = self.h
-        spacer = 15
-
-        self.text(text=str(s),x=spacer-1, y=s-3*spacer,angle=-90,fontsize = 8, align="middle center", color=Color.ETCHING)
-
-        r1=(h - spacer- spacer)/2
-        
-        self.hole(l/2, s/2, r1)
-        self.hole(l/2, s/5, r1)
-        self.hole(l/2, 4*s/5, r1)
-
-        r2=12.5
-        self.hole(l-r2/2-spacer, 7*s/20, r2)
-        self.hole(l-r2/2-spacer, 13*s/20, r2)
-        
-        self.hole(spacer+r2/2, 7*s/20, r2)
-        self.hole(spacer+r2/2, 13*s/20, r2)
-
-        r3=3
-        self.hole(l-spacer, 7*s/20 + 2*spacer, r3)
-        self.hole(l-spacer, 7*s/20 - 2*spacer, r3)
-        self.hole(spacer, 7*s/20 + 2*spacer, r3)
-        self.hole(spacer, 7*s/20 - 2*spacer, r3)
-
-        self.hole(l-spacer, 13*s/20 + 2*spacer, r3)
-        self.hole(l-spacer, 13*s/20 - 2*spacer, r3)
-        self.hole(spacer, 13*s/20 + 2*spacer, r3)
-        self.hole(spacer, 13*s/20 - 2*spacer, r3)
-
-        # corners
-        self.hole(l-spacer, s-spacer, r3)
-        self.hole(l-spacer, s-2*spacer, r3)
-        self.hole(l-2*spacer, s-spacer, r3)
-
-        self.hole(l-spacer, s-3*spacer, r3)
-        self.hole(l/2, s-3*spacer, r2)
-        self.hole(l-spacer, 3*spacer, r3)
-        self.hole(l/2, 3*spacer, r2)
-
-        self.hole(spacer, s-3*spacer, r3)
-        self.hole(spacer, 3*spacer, r3)
-        #self.text(text=text,x=spacer-1, y=s-3*spacer,angle=-90,fontsize = 8, align="middle center", color=Color.ETCHING)
-        
-
-        self.hole(spacer, s-spacer, r3)
-        self.hole(spacer, s-2*spacer, r3)
-        self.hole(2*spacer, s-spacer, r3)
-
-        self.hole(l-spacer, spacer, r3)
-        self.hole(l-spacer, 2*spacer, r3)
-        self.hole(l-2*spacer, spacer, r3)
-
-        self.hole(spacer, spacer, r3)
-        self.hole(spacer, 2*spacer, r3)
-        self.hole(2*spacer, spacer, r3)
-
-        
+        self.fingerHolesAt(r / 2, H1 - sl / 2, sl, angle=90)
+        self.fingerHolesAt(r / 2, H2 - sl / 2, sl, angle=90)
 
     def drawKites(self, r, joint_type, isTrapezoid):
+        """Draw six kite-shaped cutouts inside the hexagonal spoke bottom panel.
 
+        Each kite is derived from a master shape aligned with the flat-top
+        orientation of the outer hexagon, then rotated in 60-degree increments.
+        If the frame or spokes would degenerate (non-positive dimensions), the
+        method falls back to a plain closed polygon with no cutouts.
+
+        @param r           - Inner corner radius of the hexagon bottom panel.
+        @param joint_type  - Two-character edge string (e.g. 'yY') passed
+                             through to regularPolygonWall on fallback.
+        @param isTrapezoid - When True, only the two kites in the flat half
+                             are drawn (half-hexagon / trapezoid mode).
+        """
         n = self.n
-        
         edge_width = self.edge_width
         spoke_width = self.spoke_width
 
-
         sqrt3 = math.sqrt(3)
         cos30 = sqrt3 / 2.0
-        A_outer = r * cos30            # outer apothem
-        A_inner = A_outer - edge_width # inner apothem after frame
+        A_outer = r * cos30             # outer apothem of the hex
+        A_inner = A_outer - edge_width  # apothem inset by the frame width
         if A_inner <= 0:
-            # Frame would vanish – fallback to closed polygon
+            # Frame width consumes the entire panel — fall back to solid hex.
             self.regularPolygonWall(corners=n, r=r, edges=joint_type[1], move="right")
             return
-        R_inner = A_inner / cos30                 # inner radius at corners
-        # Short side length helper (derived from JS logic)
+        R_inner = A_inner / cos30                   # inner corner radius after frame
+        # Half the chord length of the kite base (derived from spoke geometry).
         s = (A_inner / sqrt3) - (spoke_width / 2.0)
         if s <= 0:
-            # Spokes collapse – fallback
+            # Spokes are too wide to fit — fall back to solid hex.
             self.regularPolygonWall(corners=n, r=r, edges=joint_type[1], move="right")
             return
 
-        # Master kite (pointing upward in our coordinate system, y positive)
-        P1 = (0.0, R_inner)                               # top vertex (120°)
-        P2 = (s*sqrt3/2.0, R_inner - s/2.0)               # right 90° vertex
-        P3 = (0.0, R_inner - 2.0*s)                       # inner 60° vertex
-        P4 = (-s*sqrt3/2.0, R_inner - s/2.0)              # left 90° vertex
+        # Define the master kite with its apex pointing upward (+y direction).
+        P1 = (0.0, R_inner)                          # top vertex (120° angle)
+        P2 = (s * sqrt3 / 2.0, R_inner - s / 2.0)   # right 90° vertex
+        P3 = (0.0, R_inner - 2.0 * s)               # inner 60° vertex
+        P4 = (-s * sqrt3 / 2.0, R_inner - s / 2.0)  # left 90° vertex
+
         def rotate_points(pts, angle_deg):
+            """Rotate a list of (x, y) points around the origin by angle_deg."""
             ang = math.radians(angle_deg)
             ca, sa = math.cos(ang), math.sin(ang)
-            return [(x*ca - y*sa, x*sa + y*ca) for x, y in pts]
+            return [(x * ca - y * sa, x * sa + y * ca) for x, y in pts]
 
-        kite_master = [P1, P2, P3, P4]
-        # Rotate master kite by 30° so that its edges align with the flat orientation of the outer hex
-        kite_master = rotate_points(kite_master, 30)
+        # Rotate master kite 30° so its edges align with the flat-top hex orientation.
+        kite_master = rotate_points([P1, P2, P3, P4], 30)
 
-        kites = [rotate_points(kite_master, 60*i) for i in range(6)]
+        # Produce one kite per hex face by rotating the master in 60° steps.
+        kites = [rotate_points(kite_master, 60 * i) for i in range(6)]
 
-        kite_counter = 0
-        for kite in kites:
-            self.ctx.move_to(kite[0][0], kite[0][1])
+        for kite_counter, kite in enumerate(kites):
+            # In trapezoid mode only kites 0 and 5 (the two front-facing ones) are drawn.
             if isTrapezoid and kite_counter not in (0, 5):
-                kite_counter += 1
                 continue
-            
+
+            self.ctx.move_to(kite[0][0], kite[0][1])
             for x_, y_ in kite[1:]:
                 self.ctx.line_to(x_, y_)
             self.ctx.line_to(kite[0][0], kite[0][1])
             self.ctx.stroke()
-            kite_counter += 1
 
     def render(self):
+        """Generate all panels and walls that make up the hexagon box.
 
+        Handles tapered geometry (different top and bottom radii), outside vs
+        inside measurement modes, and all supported top/bottom style variants.
+        """
         r0, r1, h, n, isTrapezoid = self.radius_bottom, self.radius_top, self.h, self.n, self.trapezoid
 
         if self.outside:
-            r0 = r0 - self.thickness / math.cos(math.radians(360/(2*n)))
-            r1 = r1 - self.thickness / math.cos(math.radians(360/(2*n)))
+            # Convert outside measurements to inside by subtracting material thickness.
+            r0 = r0 - self.thickness / math.cos(math.radians(360 / (2 * n)))
+            r1 = r1 - self.thickness / math.cos(math.radians(360 / (2 * n)))
             if self.top == "none":
                 h = self.adjustSize(h, False)
             elif "lid" in self.top and self.top != "angled lid":
@@ -239,49 +205,58 @@ class HexagonBox(BayonetBox):
 
         t = self.thickness
 
+        r0, sh0, side0 = self.regularPolygon(n, radius=r0)
+        r1, sh1, side1 = self.regularPolygon(n, radius=r1)
 
-        r0, sh0, side0  = self.regularPolygon(n, radius=r0)
-        r1, sh1, side1  = self.regularPolygon(n, radius=r1)
+        # Subtract two thicknesses from each side so finger joints fit flush.
+        side0 = side0 - 2 * t
+        side1 = side1 - 2 * t
 
-        side0 = side0-2*t
-        side1 = side1-2*t
-
-        # length of side edges
-        #l = (((side0-side1)/2)**2 + (sh0-sh1)**2 + h**2)**0.5
-        l = ((r0-r1)**2 + h**2)**.5
-        # angles of sides -90° aka half of top angle of the full pyramid sides
-        a = math.degrees(math.asin((side1-side0)/2/l))
-        # angle between sides (in boxes style change of travel)
+        # Slant length of the tapered side walls.
+        l = ((r0 - r1) ** 2 + h ** 2) ** 0.5
+        # Taper angle (degrees): how much the side panels lean inward.
+        a = math.degrees(math.asin((side1 - side0) / 2 / l))
+        # Dihedral correction angle between adjacent side panels.
         phi = 180 - 2 * math.degrees(
-            math.asin(math.cos(math.pi/n) / math.cos(math.radians(a))))
+            math.asin(math.cos(math.pi / n) / math.cos(math.radians(a))))
 
+        # Finger-joint settings for side-to-side joints (accounts for dihedral angle phi).
         fingerJointSettings = copy.deepcopy(self.edges["f"].settings)
         fingerJointSettings.setValues(self.thickness, angle=phi)
         fingerJointSettings.edgeObjects(self, chars="gGH")
 
-        beta = math.degrees(math.atan((sh1-sh0)/h))
+        beta = math.degrees(math.atan((sh1 - sh0) / h))
         angle_bottom = 90 + beta
         angle_top = 90 - beta
 
+        # Finger-joint settings for the bottom panel (angled to match taper).
         fingerJointSettings = copy.deepcopy(self.edges["f"].settings)
         fingerJointSettings.setValues(self.thickness, angle=angle_bottom)
         fingerJointSettings.edgeObjects(self, chars="yYH")
 
+        # Finger-joint settings for the top panel (mirror of the bottom angle).
         fingerJointSettings = copy.deepcopy(self.edges["f"].settings)
         fingerJointSettings.setValues(self.thickness, angle=angle_top)
         fingerJointSettings.edgeObjects(self, chars="zZH")
 
-
         def drawTop(r, sh, top_type, joint_type):
+            """Render one hexagonal face (top or bottom) in the requested style.
+
+            @param r          - Inner corner radius of this face.
+            @param sh         - Apothem (short radius) of this face.
+            @param top_type   - Style string from the --top / --bottom argument.
+            @param joint_type - Two-character edge string, e.g. 'yY' or 'zZ'.
+            """
             if top_type == "closed":
                 self.regularPolygonWall(corners=n, r=r, edges=joint_type[1], move="right")
-            elif  top_type == "spoke":
-
-                
-                self.regularPolygonWall(corners=n, r=r, edges=joint_type[1], move="right",
-                                        callback=[lambda: self.drawKites(r=r, joint_type=joint_type, isTrapezoid=isTrapezoid),lambda: self.drawSupportHoles(r=r)])
+            elif top_type == "spoke":
+                self.regularPolygonWall(
+                    corners=n, r=r, edges=joint_type[1], move="right",
+                    callback=[
+                        lambda: self.drawKites(r=r, joint_type=joint_type, isTrapezoid=isTrapezoid),
+                        lambda: self.drawSupportHoles(r=r),
+                    ])
                 self.drawSupports()
-                
             elif top_type == "angled lid":
                 self.regularPolygonWall(corners=n, r=r, edges='e', move="right")
                 self.regularPolygonWall(corners=n, r=r, edges='E', move="right")
@@ -291,28 +266,30 @@ class HexagonBox(BayonetBox):
                 callbacks = []
                 if inner_sh > 0:
                     callbacks.append(lambda: self.regularPolygonAt(0, 0, n, h=inner_sh))
-                self.regularPolygonWall(corners=n, r=r, edges=joint_type[1], move="right", callback=callbacks if callbacks else None)
+                self.regularPolygonWall(corners=n, r=r, edges=joint_type[1], move="right",
+                                        callback=callbacks if callbacks else None)
                 if top_type == "angled lid2":
                     self.regularPolygonWall(corners=n, r=r, edges='E', move="right")
             elif top_type in ("hole", "round lid"):
                 self.regularPolygonWall(corners=n, r=r, edges=joint_type[1], move="right",
-                                        hole=(sh-t)*2)
+                                        hole=(sh - t) * 2)
             if top_type == "round lid":
-                self.parts.disc(sh*2, move="right")
-            if self.top == "bayonet mount":
-                self.diameter = 2*sh
-                self.parts.disc(sh*2-0.1*t, callback=self.lowerCB,
-                                move="right")
+                self.parts.disc(sh * 2, move="right")
+            if top_type == "bayonet mount":
+                # Bayonet lid requires three additional pieces: lower disc with
+                # lugs, upper ring with receiving slots, and a plain top disc.
+                self.diameter = 2 * sh
+                self.parts.disc(sh * 2 - 0.1 * t, callback=self.lowerCB, move="right")
                 self.regularPolygonWall(corners=n, r=r, edges='F',
                                         callback=[self.upperCB], move="right")
-                self.parts.disc(sh*2, move="right")
-
+                self.parts.disc(sh * 2, move="right")
 
         with self.saved_context():
-            # Draw bottom (may be 'spoke') then top
+            # Draw bottom panel first, then top (order affects SVG layout).
             drawTop(r0, sh0, self.bottom, "yY")
             drawTop(r1, sh1, self.top, "zZ")
 
+        # Invisible up-only move reserves vertical space for the panels above.
         self.regularPolygonWall(corners=n, r=max(r0, r1), edges='F', move="up only")
 
         fingers_top = self.top in ("closed", "hole", "angled hole",
@@ -328,25 +305,22 @@ class HexagonBox(BayonetBox):
         l -= (d_top + d_bottom)
 
         if n % 2:
+            # Odd number of sides: all side panels are identical.
             e = bottom_edge + 'ege' + top_edge + 'eeGee'
-            borders = [side0, 90-a, d_bottom, 0, l, 0, d_top, 90+a, side1,
-                       90+a, d_top, -90, t_, 90, l, 90, t_, -90, d_bottom, 90-a]
+            borders = [side0, 90 - a, d_bottom, 0, l, 0, d_top, 90 + a, side1,
+                       90 + a, d_top, -90, t_, 90, l, 90, t_, -90, d_bottom, 90 - a]
             for i in range(n):
-                self.polygonWall(borders, edge=e, correct_corners=False,  move="right")
+                self.polygonWall(borders, edge=e, correct_corners=False, move="right")
         else:
-            borders0 = [side0, 90-a,
+            # Even number of sides: alternating panel types share opposite faces.
+            borders0 = [side0, 90 - a,
                         d_bottom, -90, t_, 90, l, 90, t_, -90, d_top,
-                        90+a, side1, 90+a,
-                        d_top, -90, t_, 90, l, 90, t_, -90, d_bottom, 90-a]
+                        90 + a, side1, 90 + a,
+                        d_top, -90, t_, 90, l, 90, t_, -90, d_bottom, 90 - a]
             e0 = bottom_edge + 'E' + top_edge + 'E'
-            borders1 = [side0, 90-a, d_bottom, 0, l, 0, d_top, 90+a, side1,
-                        90+a, d_top, 0, l, 0, d_bottom, 90-a]
+            borders1 = [side0, 90 - a, d_bottom, 0, l, 0, d_top, 90 + a, side1,
+                        90 + a, d_top, 0, l, 0, d_bottom, 90 - a]
             e1 = bottom_edge + 'e' + top_edge + 'e'
-            for i in range(n//2):
-
+            for i in range(n // 2):
                 self.polygonWall(borders0, edge=e0, correct_corners=False, move="right")
                 self.polygonWall(borders0, edge=e0, correct_corners=False, move="right")
-
-                #self.polygonWall(borders0, edge=e0, correct_corners=False, move="right",callback=[lambda: self.drawMarkers2(side0,l,"A"),lambda: self.drawAlignmentHoles(side0,l,"A")])
-                #self.polygonWall(borders0, edge=e0, correct_corners=False, move="right",callback=[lambda: self.drawMarkers2(side0,l,"A"),lambda: self.drawAlignmentHoles(side0,l,"A")])
-                #self.polygonWall(borders1, edge=e1, correct_corners=False,  move="right",callback=[lambda: self.drawMarkers2(side0,l,"C"),lambda: self.drawAlignmentHoles(side0,l,"C")])
