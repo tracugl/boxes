@@ -28,10 +28,60 @@ docker compose down      # stop
 To smoke-test a generator, hit the render endpoint directly:
 
 ```bash
-curl "http://localhost:4455/HexagonBox?render=1&top=closed&bottom=spoke"
+curl "http://localhost:4455/HexagonBox?render=1&top=closed&bottom=spoke&radius_top=100&radius_bottom=100&thickness=6"
 ```
 
 Replace `HexagonBox` with any generator class name. `render=1` triggers SVG output; omitting it returns the HTML form page.
+
+**HexagonBox parameter names**: `radius` is ambiguous — the generator exposes `radius_top` and `radius_bottom`. Using `radius=...` returns an "ambiguous option" error page.
+
+### Measuring SVG panel dimensions
+
+SVG coordinates are in mm (1 viewBox unit = 1 mm). To measure a panel's bounding box, parse path commands properly — naive alternating-x/y splitting breaks on `H` (horizontal) and `V` (vertical) commands:
+
+```python
+import re
+
+def parse_path_d(d):
+    tokens = re.findall(r'[MLHVCSQTAZmlhvcsqtaz]|[-+]?\d*\.?\d+(?:[eE][-+]?\d+)?', d)
+    coords, cmd, cx, cy = [], 'M', 0.0, 0.0
+    i = 0
+    while i < len(tokens):
+        t = tokens[i]
+        if t.isalpha():
+            cmd = t; i += 1; continue
+        if cmd in ('M','m'):
+            x,y = float(tokens[i]),float(tokens[i+1])
+            if cmd=='m': x,y = cx+x,cy+y
+            cx,cy = x,y; coords.append((cx,cy)); i+=2; cmd='L' if cmd=='M' else 'l'
+        elif cmd in ('L','l'):
+            x,y = float(tokens[i]),float(tokens[i+1])
+            if cmd=='l': x,y = cx+x,cy+y
+            cx,cy = x,y; coords.append((cx,cy)); i+=2
+        elif cmd in ('H','h'):
+            x=float(tokens[i]); cx=x if cmd=='H' else cx+x; coords.append((cx,cy)); i+=1
+        elif cmd in ('V','v'):
+            y=float(tokens[i]); cy=y if cmd=='V' else cy+y; coords.append((cx,cy)); i+=1
+        elif cmd in ('Z','z'): break
+        else: i+=2
+    return coords
+```
+
+Use the path with the highest point count for panels with finger joints (many small segments = the cut outline).
+
+### `edgeCorner` miter geometry
+
+`edgeCorner(edge1, edge2, angle)` draws:
+1. `edge2.startWidth() * tan(angle/2)` forward (step into corner)
+2. `corner(angle)` turn
+3. `edge1.endWidth() * tan(angle/2)` forward (step out of corner)
+
+For `FingerJointEdge 'Y'` (female): `startWidth() = endWidth() = thickness`, so each step = `thickness * tan(angle/2)`.
+
+At a 60° exterior corner: step = `t * tan(30°)` = `t/√3`.
+At a 120° exterior corner: step = `t * tan(60°)` = `t√3`.
+
+The 120° miter (`t√3`) is often too large for trapezoid/half-hex panels — use `t/√3` instead to match the hex-vertex miter size.
 
 ### Rebuilding the image
 
