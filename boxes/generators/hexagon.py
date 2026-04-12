@@ -97,10 +97,11 @@ class HexagonBox(BayonetBox):
         self.n = 6
 
     def drawSupports(self):
-        """Draw rectangular internal support walls, one per spoke axis.
+        """Draw rectangular internal support walls, one per spoke.
 
-        A hexagonal spoke bottom has three support walls (one per 60° spoke
-        direction).  All three are identical rectangles of size
+        A hexagonal spoke bottom has six support walls — one for each of the
+        six half-spokes radiating from the centre (two halves per axis across
+        the three 60° axes).  All six are identical rectangles of size
         support_length × box_height, finger-jointed on both long edges
         ('fefe' pattern), so they can be laser-cut from the same template.
 
@@ -123,9 +124,9 @@ class HexagonBox(BayonetBox):
         spacer = 15  # minimum clearance from panel edge to hole edge, in mm
         r1 = (self.h - spacer - spacer) / 2
 
-        # Three identical support walls, one per spoke direction (0°, +60°, -60°).
-        # Drawing all three ensures the correct quantity is indicated on the sheet
-        # so the operator knows to cut 3 copies.
+        # Six identical support walls — two per spoke axis (one per half-spoke).
+        # Drawing all six ensures the correct quantity is indicated on the sheet
+        # so the operator knows to cut 6 copies.
         if r1 > 0:
             # Callback fires at the bottom-left corner (edge 0) with the
             # x-axis pointing right and y-axis pointing into the panel.
@@ -134,12 +135,12 @@ class HexagonBox(BayonetBox):
             def draw_center_hole():
                 self.hole(sl / 2, h / 2, r1)
 
-            for _ in range(3):
+            for _ in range(6):
                 self.rectangularWall(sl, h, "fefe", callback=[draw_center_hole], move="right")
         else:
             # Panel is too short for the hole to clear the edges — render
             # without a hole rather than producing invalid geometry.
-            for _ in range(3):
+            for _ in range(6):
                 self.rectangularWall(sl, h, "fefe", move="right")
 
     def drawSupportHoles(self, r):
