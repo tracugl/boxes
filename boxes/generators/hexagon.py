@@ -145,20 +145,19 @@ class HexagonBox(BayonetBox):
         The coordinate system inside a polygonWall callback has the slant length
         (l) along the x-axis and side0 (s) along the y-axis.  All hole positions
         are derived from those two dimensions so they scale correctly with box
-        size.  The caller must pass the **pre-shrink** side0 value (side0_orig)
-        so that positions remain identical to those cut in older hexagons, enabling
-        physical alignment pins to line up between new and old builds.
+        size.
+
+        The caller should pass the **pre-shrink** side0 value (side0_orig) paired
+        with a moveTo(0, -t) shift in the wrapper.  Together, this produces a
+        uniform t-inward offset on every hole so that new panels (trimmed by 2*t)
+        align centre-to-centre with old panels when the two are stacked and centred.
 
         @param s    - Pre-shrink panel height (original side0, before subtracting 2*t).
         @param l    - Panel width (slant length l from render()).
-        @param text - Label string (currently unused; size is etched from s directly).
+        @param text - Unused; kept for API compatibility.
         """
         h = self.h
         spacer = 15  # minimum clearance from panel edges, in mm
-
-        # Etch the original panel height as a size label near the top-left corner.
-        self.text(text=str(s), x=spacer - 1, y=s - 3 * spacer,
-                  angle=-90, fontsize=8, align="middle center", color=Color.ETCHING)
 
         # Three large round through-holes along the vertical centre line.
         # r1 is sized to leave 'spacer' clearance above and below.
@@ -301,9 +300,10 @@ class HexagonBox(BayonetBox):
         r1, sh1, side1 = self.regularPolygon(n, radius=r1)
 
         # Capture the original side length before shrinking.  Alignment-hole
-        # positions are computed from this value so that holes in new builds
-        # remain at the same absolute coordinates as holes in older hexagons
-        # (which were cut before the 2*t trim was introduced).
+        # positions are computed from side0_orig (not the trimmed side0) so that
+        # the proportional layout stays consistent.  A moveTo(0, -t) shift in
+        # draw_aligned_holes() then nudges every hole t inward, achieving
+        # centre-to-centre alignment when new and old panels are stacked centred.
         side0_orig = side0
 
         # Subtract two thicknesses from each side so finger joints fit flush.
@@ -419,14 +419,23 @@ class HexagonBox(BayonetBox):
             borders1 = [side0, 90 - a, d_bottom, 0, l, 0, d_top, 90 + a, side1,
                         90 + a, d_top, 0, l, 0, d_bottom, 90 - a]
             e1 = bottom_edge + 'e' + top_edge + 'e'
-            # The polygonWall callback at index 1 is positioned at the RIGHT
-            # end of the bottom (side0) edge.  Because side0 was trimmed by 2*t,
-            # this origin sits 2*t to the LEFT of where it was in old builds.
-            # moveTo(0, -2*t) compensates: the local y-axis points leftward
-            # (−SVG x), so a negative dy shifts the origin rightward (+SVG x)
-            # by 2*t, restoring holes to their original absolute positions.
+            # The polygonWall callback at index 1 fires at the RIGHT end of the
+            # side0 edge.  Because side0 was trimmed by 2*t, this natural origin
+            # sits 2*t to the LEFT (in SVG x) of where it sat in old builds.
+            #
+            # We want holes to align centre-to-centre: when a new panel (shorter
+            # by 2*t) is laid on top of an old panel and centred, each panel edge
+            # recedes by t.  So every hole must shift t towards the panel centre
+            # relative to a right-edge-aligned reference.
+            #
+            # moveTo(0, -t) compensates: local y points leftward (−SVG x), so
+            # a negative dy moves the origin rightward (+SVG x) by t, placing
+            # holes t closer to the right edge than the natural origin would give.
+            # Combined with using side0_orig for position ratios, this produces a
+            # uniform t-inward shift on every hole, which cancels the t-outward
+            # shift of the panel edge when the two panels are centred.
             def draw_aligned_holes():
-                self.moveTo(0, -2 * self.thickness)
+                self.moveTo(0, -self.thickness)
                 self.drawAlignmentHoles(side0_orig, l, "A")
 
             for i in range(n // 2):
