@@ -185,9 +185,16 @@ class HexagonBox(BayonetBox):
         # origin to the hex centre and rotate to align with the spoke, then draw
         # the slot(s).  saved_context() keeps the transform local so the next
         # spoke starts from the original origin.
+        #
+        # Both regularPolygonWall (hex) and drawTrapezoidWall (trap) fire the
+        # support-holes callback (callback[1]) at y = edges[0].startWidth() + burn
+        # = thickness + burn above V0.  From that callback origin, moveTo(r/2, H)
+        # places the centre at y = H + thickness + burn from V0 — identical in both
+        # modes.  No special trapezoid correction is needed here.
+
         for spoke_angle in (0, 60, -60):
             with self.saved_context():
-                # Translate to centre (r/2, H) then rotate by spoke_angle.
+                # Translate to the hex centre then rotate to the spoke axis.
                 self.moveTo(r / 2, H, spoke_angle)
                 # Lower slot: midpoint at (0, -H/2) in centre-relative coords.
                 # This slot falls in the trapezoid's half (below the hex centre)
@@ -393,7 +400,25 @@ class HexagonBox(BayonetBox):
         @param callback   - List/tuple of callables; indexed per the convention above.
         @param move       - Layout direction string ('right', 'up only', etc.).
         """
-        H = r * math.sqrt(3) / 2.0   # apothem (= height of the trapezoid)
+        # H_geom = r*√3/2 is the apothem of the hexagon (= intended panel height).
+        # H is a helper variable used only for the bounding box and callback positions;
+        # it does NOT control the actual cut path height.
+        #
+        # Bounding box height = H + 2*thickness + spacing.  We want this to equal
+        # H_geom + spacing, so H = H_geom - 2*thickness.
+        #
+        # The cut path height is determined by the edge/corner geometry.  A naive
+        # edgeCorner(120° exterior) at V2 produces step1 = t*tan(60°) = t√3 in the
+        # 60° direction, contributing y = t√3·sin(60°) = 3t/2.  Combined with V1's
+        # +t/2 and the per-edge shortfall, the total comes out to H_geom + t — one
+        # thickness too tall.
+        #
+        # The fix: at V2 and V5 the step that lies along the slant direction is drawn
+        # as t/√3 (matching the miter used at 60°-exterior hex vertices) rather than
+        # t√3.  This brings the join-edge outer face to exactly H_geom, so two
+        # trapezoid panels placed back-to-back on their join edges reproduce the full
+        # hexagon height.
+        H = r * math.sqrt(3) / 2.0 - 2 * self.thickness
 
         # Resolve the edge character(s) to edge objects.  Replicate a single char
         # across all four sides; otherwise treat as a per-edge sequence.
@@ -405,10 +430,12 @@ class HexagonBox(BayonetBox):
 
         # Bounding box.  The trapezoid has the same horizontal span as the full
         # hexagon (leftmost point x = -r/2, rightmost x = 3r/2), so we reuse the
-        # hex tw formula from regularPolygonWall.  Height is halved (H not 2H).
+        # hex tw formula from regularPolygonWall.  Height:
+        #   path_height = H_geom (achieved via the custom V2/V5 corners below)
+        #   th = path_height + edges[0].spacing() = H_geom + spacing
         sp = max(edges[i].spacing() for i in range(4))
         tw = 2 * r + 2 * sp / math.sin(math.radians(60))
-        th = H + edges[0].spacing() + edges[2].spacing()
+        th = H + 2 * self.thickness + edges[0].spacing()
 
         if self.move(tw, th, move, before=True):
             return
@@ -418,11 +445,13 @@ class HexagonBox(BayonetBox):
         self.moveTo(0.5 * tw - 0.5 * r, edges[0].margin())
 
         # Centre callback (callback[0] for kites) and optional central hole.
-        # Position is (r/2, H) from V0 plus the edge protrusion correction,
-        # exactly matching the regularPolygonWall formula for side=r, h=H.
+        # The hex centre sits at the join-edge outer face level (H_geom from V0).
+        # We fire the callback at y = H + 2*thickness + burn = H_geom + burn so
+        # that kite paths originate at the join-edge boundary and extend inward
+        # (downward in panel coordinates).
         if hole:
-            self.hole(r / 2., H + edges[0].startWidth() + self.burn, hole / 2.)
-        self.cc(callback, 0, r / 2., H + edges[0].startWidth() + self.burn)
+            self.hole(r / 2., H + 2 * self.thickness + self.burn, hole / 2.)
+        self.cc(callback, 0, r / 2., H + 2 * self.thickness + self.burn)
 
         # ── Edge 0: short bottom edge (length r) ─────────────────────────────
         self.cc(callback, 1, 0, edges[0].startWidth() + self.burn)
@@ -432,12 +461,33 @@ class HexagonBox(BayonetBox):
         # ── Edge 1: right slanted side (length r) ────────────────────────────
         self.cc(callback, 2, 0, edges[1].startWidth() + self.burn)
         edges[1](r)
-        self.edgeCorner(edges[1], edges[2], 120)   # 120° exterior at V2 (interior 60°)
+
+        # V2 corner (120° exterior, interior 60°): use t/√3 for the slant-direction
+        # step instead of the standard t·tan(60°) = t√3.  This is the same miter
+        # size used at hexagon vertices (60° exterior) and places the join-edge outer
+        # face at exactly H_geom — half the full hexagon path height.
+        self.edge(self.thickness / math.sqrt(3.0))
+        self.corner(120)
+        # step3 at 180°: use 2t/√3 (= 2A) not t·tan(60°)=t√3 (= 3A).
+        # The 3A value over-extends the path by A = t/√3 per side, producing a
+        # trapezoid that is 2A = 2t/√3 wider than the hexagon.  2A matches the
+        # miter geometry needed for the join-edge outer face to align with the
+        # corresponding hexagon vertex.
+        self.edge(2.0 * self.thickness / math.sqrt(3.0))
 
         # ── Edge 2: long top/join edge (length 2r) ───────────────────────────
         self.cc(callback, 3, 0, edges[2].startWidth() + self.burn)
         edges[2](2 * r)
-        self.edgeCorner(edges[2], edges[3], 120)   # 120° exterior at V5 (interior 60°)
+
+        # V5 corner (120° exterior, interior 60°): symmetric reduction of the
+        # return step3 (t/√3 instead of t√3) so the path closes correctly after
+        # the modified V2 step1.
+        # step1 at 180°: symmetric reduction matching the V2 step3 fix above.
+        # 2t/√3 instead of t·tan(60°)=t√3 so both corners contribute equally to
+        # closing the extra horizontal travel introduced by the modified V2 step1.
+        self.edge(2.0 * self.thickness / math.sqrt(3.0))
+        self.corner(120)
+        self.edge(self.thickness / math.sqrt(3.0))
 
         # ── Edge 3: left slanted side (length r) ─────────────────────────────
         self.cc(callback, 4, 0, edges[3].startWidth() + self.burn)
