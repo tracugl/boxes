@@ -71,15 +71,12 @@ class HexagonBox(BayonetBox):
             help="inner radius of the box top (at the corners)")
         self.argparser.add_argument(
             "--top", action="store", type=str, default="closed",
-            choices=["none", "hole", "angled hole", "angled lid", "angled lid2", "round lid", "bayonet mount", "closed"],
-            help="style of the top and lid")
-        self.argparser.add_argument(
-            "--alignment_pins", action="store", type=float, default=1.0,
-            help="diameter of the alignment pins for bayonet lid")
+            choices=["closed"],
+            help="style of the top")
         self.argparser.add_argument(
             "--bottom", action="store", type=str, default="spoke",
-            choices=["none", "closed", "hole", "angled hole", "angled lid", "angled lid2", "round lid", "spoke"],
-            help="style of the bottom and bottom lid")
+            choices=["spoke", "closed"],
+            help="style of the bottom")
         self.argparser.add_argument(
             "--edge_width", action="store", type=float, default=60.0,
             help="Width of the outer hexagonal frame for spoke bottom.")
@@ -344,8 +341,17 @@ class HexagonBox(BayonetBox):
         kites = [rotate_points(kite_master, 60 * i) for i in range(6)]
 
         for kite_counter, kite in enumerate(kites):
-            # In trapezoid mode only kites 0 and 5 (the two front-facing ones) are drawn.
-            if isTrapezoid and kite_counter not in (0, 5):
+            # In trapezoid mode only kites 2 and 3 are drawn.  The master kite
+            # has its apex at +y (upward), so after the 30° alignment rotation:
+            #   kite 0 apex → upper-left  (above centre, outside the trapezoid)
+            #   kite 1 apex → left        (at centre height)
+            #   kite 2 apex → lower-left  (below centre, inside the trapezoid) ✓
+            #   kite 3 apex → lower-right (below centre, inside the trapezoid) ✓
+            #   kite 4 apex → right       (at centre height)
+            #   kite 5 apex → upper-right (above centre, outside the trapezoid)
+            # The trapezoid is the bottom half of the hexagon, so only kites 2
+            # and 3 fall within its boundary.
+            if isTrapezoid and kite_counter not in (2, 3):
                 continue
 
             self.ctx.move_to(kite[0][0], kite[0][1])
@@ -573,27 +579,19 @@ class HexagonBox(BayonetBox):
         fingerJointSettings.setValues(self.thickness, angle=angle_top)
         fingerJointSettings.edgeObjects(self, chars="zZH")
 
-        def drawTop(r, sh, top_type, joint_type):
-            """Render one face (top or bottom) in the requested style.
+        def drawTop(r, top_type, joint_type):
+            """Render one face (top or bottom) as the appropriate panel style.
 
-            In trapezoid mode every hexagonal panel is replaced by the
-            equivalent trapezoidal panel.  For styles whose inner geometry
-            (angled rim, bayonet hardware) depends heavily on hex symmetry,
-            the outer panel is drawn as a trapezoid but the inner decoration
-            is omitted — a noted limitation that can be extended later.
+            Top is always 'closed'; bottom is 'spoke' or 'closed'.  In
+            trapezoid mode the hexagonal panel is replaced by the equivalent
+            trapezoidal panel produced by drawTrapezoidWall.
 
             @param r          - Inner corner radius of this face.
-            @param sh         - Apothem (short radius) of this face.
-            @param top_type   - Style string from the --top / --bottom argument.
+            @param top_type   - 'closed' or 'spoke'.
             @param joint_type - Two-character edge string, e.g. 'yY' or 'zZ'.
             """
             if isTrapezoid:
-                # ── Trapezoid branch ────────────────────────────────────────
-                if top_type == "none":
-                    return
-
                 if top_type == "spoke":
-                    # Full spoke bottom: kite cutouts + support-hole slots.
                     self.drawTrapezoidWall(
                         r=r, edges_char=joint_type[1], move="right",
                         callback=[
@@ -601,41 +599,10 @@ class HexagonBox(BayonetBox):
                             lambda: self.drawSupportHoles(r=r, isTrapezoid=True),
                         ])
                     self.drawSupports(isTrapezoid=True)
-                elif top_type == "angled lid":
-                    # Two trapezoidal pieces: frame (e edge) + lid (E edge).
-                    self.drawTrapezoidWall(r=r, edges_char='e', move="right")
-                    self.drawTrapezoidWall(r=r, edges_char='E', move="right")
-                elif top_type in ("hole", "round lid"):
-                    # A circular hole inscribed in the trapezoid.  Use the
-                    # apothem-based formula (same as the hex case) as a
-                    # reasonable inscribed-circle approximation.
-                    self.drawTrapezoidWall(
-                        r=r, edges_char=joint_type[1], move="right",
-                        hole=(sh - t) * 2)
-                    if top_type == "round lid":
-                        self.parts.disc(sh * 2, move="right")
-                elif top_type in ("angled hole", "angled lid2"):
-                    # Outer trapezoid panel only; the hex-shaped inner cutout
-                    # is omitted because it would extend outside the trapezoid.
-                    self.drawTrapezoidWall(
-                        r=r, edges_char=joint_type[1], move="right")
-                    if top_type == "angled lid2":
-                        self.drawTrapezoidWall(r=r, edges_char='E', move="right")
-                elif top_type == "bayonet mount":
-                    # Bayonet hardware geometry depends on circular/hex symmetry
-                    # and is not adapted for trapezoid mode — draw a plain
-                    # closed trapezoid panel as a structural substitute.
-                    self.drawTrapezoidWall(
-                        r=r, edges_char=joint_type[1], move="right")
-                else:
-                    # "closed" and any future styles: plain trapezoidal panel.
-                    self.drawTrapezoidWall(
-                        r=r, edges_char=joint_type[1], move="right")
+                else:  # "closed"
+                    self.drawTrapezoidWall(r=r, edges_char=joint_type[1], move="right")
             else:
-                # ── Full-hexagon branch (unchanged behaviour) ────────────────
-                if top_type == "closed":
-                    self.regularPolygonWall(corners=n, r=r, edges=joint_type[1], move="right")
-                elif top_type == "spoke":
+                if top_type == "spoke":
                     self.regularPolygonWall(
                         corners=n, r=r, edges=joint_type[1], move="right",
                         callback=[
@@ -643,37 +610,13 @@ class HexagonBox(BayonetBox):
                             lambda: self.drawSupportHoles(r=r),
                         ])
                     self.drawSupports()
-                elif top_type == "angled lid":
-                    self.regularPolygonWall(corners=n, r=r, edges='e', move="right")
-                    self.regularPolygonWall(corners=n, r=r, edges='E', move="right")
-                elif top_type in ("angled hole", "angled lid2"):
-                    rim_w = self.edge_width if self.edge_width > 0 else t
-                    inner_sh = sh - rim_w
-                    callbacks = []
-                    if inner_sh > 0:
-                        callbacks.append(lambda: self.regularPolygonAt(0, 0, n, h=inner_sh))
-                    self.regularPolygonWall(corners=n, r=r, edges=joint_type[1], move="right",
-                                            callback=callbacks if callbacks else None)
-                    if top_type == "angled lid2":
-                        self.regularPolygonWall(corners=n, r=r, edges='E', move="right")
-                elif top_type in ("hole", "round lid"):
-                    self.regularPolygonWall(corners=n, r=r, edges=joint_type[1], move="right",
-                                            hole=(sh - t) * 2)
-                if top_type == "round lid":
-                    self.parts.disc(sh * 2, move="right")
-                if top_type == "bayonet mount":
-                    # Bayonet lid requires three additional pieces: lower disc with
-                    # lugs, upper ring with receiving slots, and a plain top disc.
-                    self.diameter = 2 * sh
-                    self.parts.disc(sh * 2 - 0.1 * t, callback=self.lowerCB, move="right")
-                    self.regularPolygonWall(corners=n, r=r, edges='F',
-                                            callback=[self.upperCB], move="right")
-                    self.parts.disc(sh * 2, move="right")
+                else:  # "closed"
+                    self.regularPolygonWall(corners=n, r=r, edges=joint_type[1], move="right")
 
         with self.saved_context():
             # Draw bottom panel first, then top (order affects SVG layout).
-            drawTop(r0, sh0, self.bottom, "yY")
-            drawTop(r1, sh1, self.top, "zZ")
+            drawTop(r0, self.bottom, "yY")
+            drawTop(r1, self.top, "zZ")
 
         # Invisible up-only move reserves vertical space for the panels above.
         # In trapezoid mode the panel is half-height, so use the trapezoid wall
