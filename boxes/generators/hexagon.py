@@ -586,10 +586,26 @@ class HexagonBox(BayonetBox):
             trapezoid mode the hexagonal panel is replaced by the equivalent
             trapezoidal panel produced by drawTrapezoidWall.
 
+            When bottom='spoke' the support walls have finger joints ('fefe')
+            on both ends, so the closed top panel must carry matching support-
+            hole slots.  The support-hole callback is placed at index 1 (the
+            edge-0-start / V0 position) so that drawSupportHoles can translate
+            from V0 to the hex centre with its standard moveTo(r/2, H, angle)
+            formula — the same position used by the spoke bottom panel.
+
             @param r          - Inner corner radius of this face.
             @param top_type   - 'closed' or 'spoke'.
             @param joint_type - Two-character edge string, e.g. 'yY' or 'zZ'.
             """
+            # Build the support-hole callback once; reused by "closed" branches
+            # when the opposite face is "spoke".  None at index 0 means the
+            # centre-callback slot (kites) is skipped — only the V0-start slot
+            # (index 1) fires, which is what drawSupportHoles expects.
+            if self.bottom == "spoke":
+                support_cb = [None, lambda: self.drawSupportHoles(r=r, isTrapezoid=isTrapezoid)]
+            else:
+                support_cb = None
+
             if isTrapezoid:
                 if top_type == "spoke":
                     self.drawTrapezoidWall(
@@ -600,7 +616,8 @@ class HexagonBox(BayonetBox):
                         ])
                     self.drawSupports(isTrapezoid=True)
                 else:  # "closed"
-                    self.drawTrapezoidWall(r=r, edges_char=joint_type[1], move="right")
+                    self.drawTrapezoidWall(r=r, edges_char=joint_type[1], move="right",
+                                           callback=support_cb)
             else:
                 if top_type == "spoke":
                     self.regularPolygonWall(
@@ -611,7 +628,8 @@ class HexagonBox(BayonetBox):
                         ])
                     self.drawSupports()
                 else:  # "closed"
-                    self.regularPolygonWall(corners=n, r=r, edges=joint_type[1], move="right")
+                    self.regularPolygonWall(corners=n, r=r, edges=joint_type[1], move="right",
+                                            callback=support_cb)
 
         with self.saved_context():
             # Draw bottom panel first, then top (order affects SVG layout).
