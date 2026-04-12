@@ -97,17 +97,19 @@ class HexagonBox(BayonetBox):
         self.n = 6
 
     def drawSupports(self):
-        """Draw rectangular internal support walls, one per spoke bottom.
+        """Draw rectangular internal support walls, one per spoke.
 
-        The support is a simple rectangular wall whose height matches the box
-        body height, finger-jointed on both long edges ('fefe' pattern).
+        A hexagonal spoke bottom has six support walls — one for each of the
+        six half-spokes radiating from the centre (two halves per axis across
+        the three 60° axes).  All six are identical rectangles of size
+        support_length × box_height, finger-jointed on both long edges
+        ('fefe' pattern), so they can be laser-cut from the same template.
 
         A single large circular through-hole is cut in the centre of each
         support, using the same sizing formula as drawAlignmentHoles:
             r1 = (h - spacer - spacer) / 2
         where 'spacer' is the minimum clearance margin from the panel edges.
-        If 'spacer' is so large that the formula yields a non-positive radius
-        (i.e. the panel is too short to fit any hole), no hole is drawn.
+        If 'spacer' yields a non-positive radius the hole is omitted.
         """
         h = self.h
         if self.outside:
@@ -122,6 +124,9 @@ class HexagonBox(BayonetBox):
         spacer = 15  # minimum clearance from panel edge to hole edge, in mm
         r1 = (self.h - spacer - spacer) / 2
 
+        # Six identical support walls — two per spoke axis (one per half-spoke).
+        # Drawing all six ensures the correct quantity is indicated on the sheet
+        # so the operator knows to cut 6 copies.
         if r1 > 0:
             # Callback fires at the bottom-left corner (edge 0) with the
             # x-axis pointing right and y-axis pointing into the panel.
@@ -130,28 +135,53 @@ class HexagonBox(BayonetBox):
             def draw_center_hole():
                 self.hole(sl / 2, h / 2, r1)
 
-            self.rectangularWall(sl, h, "fefe", callback=[draw_center_hole], move="right")
+            for _ in range(6):
+                self.rectangularWall(sl, h, "fefe", callback=[draw_center_hole], move="right")
         else:
             # Panel is too short for the hole to clear the edges — render
             # without a hole rather than producing invalid geometry.
-            self.rectangularWall(sl, h, "fefe", move="right")
+            for _ in range(6):
+                self.rectangularWall(sl, h, "fefe", move="right")
 
     def drawSupportHoles(self, r):
-        """Cut finger-joint slots into the bottom panel for the internal supports.
+        """Cut finger-joint slots into the bottom panel for all three spoke axes.
 
-        Two slots are placed symmetrically along the apothem axis so that the
-        rectangular support walls slot perpendicularly into the bottom panel.
+        A hexagonal spoke bottom has three internal support walls, one per spoke
+        direction (0°, +60°, and -60° from the vertical axis).  Each spoke gets
+        two finger-joint slots placed symmetrically around the hex centre so that
+        the rectangular support wall can slot perpendicularly into the panel.
+
+        This callback fires at the start of edge 0 (the bottom-left vertex of the
+        flat-top hexagon), NOT at the panel centre.  In that coordinate system the
+        panel centre lies at (r/2, H).  To rotate each spoke's slots correctly we
+        must first translate the origin to the centre and THEN rotate; rotating
+        around (0,0) would pivot around the bottom-left vertex and produce wildly
+        misplaced slots.
+
+        moveTo(r/2, H, spoke_angle) achieves the combined translate-then-rotate in
+        one call (ctx.translate followed by ctx.rotate).  After that, the two
+        fingerHolesAt positions are expressed in centre-relative coordinates:
+        (0, ±H/2), so they sit symmetrically on each spoke axis regardless of
+        the spoke angle.
 
         @param r - Inner corner radius of the hexagon bottom panel.
         """
         sl = self.support_length
 
-        H = r * math.sqrt(3) / 2.0  # apothem of the full hexagon
-        H1 = H / 2
-        H2 = H + H / 2
+        H = r * math.sqrt(3) / 2.0  # apothem — also the y-distance from origin to centre
 
-        self.fingerHolesAt(r / 2, H1 - sl / 2, sl, angle=90)
-        self.fingerHolesAt(r / 2, H2 - sl / 2, sl, angle=90)
+        # The three spoke axes are 60° apart.  For each one, shift the coordinate
+        # origin to the hex centre and rotate to align with the spoke, then draw
+        # the two slots at ±H/2 along the local y-axis.  saved_context() keeps the
+        # transform local so the next spoke starts from the original origin.
+        for spoke_angle in (0, 60, -60):
+            with self.saved_context():
+                # Translate to centre (r/2, H) then rotate by spoke_angle.
+                self.moveTo(r / 2, H, spoke_angle)
+                # Lower slot: midpoint at (0, -H/2) in centre-relative coords.
+                self.fingerHolesAt(0, -H / 2 - sl / 2, sl, angle=90)
+                # Upper slot: midpoint at (0, +H/2) in centre-relative coords.
+                self.fingerHolesAt(0,  H / 2 - sl / 2, sl, angle=90)
 
     def drawMarkers2(self, s, l, text):
         """Placeholder for optional marker geometry on side panels.
@@ -509,7 +539,7 @@ class HexagonBox(BayonetBox):
             e = bottom_edge + 'ege' + top_edge + 'eeGee'
             borders = [side0, 90 - a, d_bottom, 0, l, 0, d_top, 90 + a, side1,
                        90 + a, d_top, -90, t_, 90, l, 90, t_, -90, d_bottom, 90 - a]
-            for i in range(n):
+            for _ in range(n):
                 self.polygonWall(borders, edge=e, correct_corners=False, move="right")
         else:
             # Even number of sides: alternating panel types share opposite faces.
@@ -540,7 +570,7 @@ class HexagonBox(BayonetBox):
                 self.moveTo(0, -self.thickness)
                 self.drawAlignmentHoles(side0_orig, l, "A")
 
-            for i in range(n // 2):
+            for _ in range(n // 2):
                 self.polygonWall(borders0, edge=e0, correct_corners=False, move="right",
                                  callback=[lambda: self.drawMarkers2(side0_orig, l, "A"),
                                            draw_aligned_holes])
