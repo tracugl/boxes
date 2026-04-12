@@ -98,12 +98,40 @@ class HexagonBox(BayonetBox):
 
         The support is a simple rectangular wall whose height matches the box
         body height, finger-jointed on both long edges ('fefe' pattern).
+
+        A single large circular through-hole is cut in the centre of each
+        support, using the same sizing formula as drawAlignmentHoles:
+            r1 = (h - spacer - spacer) / 2
+        where 'spacer' is the minimum clearance margin from the panel edges.
+        If 'spacer' is so large that the formula yields a non-positive radius
+        (i.e. the panel is too short to fit any hole), no hole is drawn.
         """
         h = self.h
         if self.outside:
             h = self.adjustSize(h)
         sl = self.support_length
-        self.rectangularWall(sl, h, "fefe", move="right")
+
+        # Mirror the spacer and hole-radius formula used by drawAlignmentHoles
+        # so that the support hole is consistent with the rest of the geometry.
+        # Crucially, drawAlignmentHoles uses self.h (the raw box height), not the
+        # adjustSize()-shrunk value, so we do the same here to keep the diameters
+        # identical regardless of whether --outside is set.
+        spacer = 15  # minimum clearance from panel edge to hole edge, in mm
+        r1 = (self.h - spacer - spacer) / 2
+
+        if r1 > 0:
+            # Callback fires at the bottom-left corner (edge 0) with the
+            # x-axis pointing right and y-axis pointing into the panel.
+            # From that origin, (sl/2, h/2) is the geometric centre of the
+            # rectangle, which is exactly where the through-hole should sit.
+            def draw_center_hole():
+                self.hole(sl / 2, h / 2, r1)
+
+            self.rectangularWall(sl, h, "fefe", callback=[draw_center_hole], move="right")
+        else:
+            # Panel is too short for the hole to clear the edges — render
+            # without a hole rather than producing invalid geometry.
+            self.rectangularWall(sl, h, "fefe", move="right")
 
     def drawSupportHoles(self, r):
         """Cut finger-joint slots into the bottom panel for the internal supports.
