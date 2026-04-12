@@ -147,30 +147,40 @@ class HexagonBox(BayonetBox):
 
         A hexagonal spoke bottom has three internal support walls, one per spoke
         direction (0°, +60°, and -60° from the vertical axis).  Each spoke gets
-        two finger-joint slots placed symmetrically along its apothem so that
+        two finger-joint slots placed symmetrically around the hex centre so that
         the rectangular support wall can slot perpendicularly into the panel.
 
-        The slot geometry for each spoke is identical; we draw it three times by
-        rotating the entire coordinate frame by the spoke's offset angle before
-        issuing the same fingerHolesAt calls.  saved_context() ensures the
-        rotation is local and does not affect subsequent drawing operations.
+        This callback fires at the start of edge 0 (the bottom-left vertex of the
+        flat-top hexagon), NOT at the panel centre.  In that coordinate system the
+        panel centre lies at (r/2, H).  To rotate each spoke's slots correctly we
+        must first translate the origin to the centre and THEN rotate; rotating
+        around (0,0) would pivot around the bottom-left vertex and produce wildly
+        misplaced slots.
+
+        moveTo(r/2, H, spoke_angle) achieves the combined translate-then-rotate in
+        one call (ctx.translate followed by ctx.rotate).  After that, the two
+        fingerHolesAt positions are expressed in centre-relative coordinates:
+        (0, ±H/2), so they sit symmetrically on each spoke axis regardless of
+        the spoke angle.
 
         @param r - Inner corner radius of the hexagon bottom panel.
         """
         sl = self.support_length
 
-        H = r * math.sqrt(3) / 2.0  # apothem of the full hexagon
-        H1 = H / 2
-        H2 = H + H / 2
+        H = r * math.sqrt(3) / 2.0  # apothem — also the y-distance from origin to centre
 
-        # The three spoke axes are separated by 60°.  For each one, rotate the
-        # coordinate frame to align with that spoke, draw the two slots in the
-        # local +y direction (angle=90), then restore the frame.
+        # The three spoke axes are 60° apart.  For each one, shift the coordinate
+        # origin to the hex centre and rotate to align with the spoke, then draw
+        # the two slots at ±H/2 along the local y-axis.  saved_context() keeps the
+        # transform local so the next spoke starts from the original origin.
         for spoke_angle in (0, 60, -60):
             with self.saved_context():
-                self.moveTo(0, 0, spoke_angle)
-                self.fingerHolesAt(r / 2, H1 - sl / 2, sl, angle=90)
-                self.fingerHolesAt(r / 2, H2 - sl / 2, sl, angle=90)
+                # Translate to centre (r/2, H) then rotate by spoke_angle.
+                self.moveTo(r / 2, H, spoke_angle)
+                # Lower slot: midpoint at (0, -H/2) in centre-relative coords.
+                self.fingerHolesAt(0, -H / 2 - sl / 2, sl, angle=90)
+                # Upper slot: midpoint at (0, +H/2) in centre-relative coords.
+                self.fingerHolesAt(0,  H / 2 - sl / 2, sl, angle=90)
 
     def drawMarkers2(self, s, l, text):
         """Placeholder for optional marker geometry on side panels.
