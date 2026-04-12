@@ -23,6 +23,7 @@ import math
 import copy
 from boxes import Boxes, edges, boolarg
 from boxes.generators.bayonetbox import BayonetBox
+from boxes.Color import *
 
 
 ### Helpers
@@ -121,6 +122,96 @@ class HexagonBox(BayonetBox):
         self.fingerHolesAt(r / 2, H1 - sl / 2, sl, angle=90)
         self.fingerHolesAt(r / 2, H2 - sl / 2, sl, angle=90)
 
+    def drawMarkers2(self, s, l, text):
+        """Placeholder for optional marker geometry on side panels.
+
+        Currently a stub; retained so the callback signature stays stable and
+        individual markers can be re-enabled by uncommenting the relevant lines.
+
+        @param s    - Panel height (the pre-shrink side0 value), used for y-scaling.
+        @param l    - Panel width (slant length), used for x-scaling.
+        @param text - Label string (unused in the active code path).
+        """
+        # Unused reference variables kept for potential future use.
+        h = self.h
+        r = self.radius_bottom
+
+        # self.hole(l-10, s-10, 12)
+        # self.rectangularHole(r/2, h/2, 5, 5, r=0, center_x=True, center_y=True)
+
+    def drawAlignmentHoles(self, s, l, text):
+        """Cut and etch alignment features into a side panel for stacking hexagons.
+
+        The coordinate system inside a polygonWall callback has the slant length
+        (l) along the x-axis and side0 (s) along the y-axis.  All hole positions
+        are derived from those two dimensions so they scale correctly with box
+        size.
+
+        The caller should pass the **pre-shrink** side0 value (side0_orig) paired
+        with a moveTo(0, -t) shift in the wrapper.  Together, this produces a
+        uniform t-inward offset on every hole so that new panels (trimmed by 2*t)
+        align centre-to-centre with old panels when the two are stacked and centred.
+
+        @param s    - Pre-shrink panel height (original side0, before subtracting 2*t).
+        @param l    - Panel width (slant length l from render()).
+        @param text - Unused; kept for API compatibility.
+        """
+        h = self.h
+        spacer = 15  # minimum clearance from panel edges, in mm
+
+        # Three large round through-holes along the vertical centre line.
+        # r1 is sized to leave 'spacer' clearance above and below.
+        r1 = (h - spacer - spacer) / 2
+        self.hole(l / 2, s / 2,     r1)  # vertical centre
+        self.hole(l / 2, s / 5,     r1)  # lower fifth
+        self.hole(l / 2, 4 * s / 5, r1)  # upper fifth
+
+        # Medium round holes used as alignment-pin receivers, mirrored left/right.
+        r2 = 12.5
+        self.hole(l - r2 / 2 - spacer, 7 * s / 20,  r2)  # right, lower band
+        self.hole(l - r2 / 2 - spacer, 13 * s / 20, r2)  # right, upper band
+        self.hole(spacer + r2 / 2,     7 * s / 20,  r2)  # left,  lower band
+        self.hole(spacer + r2 / 2,     13 * s / 20, r2)  # left,  upper band
+
+        # Small registration dots flanking each medium hole (r3 = 3 mm pilot holes).
+        r3 = 3
+        # Four dots around the lower-band medium holes.
+        self.hole(l - spacer, 7 * s / 20 + 2 * spacer, r3)
+        self.hole(l - spacer, 7 * s / 20 - 2 * spacer, r3)
+        self.hole(spacer,     7 * s / 20 + 2 * spacer, r3)
+        self.hole(spacer,     7 * s / 20 - 2 * spacer, r3)
+
+        # Four dots around the upper-band medium holes.
+        self.hole(l - spacer, 13 * s / 20 + 2 * spacer, r3)
+        self.hole(l - spacer, 13 * s / 20 - 2 * spacer, r3)
+        self.hole(spacer,     13 * s / 20 + 2 * spacer, r3)
+        self.hole(spacer,     13 * s / 20 - 2 * spacer, r3)
+
+        # Corner registration clusters (top-right, top-left, bottom-right, bottom-left).
+        self.hole(l - spacer,     s - spacer,     r3)
+        self.hole(l - spacer,     s - 2 * spacer, r3)
+        self.hole(l - 2 * spacer, s - spacer,     r3)
+
+        self.hole(l - spacer, s - 3 * spacer, r3)
+        self.hole(l / 2,      s - 3 * spacer, r2)  # top-centre medium hole
+        self.hole(l - spacer, 3 * spacer,     r3)
+        self.hole(l / 2,      3 * spacer,     r2)  # bottom-centre medium hole
+
+        self.hole(spacer,         s - 3 * spacer, r3)
+        self.hole(spacer,         3 * spacer,     r3)
+
+        self.hole(spacer,         s - spacer,     r3)
+        self.hole(spacer,         s - 2 * spacer, r3)
+        self.hole(2 * spacer,     s - spacer,     r3)
+
+        self.hole(l - spacer,     spacer,         r3)
+        self.hole(l - spacer,     2 * spacer,     r3)
+        self.hole(l - 2 * spacer, spacer,         r3)
+
+        self.hole(spacer,         spacer,         r3)
+        self.hole(spacer,         2 * spacer,     r3)
+        self.hole(2 * spacer,     spacer,         r3)
+
     def drawKites(self, r, joint_type, isTrapezoid):
         """Draw six kite-shaped cutouts inside the hexagonal spoke bottom panel.
 
@@ -207,6 +298,13 @@ class HexagonBox(BayonetBox):
 
         r0, sh0, side0 = self.regularPolygon(n, radius=r0)
         r1, sh1, side1 = self.regularPolygon(n, radius=r1)
+
+        # Capture the original side length before shrinking.  Alignment-hole
+        # positions are computed from side0_orig (not the trimmed side0) so that
+        # the proportional layout stays consistent.  A moveTo(0, -t) shift in
+        # draw_aligned_holes() then nudges every hole t inward, achieving
+        # centre-to-centre alignment when new and old panels are stacked centred.
+        side0_orig = side0
 
         # Subtract two thicknesses from each side so finger joints fit flush.
         side0 = side0 - 2 * t
@@ -321,6 +419,29 @@ class HexagonBox(BayonetBox):
             borders1 = [side0, 90 - a, d_bottom, 0, l, 0, d_top, 90 + a, side1,
                         90 + a, d_top, 0, l, 0, d_bottom, 90 - a]
             e1 = bottom_edge + 'e' + top_edge + 'e'
+            # The polygonWall callback at index 1 fires at the RIGHT end of the
+            # side0 edge.  Because side0 was trimmed by 2*t, this natural origin
+            # sits 2*t to the LEFT (in SVG x) of where it sat in old builds.
+            #
+            # We want holes to align centre-to-centre: when a new panel (shorter
+            # by 2*t) is laid on top of an old panel and centred, each panel edge
+            # recedes by t.  So every hole must shift t towards the panel centre
+            # relative to a right-edge-aligned reference.
+            #
+            # moveTo(0, -t) compensates: local y points leftward (−SVG x), so
+            # a negative dy moves the origin rightward (+SVG x) by t, placing
+            # holes t closer to the right edge than the natural origin would give.
+            # Combined with using side0_orig for position ratios, this produces a
+            # uniform t-inward shift on every hole, which cancels the t-outward
+            # shift of the panel edge when the two panels are centred.
+            def draw_aligned_holes():
+                self.moveTo(0, -self.thickness)
+                self.drawAlignmentHoles(side0_orig, l, "A")
+
             for i in range(n // 2):
-                self.polygonWall(borders0, edge=e0, correct_corners=False, move="right")
-                self.polygonWall(borders0, edge=e0, correct_corners=False, move="right")
+                self.polygonWall(borders0, edge=e0, correct_corners=False, move="right",
+                                 callback=[lambda: self.drawMarkers2(side0_orig, l, "A"),
+                                           draw_aligned_holes])
+                self.polygonWall(borders0, edge=e0, correct_corners=False, move="right",
+                                 callback=[lambda: self.drawMarkers2(side0_orig, l, "A"),
+                                           draw_aligned_holes])
