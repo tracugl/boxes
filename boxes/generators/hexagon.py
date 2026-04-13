@@ -772,12 +772,12 @@ class HexagonBox(BayonetBox):
             # Draw bottom panel first, then top (order affects SVG layout).
             drawTop(r0, self.bottom, "yY")
             drawTop(r1, self.top, "zZ")
-
-        # Draw support walls after both face panels, regardless of bottom style.
-        # Previously only generated when bottom='spoke'; now controlled by the
-        # --supports flag so a closed-bottom board can still have internal walls.
-        if self.supports:
-            self.drawSupports(isTrapezoid=isTrapezoid)
+            # Support walls must be placed inside this saved_context block so
+            # they land after the face panels in the layout stream.  Outside the
+            # block the cursor reverts to its pre-block position, causing the
+            # walls to overlap whatever is drawn next.
+            if self.supports:
+                self.drawSupports(isTrapezoid=isTrapezoid)
 
         # Invisible up-only move reserves vertical space for the panels above.
         # In trapezoid mode the panel is half-height, so use the trapezoid wall
