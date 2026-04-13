@@ -59,11 +59,8 @@ class HexagonBox(BayonetBox):
 
         self.buildArgParser("h", "outside")
         self.argparser.add_argument(
-            "--radius_bottom", action="store", type=float, default=500.0,
-            help="inner radius of the box bottom (at the corners)")
-        self.argparser.add_argument(
-            "--radius_top", action="store", type=float, default=500.0,
-            help="inner radius of the box top (at the corners)")
+            "--radius", action="store", type=float, default=500.0,
+            help="inner radius of the hexagon (at the corners)")
         self.argparser.add_argument(
             "--top", action="store", type=str, default="closed",
             choices=["closed"],
@@ -81,6 +78,9 @@ class HexagonBox(BayonetBox):
         self.argparser.add_argument(
             "--support_length", action="store", type=float, default=150.0,
             help="length of the internal supports.")
+        self.argparser.add_argument(
+            "--supports", action="store", type=boolarg, default=True,
+            help="add internal support walls and matching finger-joint slots in the top and bottom panels.")
         self.argparser.add_argument(
             "--trapezoid", action="store", type=boolarg, default=False,
             help="If true, only draw a half-hexagon.")
@@ -212,7 +212,7 @@ class HexagonBox(BayonetBox):
         """
         # Unused reference variables kept for potential future use.
         h = self.h
-        r = self.radius_bottom
+        r = self.radius
 
         # self.hole(l-10, s-10, 12)
         # self.rectangularHole(r/2, h/2, 5, 5, r=0, center_x=True, center_y=True)
@@ -657,10 +657,10 @@ class HexagonBox(BayonetBox):
     def render(self):
         """Generate all panels and walls that make up the hexagon box.
 
-        Handles tapered geometry (different top and bottom radii), outside vs
-        inside measurement modes, and all supported top/bottom style variants.
+        Handles outside vs inside measurement modes and all supported
+        top/bottom style variants.
         """
-        r0, r1, h, n, isTrapezoid = self.radius_bottom, self.radius_top, self.h, self.n, self.trapezoid
+        r0, r1, h, n, isTrapezoid = self.radius, self.radius, self.h, self.n, self.trapezoid
 
         if self.outside:
             # Convert outside measurements to inside by subtracting material thickness.
@@ -734,36 +734,36 @@ class HexagonBox(BayonetBox):
             @param top_type   - 'closed' or 'spoke'.
             @param joint_type - Two-character edge string, e.g. 'yY' or 'zZ'.
             """
-            # Build the support-hole callback once; reused by "closed" branches
-            # when the opposite face is "spoke".  None at index 0 means the
-            # centre-callback slot (kites) is skipped — only the V0-start slot
-            # (index 1) fires, which is what drawSupportHoles expects.
-            if self.bottom == "spoke":
+            # Build the support-hole callback for closed panels.  Fires at the
+            # V0-start slot (index 1); index 0 is None so the kites/centre slot
+            # is skipped.  Active whenever self.supports is True, regardless of
+            # whether the opposite face is "spoke" or "closed".
+            if self.supports:
                 support_cb = [None, lambda: self.drawSupportHoles(r=r, isTrapezoid=isTrapezoid)]
             else:
                 support_cb = None
 
             if isTrapezoid:
                 if top_type == "spoke":
+                    # Build spoke callbacks; only append drawSupportHoles when
+                    # supports are enabled so the slot geometry matches the walls.
+                    spoke_cbs = [lambda: self.drawKites(r=r, joint_type=joint_type, isTrapezoid=True)]
+                    if self.supports:
+                        spoke_cbs.append(lambda: self.drawSupportHoles(r=r, isTrapezoid=True))
                     self.drawTrapezoidWall(
                         r=r, edges_char=joint_type[1], move="right",
-                        callback=[
-                            lambda: self.drawKites(r=r, joint_type=joint_type, isTrapezoid=True),
-                            lambda: self.drawSupportHoles(r=r, isTrapezoid=True),
-                        ])
-                    self.drawSupports(isTrapezoid=True)
+                        callback=spoke_cbs)
                 else:  # "closed"
                     self.drawTrapezoidWall(r=r, edges_char=joint_type[1], move="right",
                                            callback=support_cb)
             else:
                 if top_type == "spoke":
+                    spoke_cbs = [lambda: self.drawKites(r=r, joint_type=joint_type, isTrapezoid=False)]
+                    if self.supports:
+                        spoke_cbs.append(lambda: self.drawSupportHoles(r=r))
                     self.regularPolygonWall(
                         corners=n, r=r, edges=joint_type[1], move="right",
-                        callback=[
-                            lambda: self.drawKites(r=r, joint_type=joint_type, isTrapezoid=False),
-                            lambda: self.drawSupportHoles(r=r),
-                        ])
-                    self.drawSupports()
+                        callback=spoke_cbs)
                 else:  # "closed"
                     self.regularPolygonWall(corners=n, r=r, edges=joint_type[1], move="right",
                                             callback=support_cb)
@@ -772,6 +772,12 @@ class HexagonBox(BayonetBox):
             # Draw bottom panel first, then top (order affects SVG layout).
             drawTop(r0, self.bottom, "yY")
             drawTop(r1, self.top, "zZ")
+            # Support walls must be placed inside this saved_context block so
+            # they land after the face panels in the layout stream.  Outside the
+            # block the cursor reverts to its pre-block position, causing the
+            # walls to overlap whatever is drawn next.
+            if self.supports:
+                self.drawSupports(isTrapezoid=isTrapezoid)
 
         # Invisible up-only move reserves vertical space for the panels above.
         # In trapezoid mode the panel is half-height, so use the trapezoid wall
