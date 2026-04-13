@@ -290,6 +290,98 @@ class HexagonBox(BayonetBox):
         self.hole(spacer,         2 * spacer,     r3)
         self.hole(2 * spacer,     spacer,         r3)
 
+    def drawAlignmentHolesLong(self, s, l, text):
+        """Cut and etch alignment features into the trapezoid long back wall.
+
+        The long back wall spans two hex-side-lengths (s = 2*side0_orig).
+        Hole positions are derived by applying the standard wall's fractional
+        positions (s/5, 7s/20, s/2, 13s/20, 4s/5) from **both ends**, using
+        s_half = s/2 as the reference length so positions line up exactly with
+        the corresponding holes on the adjacent standard walls.
+
+        Pattern along the s-axis (bottom → top):
+            group-of-8
+            BIG(s/5)  G6(7s/20)  BIG(s/2)  G6(13s/20)  BIG(4s/5)
+            BIG(centre = s/2 of the long wall)
+            BIG(s - 4s/5)  G6(s - 13s/20)  BIG(s - s/2)  G6(s - 7s/20)  BIG(s - s/5)
+            group-of-8
+
+        The three consecutive BIG holes in the middle (4s/5, s/2, and 6s/5 of
+        s_half) are the expected "transition zone" where the two mirrored halves
+        meet with no G6 between them.
+
+        The corner group-of-8 clusters are copied verbatim from drawAlignmentHoles
+        and use fixed spacer offsets, so they sit the same physical distance from
+        each edge regardless of how wide the panel is.
+
+        @param s    - Pre-shrink panel height (2*side0_orig for the long wall).
+        @param l    - Panel width (slant length l from render()).
+        @param text - Unused; kept for API compatibility.
+        """
+        h = self.h
+        spacer = 15  # minimum clearance from panel edges, in mm
+
+        r1 = (h - spacer - spacer) / 2
+        r2 = 12.5
+        r3 = 3
+
+        # s_half is one standard-wall side length.  Applying the standard wall's
+        # fractional positions to s_half (rather than s) makes every hole on the
+        # long wall land at the same absolute distance from its nearest edge as the
+        # corresponding hole on a standard wall — so they line up when panels are
+        # stacked or compared side by side.
+        s_half = s / 2
+
+        # Seven large through-holes along the vertical centre line (x = l/2).
+        # Outer six mirror the standard wall's three positions from each end;
+        # the seventh sits at the true centre of the long wall (s/2).
+        for frac in (1/5, 1/2, 4/5):
+            self.hole(l / 2, frac * s_half,     r1)  # bottom half
+            self.hole(l / 2, s - frac * s_half, r1)  # top half (mirrored)
+        self.hole(l / 2, s / 2, r1)  # centre
+
+        # Four groups-of-6 (2 medium + 4 small dots), mirrored from both ends.
+        # Fractions 7/20 and 13/20 match the standard wall's G6 positions exactly.
+        for frac in (7/20, 13/20):
+            for y in (frac * s_half, s - frac * s_half):
+                # Medium alignment-pin receivers, mirrored left/right.
+                self.hole(l - r2 / 2 - spacer, y, r2)  # right medium
+                self.hole(spacer + r2 / 2,     y, r2)  # left medium
+                # Small registration dots flanking each medium hole.
+                self.hole(l - spacer, y + 2 * spacer, r3)
+                self.hole(l - spacer, y - 2 * spacer, r3)
+                self.hole(spacer,     y + 2 * spacer, r3)
+                self.hole(spacer,     y - 2 * spacer, r3)
+
+        # Corner registration clusters — identical to drawAlignmentHoles.
+        # These are the "group-of-8": 8 small holes per end (4 per corner, forming
+        # an L-shape), each pair of corners surrounding one central medium hole.
+        # All positions use fixed spacer offsets so the clusters sit the same
+        # physical distance from the panel edges regardless of panel width.
+        self.hole(l - spacer,     s - spacer,     r3)
+        self.hole(l - spacer,     s - 2 * spacer, r3)
+        self.hole(l - 2 * spacer, s - spacer,     r3)
+
+        self.hole(l - spacer, s - 3 * spacer, r3)
+        self.hole(l / 2,      s - 3 * spacer, r2)  # top-centre medium hole
+        self.hole(l - spacer, 3 * spacer,     r3)
+        self.hole(l / 2,      3 * spacer,     r2)  # bottom-centre medium hole
+
+        self.hole(spacer,         s - 3 * spacer, r3)
+        self.hole(spacer,         3 * spacer,     r3)
+
+        self.hole(spacer,         s - spacer,     r3)
+        self.hole(spacer,         s - 2 * spacer, r3)
+        self.hole(2 * spacer,     s - spacer,     r3)
+
+        self.hole(l - spacer,     spacer,         r3)
+        self.hole(l - spacer,     2 * spacer,     r3)
+        self.hole(l - 2 * spacer, spacer,         r3)
+
+        self.hole(spacer,         spacer,         r3)
+        self.hole(spacer,         2 * spacer,     r3)
+        self.hole(2 * spacer,     spacer,         r3)
+
     def drawKites(self, r, joint_type, isTrapezoid):
         """Draw six kite-shaped cutouts inside the hexagonal spoke bottom panel.
 
@@ -710,6 +802,15 @@ class HexagonBox(BayonetBox):
             self.moveTo(0, -self.thickness)
             self.drawAlignmentHoles(side0_orig, l, "A")
 
+        # Alignment-hole callback for the trapezoid long back wall.
+        # The long wall spans two hex-side-lengths, so its pre-shrink width is
+        # 2*side0_orig.  Passing that as the `s` parameter to drawAlignmentHoles
+        # scales all fractional hole positions (corner clusters, centre-line
+        # through-holes, mid-band pin holes) proportionally to the wider panel.
+        def draw_aligned_holes_long():
+            self.moveTo(0, -self.thickness)
+            self.drawAlignmentHolesLong(2 * side0_orig, l, "A")
+
         if isTrapezoid:
             # Trapezoid side walls: 4 panels instead of 6.
             #
@@ -739,8 +840,13 @@ class HexagonBox(BayonetBox):
                             90 + a, side1_long, 90 + a,
                             d_top, -90, t_, 90, l, 90, t_, -90, d_bottom, 90 - a]
 
-            # Long back wall (1 panel).
-            self.polygonWall(borders_long, edge=e0, correct_corners=False, move="right")
+            # Long back wall (1 panel).  The callback list mirrors the standard
+            # walls: index 0 fires at the bottom edge (drawMarkers2 label),
+            # index 1 fires at the first stepped-tab segment where the alignment
+            # holes are drawn relative to the full panel dimensions.
+            self.polygonWall(borders_long, edge=e0, correct_corners=False, move="right",
+                             callback=[lambda: self.drawMarkers2(2 * side0_orig, l, "A"),
+                                       draw_aligned_holes_long])
 
             # Three standard-width walls (right slant, front short, left slant).
             for _ in range(3):
