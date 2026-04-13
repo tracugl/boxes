@@ -293,18 +293,22 @@ class HexagonBox(BayonetBox):
     def drawAlignmentHolesLong(self, s, l, text):
         """Cut and etch alignment features into the trapezoid long back wall.
 
-        The long back wall spans two hex-side-lengths (s = 2*side0_orig), so
-        placing the same three big holes as the standard wall would leave large
-        empty regions.  This method fills the extra width with a denser, custom
-        pattern centred on the same axis.
+        The long back wall spans two hex-side-lengths (s = 2*side0_orig).
+        Hole positions are derived by applying the standard wall's fractional
+        positions (s/5, 7s/20, s/2, 13s/20, 4s/5) from **both ends**, using
+        s_half = s/2 as the reference length so positions line up exactly with
+        the corresponding holes on the adjacent standard walls.
 
         Pattern along the s-axis (bottom → top):
-            group-of-8  –  BIG  –  G6  –  BIG  –  G6  –  BIG(centre)
-                        –  G6   –  BIG –  G6   –  BIG  –  group-of-8
+            group-of-8
+            BIG(s/5)  G6(7s/20)  BIG(s/2)  G6(13s/20)  BIG(4s/5)
+            BIG(centre = s/2 of the long wall)
+            BIG(s - 4s/5)  G6(s - 13s/20)  BIG(s - s/2)  G6(s - 7s/20)  BIG(s - s/5)
+            group-of-8
 
-        Interior elements are distributed at even tenths of s so the spacing is
-        exactly half of the standard wall's s/5 step — visually consistent and
-        physically comfortable at any reasonable box radius.
+        The three consecutive BIG holes in the middle (4s/5, s/2, and 6s/5 of
+        s_half) are the expected "transition zone" where the two mirrored halves
+        meet with no G6 between them.
 
         The corner group-of-8 clusters are copied verbatim from drawAlignmentHoles
         and use fixed spacer offsets, so they sit the same physical distance from
@@ -321,26 +325,33 @@ class HexagonBox(BayonetBox):
         r2 = 12.5
         r3 = 3
 
-        # Five large through-holes along the vertical centre line (x = l/2).
-        # Distributed at odd-tenth fractions of s so they sit between the G6
-        # groups and alternate cleanly: BIG, G6, BIG, G6, BIG_centre, ...
-        for num in (1, 3, 5, 7, 9):
-            self.hole(l / 2, num * s / 10, r1)
+        # s_half is one standard-wall side length.  Applying the standard wall's
+        # fractional positions to s_half (rather than s) makes every hole on the
+        # long wall land at the same absolute distance from its nearest edge as the
+        # corresponding hole on a standard wall — so they line up when panels are
+        # stacked or compared side by side.
+        s_half = s / 2
 
-        # Four groups-of-6 (2 medium + 4 small dots), one at each even-tenth
-        # fraction of s.  Each group uses the same left/right x-positions as the
-        # standard wall: medium holes inset by r2/2+spacer from each edge, small
-        # dots at ±2*spacer above and below each medium hole.
-        for num in (2, 4, 6, 8):
-            y = num * s / 10
-            # Medium alignment-pin receivers, mirrored left/right.
-            self.hole(l - r2 / 2 - spacer, y, r2)  # right medium
-            self.hole(spacer + r2 / 2,     y, r2)  # left medium
-            # Small registration dots flanking each medium hole.
-            self.hole(l - spacer, y + 2 * spacer, r3)
-            self.hole(l - spacer, y - 2 * spacer, r3)
-            self.hole(spacer,     y + 2 * spacer, r3)
-            self.hole(spacer,     y - 2 * spacer, r3)
+        # Seven large through-holes along the vertical centre line (x = l/2).
+        # Outer six mirror the standard wall's three positions from each end;
+        # the seventh sits at the true centre of the long wall (s/2).
+        for frac in (1/5, 1/2, 4/5):
+            self.hole(l / 2, frac * s_half,     r1)  # bottom half
+            self.hole(l / 2, s - frac * s_half, r1)  # top half (mirrored)
+        self.hole(l / 2, s / 2, r1)  # centre
+
+        # Four groups-of-6 (2 medium + 4 small dots), mirrored from both ends.
+        # Fractions 7/20 and 13/20 match the standard wall's G6 positions exactly.
+        for frac in (7/20, 13/20):
+            for y in (frac * s_half, s - frac * s_half):
+                # Medium alignment-pin receivers, mirrored left/right.
+                self.hole(l - r2 / 2 - spacer, y, r2)  # right medium
+                self.hole(spacer + r2 / 2,     y, r2)  # left medium
+                # Small registration dots flanking each medium hole.
+                self.hole(l - spacer, y + 2 * spacer, r3)
+                self.hole(l - spacer, y - 2 * spacer, r3)
+                self.hole(spacer,     y + 2 * spacer, r3)
+                self.hole(spacer,     y - 2 * spacer, r3)
 
         # Corner registration clusters — identical to drawAlignmentHoles.
         # These are the "group-of-8": 8 small holes per end (4 per corner, forming
