@@ -55,7 +55,7 @@ class HexagonBox(BayonetBox):
             if action.dest == 'thickness':
                 action.default = 6.0
 
-        self.addSettingsArgs(edges.FingerJointSettings, finger=5, space=5, surroundingspaces=2, play=0.15)
+        self.addSettingsArgs(edges.FingerJointSettings, finger=5, space=5, surroundingspaces=2, play=0.2)
 
         self.buildArgParser("h", "outside")
         self.argparser.add_argument(
