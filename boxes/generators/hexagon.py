@@ -242,18 +242,80 @@ class HexagonBox(BayonetBox):
         self.hole(sp,         2 * sp,     r3)
         self.hole(2 * sp,     sp,         r3)
 
+    def _drawGapFeatures(self, l, y_lo, y_hi):
+        """Fill the space between two adjacent features with G6 sub-groups.
+
+        Attempts to place, symmetrically within the inner gap [y_lo, y_hi]:
+          - Full G6 equivalent (G2-small + G2-medium + G2-small, 6 holes)
+            when half-gap ≥ r2 + 2·r3 + 2·MIN_CLEAR  (≈ 28.5 mm)
+          - G2-medium pair only (2 holes)
+            when half-gap ≥ r2 + MIN_CLEAR             (≈ 17.5 mm)
+          - Nothing when the gap is too small
+
+        y_lo and y_hi are **inner** boundaries — the outer edge of the lower
+        adjacent feature and the inner edge of the upper adjacent feature
+        respectively.  Callers compute them as: corner_inner = 3·sp + r2,
+        big_hole top/bottom = centre ± r1.
+
+        The small holes in the G6 are placed at y_mid ± sm_offset where
+        sm_offset = r2 + r3 + MIN_CLEAR, guaranteeing MIN_CLEAR clearance
+        to both the medium hole and the gap boundaries.
+
+        @param l    - Panel width (for x-position calculations).
+        @param y_lo - Inner lower boundary (top edge of the feature below this gap).
+        @param y_hi - Inner upper boundary (bottom edge of the feature above this gap).
+        """
+        r2 = self._R2
+        r3 = self._R3
+        sp = self._SPACER
+        MIN_CLEAR = 5.0
+
+        half_gap = (y_hi - y_lo) / 2
+        y_mid    = (y_lo + y_hi) / 2
+
+        # Minimum half-gap for a G2-medium pair to clear both boundaries.
+        half_for_G2m = r2 + MIN_CLEAR              # ≈ 17.5 mm
+
+        # Small holes are placed at y_mid ± sm_offset.  The offset must satisfy:
+        #   sm_offset ≥ r2 + r3 + MIN_CLEAR   (clear the medium hole edge)
+        # And the small must also clear the gap boundary:
+        #   sm_offset + r3 + MIN_CLEAR ≤ half_gap
+        # Combined minimum half-gap for the full G6 equivalent:
+        sm_offset   = r2 + r3 + MIN_CLEAR          # ≈ 20.5 mm
+        half_for_G6 = sm_offset + r3 + MIN_CLEAR   # ≈ 28.5 mm
+
+        if half_gap >= half_for_G6:
+            # Full G6 equivalent: G2-small · G2-medium · G2-small (symmetric).
+            self.hole(l - sp,        y_mid - sm_offset, r3)  # lower small, right side
+            self.hole(sp,            y_mid - sm_offset, r3)  # lower small, left side
+            self.hole(l - r2/2 - sp, y_mid,             r2)  # medium, right side
+            self.hole(sp + r2/2,     y_mid,             r2)  # medium, left side
+            self.hole(l - sp,        y_mid + sm_offset, r3)  # upper small, right side
+            self.hole(sp,            y_mid + sm_offset, r3)  # upper small, left side
+
+        elif half_gap >= half_for_G2m:
+            # Gap too narrow for smalls — place medium pair only.
+            self.hole(l - r2/2 - sp, y_mid, r2)
+            self.hole(sp + r2/2,     y_mid, r2)
+
     def drawAlignmentHoles(self, s, l, text):
         """Cut and etch alignment features into a side panel for stacking hexagons.
 
-        The coordinate system inside a polygonWall callback has the slant length
-        (l) along the x-axis and side0 (s) along the y-axis.  All hole positions
-        are derived from those two dimensions so they scale correctly with box
-        size.
+        The corner group-of-8 clusters at both panel ends are always drawn at
+        fixed absolute spacer offsets (invariant to panel height).  The interior
+        layout has two layers:
 
-        The caller should pass the **pre-shrink** side0 value (side0_orig) paired
-        with a moveTo(0, -t) shift in the wrapper.  Together, this produces a
-        uniform t-inward offset on every hole so that new panels (trimmed by 2*t)
-        align centre-to-centre with old panels when the two are stacked and centred.
+        1. Big holes: up to three, always odd-counted so s/2 (the mandatory
+           centre track-pass-through aperture) is included.  A single centred
+           hole is used when the wall is too short for three.
+
+        2. Gap filling: every space between adjacent features (corner → BIG,
+           BIG → BIG, BIG → corner) is passed to _drawGapFeatures, which
+           fills it with a G6-equivalent (G2-small + G2-medium + G2-small)
+           or just a G2-medium pair depending on how much room is available.
+
+        At radius=300 this produces corner-8 → G2s → G2m → BIG → G2m → G2s
+        → corner-8, matching the intended pattern exactly.
 
         @param s    - Pre-shrink panel height (original side0, before subtracting 2*t).
         @param l    - Panel width (slant length l from render()).
@@ -261,33 +323,54 @@ class HexagonBox(BayonetBox):
         """
         sp = self._SPACER
         r2 = self._R2
-        r3 = self._R3
 
-        # Three large round through-holes along the vertical centre line.
-        # r1 is sized to leave _SPACER clearance above and below.
+        # r1 is sized so the hole fills most of the wall width (l), leaving
+        # _SPACER clearance top and bottom of the box height dimension.
         r1 = (self.h - 2 * sp) / 2
-        self.hole(l / 2, s / 2,     r1)  # vertical centre
-        self.hole(l / 2, s / 5,     r1)  # lower fifth
-        self.hole(l / 2, 4 * s / 5, r1)  # upper fifth
 
-        # Medium round holes used as alignment-pin receivers, mirrored left/right.
-        self.hole(l - r2 / 2 - sp, 7 * s / 20,  r2)  # right, lower band
-        self.hole(l - r2 / 2 - sp, 13 * s / 20, r2)  # right, upper band
-        self.hole(sp + r2 / 2,     7 * s / 20,  r2)  # left,  lower band
-        self.hole(sp + r2 / 2,     13 * s / 20, r2)  # left,  upper band
+        # Minimum edge-to-edge clearance between any two circular features.
+        MIN_CLEAR = 5.0
 
-        # Small registration dots flanking each medium hole (r3 pilot holes).
-        # Four dots around the lower-band medium holes.
-        self.hole(l - sp, 7 * s / 20 + 2 * sp, r3)
-        self.hole(l - sp, 7 * s / 20 - 2 * sp, r3)
-        self.hole(sp,     7 * s / 20 + 2 * sp, r3)
-        self.hole(sp,     7 * s / 20 - 2 * sp, r3)
+        # Lowest y where a big hole centre can sit without its edge overlapping
+        # the corner group's medium hole (at 3·sp, radius r2).
+        y_floor = 3 * sp + r2 + r1 + MIN_CLEAR
 
-        # Four dots around the upper-band medium holes.
-        self.hole(l - sp, 13 * s / 20 + 2 * sp, r3)
-        self.hole(l - sp, 13 * s / 20 - 2 * sp, r3)
-        self.hole(sp,     13 * s / 20 + 2 * sp, r3)
-        self.hole(sp,     13 * s / 20 - 2 * sp, r3)
+        # Vertical band available for interior holes, between the two safe floors.
+        available = s - 2 * y_floor
+
+        # Compute how many big holes fit without overlapping each other.
+        # Each adjacent pair requires at least (2·r1 + MIN_CLEAR) centre-to-centre.
+        if available < 0:
+            # Wall too short — no interior holes; just the corner groups.
+            big_ys = []
+        else:
+            n = min(3, max(1, 1 + int(available / (2 * r1 + MIN_CLEAR))))
+            # Force an odd count so the distribution is always symmetric and
+            # s/2 is guaranteed to be a big hole.  The centre hole must remain
+            # present at every radius because it acts as a track pass-through
+            # aperture for stacked board sections.
+            if n % 2 == 0:
+                n -= 1
+            if n == 1:
+                # Single hole centred vertically.
+                big_ys = [s / 2]
+            else:
+                # For odd n ≥ 3, evenly spaced with the middle hole at s/2.
+                step = available / (n - 1)
+                big_ys = [y_floor + i * step for i in range(n)]
+
+        # Draw the big through-holes along the vertical centre line.
+        for y in big_ys:
+            self.hole(l / 2, y, r1)
+
+        # Fill every gap with sub-groups via _drawGapFeatures.
+        # Boundaries: the corner group's inner edge is 3·sp + r2 (top of the
+        # medium hole).  Each big hole contributes its outer edge at centre ± r1.
+        corner_inner = 3 * sp + r2
+        lo_bounds = [corner_inner]      + [y + r1 for y in big_ys]
+        hi_bounds = [y - r1 for y in big_ys] + [s - corner_inner]
+        for y_lo, y_hi in zip(lo_bounds, hi_bounds):
+            self._drawGapFeatures(l, y_lo, y_hi)
 
         # Corner group-of-8 clusters (see _drawCornerGroup8 for layout details).
         self._drawCornerGroup8(s, l)
@@ -295,63 +378,68 @@ class HexagonBox(BayonetBox):
     def drawAlignmentHolesLong(self, s, l, text):
         """Cut and etch alignment features into the trapezoid long back wall.
 
-        The long back wall spans two hex-side-lengths (s = 2*side0_orig).
-        Hole positions are derived by applying the standard wall's fractional
-        positions (s/5, 7s/20, s/2, 13s/20, 4s/5) from **both ends**, using
-        s_half = s/2 as the reference length so positions line up exactly with
-        the corresponding holes on the adjacent standard walls.
+        The long back wall spans two hex-side-lengths (s = 2 * side0_orig).
+        Its hole layout is derived from the standard-wall algorithm (see
+        drawAlignmentHoles) applied to s_half = s/2, then mirrored symmetrically
+        about the centre so that positions near either edge of the long wall match
+        exactly the positions on the adjacent standard walls.
 
-        Pattern along the s-axis (bottom → top):
+        Pattern (bottom → top, n_big=3 case):
             group-of-8
-            BIG(s/5)  G6(7s/20)  BIG(s/2)  G6(13s/20)  BIG(4s/5)
-            BIG(centre = s/2 of the long wall)
-            BIG(s - 4s/5)  G6(s - 13s/20)  BIG(s - s/2)  G6(s - 7s/20)  BIG(s - s/5)
+            BIG  G6  BIG  G6  BIG          ← bottom half positions
+            BIG  (centre, no G6 on either side — "transition zone")
+            BIG  G6  BIG  G6  BIG          ← top half (mirrored)
             group-of-8
 
-        The three consecutive BIG holes in the middle (4s/5, s/2, and 6s/5 of
-        s_half) are the expected "transition zone" where the two mirrored halves
-        meet with no G6 between them.
+        When fewer big holes fit per half (small-radius boards), the pattern
+        shrinks proportionally while preserving the corner groups.
 
-        The corner group-of-8 clusters are copied verbatim from drawAlignmentHoles
-        and use fixed spacer offsets, so they sit the same physical distance from
-        each edge regardless of how wide the panel is.
-
-        @param s    - Pre-shrink panel height (2*side0_orig for the long wall).
+        @param s    - Pre-shrink panel height (2 * side0_orig for the long wall).
         @param l    - Panel width (slant length l from render()).
         @param text - Unused; kept for API compatibility.
         """
         sp = self._SPACER
         r2 = self._R2
-        r3 = self._R3
         r1 = (self.h - 2 * sp) / 2
 
-        # s_half is one standard-wall side length.  Applying the standard wall's
-        # fractional positions to s_half (rather than s) makes every hole on the
-        # long wall land at the same absolute distance from its nearest edge as the
-        # corresponding hole on a standard wall — so they line up when panels are
-        # stacked or compared side by side.
+        # Use the same dynamic algorithm as drawAlignmentHoles, applied to
+        # s_half so the bottom-half y-positions match the adjacent standard wall.
         s_half = s / 2
+        MIN_CLEAR = 5.0
+        y_floor   = 3 * sp + r2 + r1 + MIN_CLEAR
+        available = s_half - 2 * y_floor
 
-        # Seven large through-holes along the vertical centre line (x = l/2).
-        # Outer six mirror the standard wall's three positions from each end;
-        # the seventh sits at the true centre of the long wall (s/2).
-        for frac in (1/5, 1/2, 4/5):
-            self.hole(l / 2, frac * s_half,     r1)  # bottom half
-            self.hole(l / 2, s - frac * s_half, r1)  # top half (mirrored)
-        self.hole(l / 2, s / 2, r1)  # centre
+        if available < 0:
+            half_ys = []
+        else:
+            n = min(3, max(1, 1 + int(available / (2 * r1 + MIN_CLEAR))))
+            # Force odd count — see drawAlignmentHoles for the reasoning.
+            if n % 2 == 0:
+                n -= 1
+            if n == 1:
+                half_ys = [s_half / 2]
+            else:
+                step = available / (n - 1)
+                half_ys = [y_floor + i * step for i in range(n)]
 
-        # Four groups-of-6 (2 medium + 4 small dots), mirrored from both ends.
-        # Fractions 7/20 and 13/20 match the standard wall's G6 positions exactly.
-        for frac in (7/20, 13/20):
-            for y in (frac * s_half, s - frac * s_half):
-                # Medium alignment-pin receivers, mirrored left/right.
-                self.hole(l - r2 / 2 - sp, y, r2)  # right medium
-                self.hole(sp + r2 / 2,     y, r2)  # left medium
-                # Small registration dots flanking each medium hole.
-                self.hole(l - sp, y + 2 * sp, r3)
-                self.hole(l - sp, y - 2 * sp, r3)
-                self.hole(sp,     y + 2 * sp, r3)
-                self.hole(sp,     y - 2 * sp, r3)
+        # Full list: bottom half + long-wall centre + top half mirrored.
+        # The centre hole at s/2 is distinct from any half_ys value (half_ys
+        # lives in [y_floor, s_half - y_floor] ⊂ [0, s_half], and y_floor > 0).
+        big_ys = half_ys + [s / 2] + [s - y for y in reversed(half_ys)]
+
+        # Draw the big through-holes along the vertical centre line.
+        for y in big_ys:
+            self.hole(l / 2, y, r1)
+
+        # Fill every gap with sub-groups via _drawGapFeatures — same logic as
+        # drawAlignmentHoles.  The "transition zone" gaps near s/2 are naturally
+        # narrow and will produce only G2m or nothing, while the outer gaps
+        # (matching the adjacent standard walls) receive the full G6 equivalent.
+        corner_inner = 3 * sp + r2
+        lo_bounds = [corner_inner]      + [y + r1 for y in big_ys]
+        hi_bounds = [y - r1 for y in big_ys] + [s - corner_inner]
+        for y_lo, y_hi in zip(lo_bounds, hi_bounds):
+            self._drawGapFeatures(l, y_lo, y_hi)
 
         # Corner group-of-8 clusters — same layout as drawAlignmentHoles.
         self._drawCornerGroup8(s, l)
