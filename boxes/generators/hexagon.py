@@ -29,22 +29,17 @@ from boxes.generators.bayonetbox import BayonetBox
 from boxes.Color import *
 
 
-### Helpers
-
-def dist(dx, dy):
-    """Return the Euclidean distance for a 2-D offset vector.
-
-    @param dx - Horizontal component of the offset.
-    @param dy - Vertical component of the offset.
-    @returns  Float distance, always non-negative.
-    """
-    return (dx * dx + dy * dy) ** 0.5
-
-
 class HexagonBox(BayonetBox):
     """Box with a regular hexagon or half hexagon as the base. """
 
     ui_group = "Box"
+
+    # Alignment-hole geometry constants shared by drawAlignmentHoles,
+    # drawAlignmentHolesLong, and drawSupports.  Centralising them here
+    # means a single change propagates to all three methods.
+    _SPACER = 15    # minimum clearance from panel edge to hole edge (mm)
+    _R2     = 12.5  # radius of medium alignment-pin receiver holes (mm)
+    _R3     = 3     # radius of small registration dot / pilot holes (mm)
 
     def __init__(self) -> None:
         Boxes.__init__(self)
@@ -113,13 +108,11 @@ class HexagonBox(BayonetBox):
             h = self.adjustSize(h)
         sl = self.support_length
 
-        # Mirror the spacer and hole-radius formula used by drawAlignmentHoles
-        # so that the support hole is consistent with the rest of the geometry.
-        # Crucially, drawAlignmentHoles uses self.h (the raw box height), not the
-        # adjustSize()-shrunk value, so we do the same here to keep the diameters
-        # identical regardless of whether --outside is set.
-        spacer = 15  # minimum clearance from panel edge to hole edge, in mm
-        r1 = (self.h - spacer - spacer) / 2
+        # Mirror the hole-radius formula used by drawAlignmentHoles so that the
+        # support hole is consistent with the rest of the geometry.  Use self.h
+        # (raw box height, not adjustSize-shrunk) to keep diameters identical
+        # regardless of whether --outside is set.
+        r1 = (self.h - 2 * self._SPACER) / 2
 
         # Number of support walls: 6 for a full hexagon, 3 for a trapezoid.
         n_supports = 3 if isTrapezoid else 6
@@ -200,22 +193,54 @@ class HexagonBox(BayonetBox):
                     # Only present in full-hexagon mode; outside the trapezoid panel.
                     self.fingerHolesAt(0,  H / 2 - sl / 2, sl, angle=90)
 
-    def drawMarkers2(self, s, l, text):
-        """Placeholder for optional marker geometry on side panels.
+    def _drawCornerGroup8(self, s, l):
+        """Draw the corner registration clusters shared by all side-panel variants.
 
-        Currently a stub; retained so the callback signature stays stable and
-        individual markers can be re-enabled by uncommenting the relevant lines.
+        Each end of a side panel (top and bottom edges) carries an L-shaped cluster
+        of small pilot holes at its two corners, plus one medium hole centred on the
+        panel's x-midpoint at 3 × _SPACER from the edge.  Together these form the
+        'group-of-8' referenced in the alignment-hole pattern: 8 small holes total
+        (3 per corner L × 2 corners, but the two inward L-legs share the centre-line
+        column) surrounding the 2 centre-line medium holes.
 
-        @param s    - Panel height (the pre-shrink side0 value), used for y-scaling.
-        @param l    - Panel width (slant length), used for x-scaling.
-        @param text - Label string (unused in the active code path).
+        All positions use fixed _SPACER offsets so the clusters sit the same physical
+        distance from the panel edges regardless of how wide or tall the panel is.
+        This method is called by both drawAlignmentHoles and drawAlignmentHolesLong
+        to eliminate 18 lines of verbatim duplication.
+
+        @param s - Panel height (pre-shrink side0 value), used for y-axis positions.
+        @param l - Panel width (slant length), used for x-axis positions.
         """
-        # Unused reference variables kept for potential future use.
-        h = self.h
-        r = self.radius
+        sp = self._SPACER
+        r2 = self._R2
+        r3 = self._R3
 
-        # self.hole(l-10, s-10, 12)
-        # self.rectangularHole(r/2, h/2, 5, 5, r=0, center_x=True, center_y=True)
+        # Top-right corner L-cluster and top-left corner L-cluster.
+        self.hole(l - sp,     s - sp,     r3)
+        self.hole(l - sp,     s - 2 * sp, r3)
+        self.hole(l - 2 * sp, s - sp,     r3)
+
+        # Centre-line pins at 3·sp from both top and bottom edges.
+        self.hole(l - sp, s - 3 * sp, r3)
+        self.hole(l / 2,  s - 3 * sp, r2)  # top-centre medium hole
+        self.hole(l - sp, 3 * sp,     r3)
+        self.hole(l / 2,  3 * sp,     r2)  # bottom-centre medium hole
+
+        self.hole(sp,     s - 3 * sp, r3)
+        self.hole(sp,     3 * sp,     r3)
+
+        self.hole(sp,         s - sp,     r3)
+        self.hole(sp,         s - 2 * sp, r3)
+        self.hole(2 * sp,     s - sp,     r3)
+
+        # Bottom-right corner L-cluster and bottom-left corner L-cluster.
+        self.hole(l - sp,     sp,         r3)
+        self.hole(l - sp,     2 * sp,     r3)
+        self.hole(l - 2 * sp, sp,         r3)
+
+        self.hole(sp,         sp,         r3)
+        self.hole(sp,         2 * sp,     r3)
+        self.hole(2 * sp,     sp,         r3)
 
     def drawAlignmentHoles(self, s, l, text):
         """Cut and etch alignment features into a side panel for stacking hexagons.
@@ -234,61 +259,38 @@ class HexagonBox(BayonetBox):
         @param l    - Panel width (slant length l from render()).
         @param text - Unused; kept for API compatibility.
         """
-        h = self.h
-        spacer = 15  # minimum clearance from panel edges, in mm
+        sp = self._SPACER
+        r2 = self._R2
+        r3 = self._R3
 
         # Three large round through-holes along the vertical centre line.
-        # r1 is sized to leave 'spacer' clearance above and below.
-        r1 = (h - spacer - spacer) / 2
+        # r1 is sized to leave _SPACER clearance above and below.
+        r1 = (self.h - 2 * sp) / 2
         self.hole(l / 2, s / 2,     r1)  # vertical centre
         self.hole(l / 2, s / 5,     r1)  # lower fifth
         self.hole(l / 2, 4 * s / 5, r1)  # upper fifth
 
         # Medium round holes used as alignment-pin receivers, mirrored left/right.
-        r2 = 12.5
-        self.hole(l - r2 / 2 - spacer, 7 * s / 20,  r2)  # right, lower band
-        self.hole(l - r2 / 2 - spacer, 13 * s / 20, r2)  # right, upper band
-        self.hole(spacer + r2 / 2,     7 * s / 20,  r2)  # left,  lower band
-        self.hole(spacer + r2 / 2,     13 * s / 20, r2)  # left,  upper band
+        self.hole(l - r2 / 2 - sp, 7 * s / 20,  r2)  # right, lower band
+        self.hole(l - r2 / 2 - sp, 13 * s / 20, r2)  # right, upper band
+        self.hole(sp + r2 / 2,     7 * s / 20,  r2)  # left,  lower band
+        self.hole(sp + r2 / 2,     13 * s / 20, r2)  # left,  upper band
 
-        # Small registration dots flanking each medium hole (r3 = 3 mm pilot holes).
-        r3 = 3
+        # Small registration dots flanking each medium hole (r3 pilot holes).
         # Four dots around the lower-band medium holes.
-        self.hole(l - spacer, 7 * s / 20 + 2 * spacer, r3)
-        self.hole(l - spacer, 7 * s / 20 - 2 * spacer, r3)
-        self.hole(spacer,     7 * s / 20 + 2 * spacer, r3)
-        self.hole(spacer,     7 * s / 20 - 2 * spacer, r3)
+        self.hole(l - sp, 7 * s / 20 + 2 * sp, r3)
+        self.hole(l - sp, 7 * s / 20 - 2 * sp, r3)
+        self.hole(sp,     7 * s / 20 + 2 * sp, r3)
+        self.hole(sp,     7 * s / 20 - 2 * sp, r3)
 
         # Four dots around the upper-band medium holes.
-        self.hole(l - spacer, 13 * s / 20 + 2 * spacer, r3)
-        self.hole(l - spacer, 13 * s / 20 - 2 * spacer, r3)
-        self.hole(spacer,     13 * s / 20 + 2 * spacer, r3)
-        self.hole(spacer,     13 * s / 20 - 2 * spacer, r3)
+        self.hole(l - sp, 13 * s / 20 + 2 * sp, r3)
+        self.hole(l - sp, 13 * s / 20 - 2 * sp, r3)
+        self.hole(sp,     13 * s / 20 + 2 * sp, r3)
+        self.hole(sp,     13 * s / 20 - 2 * sp, r3)
 
-        # Corner registration clusters (top-right, top-left, bottom-right, bottom-left).
-        self.hole(l - spacer,     s - spacer,     r3)
-        self.hole(l - spacer,     s - 2 * spacer, r3)
-        self.hole(l - 2 * spacer, s - spacer,     r3)
-
-        self.hole(l - spacer, s - 3 * spacer, r3)
-        self.hole(l / 2,      s - 3 * spacer, r2)  # top-centre medium hole
-        self.hole(l - spacer, 3 * spacer,     r3)
-        self.hole(l / 2,      3 * spacer,     r2)  # bottom-centre medium hole
-
-        self.hole(spacer,         s - 3 * spacer, r3)
-        self.hole(spacer,         3 * spacer,     r3)
-
-        self.hole(spacer,         s - spacer,     r3)
-        self.hole(spacer,         s - 2 * spacer, r3)
-        self.hole(2 * spacer,     s - spacer,     r3)
-
-        self.hole(l - spacer,     spacer,         r3)
-        self.hole(l - spacer,     2 * spacer,     r3)
-        self.hole(l - 2 * spacer, spacer,         r3)
-
-        self.hole(spacer,         spacer,         r3)
-        self.hole(spacer,         2 * spacer,     r3)
-        self.hole(2 * spacer,     spacer,         r3)
+        # Corner group-of-8 clusters (see _drawCornerGroup8 for layout details).
+        self._drawCornerGroup8(s, l)
 
     def drawAlignmentHolesLong(self, s, l, text):
         """Cut and etch alignment features into the trapezoid long back wall.
@@ -318,12 +320,10 @@ class HexagonBox(BayonetBox):
         @param l    - Panel width (slant length l from render()).
         @param text - Unused; kept for API compatibility.
         """
-        h = self.h
-        spacer = 15  # minimum clearance from panel edges, in mm
-
-        r1 = (h - spacer - spacer) / 2
-        r2 = 12.5
-        r3 = 3
+        sp = self._SPACER
+        r2 = self._R2
+        r3 = self._R3
+        r1 = (self.h - 2 * sp) / 2
 
         # s_half is one standard-wall side length.  Applying the standard wall's
         # fractional positions to s_half (rather than s) makes every hole on the
@@ -345,42 +345,16 @@ class HexagonBox(BayonetBox):
         for frac in (7/20, 13/20):
             for y in (frac * s_half, s - frac * s_half):
                 # Medium alignment-pin receivers, mirrored left/right.
-                self.hole(l - r2 / 2 - spacer, y, r2)  # right medium
-                self.hole(spacer + r2 / 2,     y, r2)  # left medium
+                self.hole(l - r2 / 2 - sp, y, r2)  # right medium
+                self.hole(sp + r2 / 2,     y, r2)  # left medium
                 # Small registration dots flanking each medium hole.
-                self.hole(l - spacer, y + 2 * spacer, r3)
-                self.hole(l - spacer, y - 2 * spacer, r3)
-                self.hole(spacer,     y + 2 * spacer, r3)
-                self.hole(spacer,     y - 2 * spacer, r3)
+                self.hole(l - sp, y + 2 * sp, r3)
+                self.hole(l - sp, y - 2 * sp, r3)
+                self.hole(sp,     y + 2 * sp, r3)
+                self.hole(sp,     y - 2 * sp, r3)
 
-        # Corner registration clusters — identical to drawAlignmentHoles.
-        # These are the "group-of-8": 8 small holes per end (4 per corner, forming
-        # an L-shape), each pair of corners surrounding one central medium hole.
-        # All positions use fixed spacer offsets so the clusters sit the same
-        # physical distance from the panel edges regardless of panel width.
-        self.hole(l - spacer,     s - spacer,     r3)
-        self.hole(l - spacer,     s - 2 * spacer, r3)
-        self.hole(l - 2 * spacer, s - spacer,     r3)
-
-        self.hole(l - spacer, s - 3 * spacer, r3)
-        self.hole(l / 2,      s - 3 * spacer, r2)  # top-centre medium hole
-        self.hole(l - spacer, 3 * spacer,     r3)
-        self.hole(l / 2,      3 * spacer,     r2)  # bottom-centre medium hole
-
-        self.hole(spacer,         s - 3 * spacer, r3)
-        self.hole(spacer,         3 * spacer,     r3)
-
-        self.hole(spacer,         s - spacer,     r3)
-        self.hole(spacer,         s - 2 * spacer, r3)
-        self.hole(2 * spacer,     s - spacer,     r3)
-
-        self.hole(l - spacer,     spacer,         r3)
-        self.hole(l - spacer,     2 * spacer,     r3)
-        self.hole(l - 2 * spacer, spacer,         r3)
-
-        self.hole(spacer,         spacer,         r3)
-        self.hole(spacer,         2 * spacer,     r3)
-        self.hole(2 * spacer,     spacer,         r3)
+        # Corner group-of-8 clusters — same layout as drawAlignmentHoles.
+        self._drawCornerGroup8(s, l)
 
     def drawKites(self, r, joint_type, isTrapezoid):
         """Draw six kite-shaped cutouts inside the hexagonal spoke bottom panel.
@@ -660,12 +634,11 @@ class HexagonBox(BayonetBox):
         Handles outside vs inside measurement modes and all supported
         top/bottom style variants.
         """
-        r0, r1, h, n, isTrapezoid = self.radius, self.radius, self.h, self.n, self.trapezoid
+        r, h, n, isTrapezoid = self.radius, self.h, self.n, self.trapezoid
 
         if self.outside:
             # Convert outside measurements to inside by subtracting material thickness.
-            r0 = r0 - self.thickness / math.cos(math.radians(360 / (2 * n)))
-            r1 = r1 - self.thickness / math.cos(math.radians(360 / (2 * n)))
+            r -= self.thickness / math.cos(math.radians(360 / (2 * n)))
             if self.top == "none":
                 h = self.adjustSize(h, False)
             elif "lid" in self.top and self.top != "angled lid":
@@ -675,46 +648,40 @@ class HexagonBox(BayonetBox):
 
         t = self.thickness
 
-        r0, sh0, side0 = self.regularPolygon(n, radius=r0)
-        r1, sh1, side1 = self.regularPolygon(n, radius=r1)
+        # Top and bottom radii are always equal, so a single regularPolygon call
+        # suffices.  The taper scaffold (r0/r1, a, beta, d_top/d_bottom) from the
+        # original starter-template geometry reduces to zero-taper constants and
+        # has been removed.
+        r, _, side = self.regularPolygon(n, radius=r)
 
-        # Capture the original side lengths before shrinking.  side0_orig is used
-        # for alignment-hole position ratios; side1_orig is needed to compute the
-        # correct width of the long back wall in trapezoid mode (that wall spans
-        # two side-lengths so its trimmed width = 2*side_orig - 2*t, not 2*side).
-        side0_orig = side0
-        side1_orig = side1
+        # Capture the original side length before shrinking — used for alignment-hole
+        # position ratios and for computing the long trapezoid back-wall width.
+        side_orig = side
 
         # Subtract two thicknesses from each side so finger joints fit flush.
-        side0 = side0 - 2 * t
-        side1 = side1 - 2 * t
+        side -= 2 * t
 
-        # Slant length of the tapered side walls.
-        l = ((r0 - r1) ** 2 + h ** 2) ** 0.5
-        # Taper angle (degrees): how much the side panels lean inward.
-        a = math.degrees(math.asin((side1 - side0) / 2 / l))
-        # Dihedral correction angle between adjacent side panels.
-        phi = 180 - 2 * math.degrees(
-            math.asin(math.cos(math.pi / n) / math.cos(math.radians(a))))
+        # Side-wall height equals box height (no taper — l simplifies from
+        # sqrt((r0−r1)²+h²) to h when r0=r1).
+        l = h
+        # Dihedral correction angle between adjacent side panels (taper angle = 0).
+        phi = 180 - 2 * math.degrees(math.asin(math.cos(math.pi / n)))
 
-        # Finger-joint settings for side-to-side joints (accounts for dihedral angle phi).
-        fingerJointSettings = copy.deepcopy(self.edges["f"].settings)
-        fingerJointSettings.setValues(self.thickness, angle=phi)
-        fingerJointSettings.edgeObjects(self, chars="gGH")
+        # Register custom finger-joint edge objects.  Each call mutates self.edges
+        # as a side effect; the returned settings object is not used afterwards,
+        # so it is assigned to _ to make the write-only pattern explicit.
+        _ = copy.deepcopy(self.edges["f"].settings)
+        _.setValues(self.thickness, angle=phi)
+        _.edgeObjects(self, chars="gGH")
 
-        beta = math.degrees(math.atan((sh1 - sh0) / h))
-        angle_bottom = 90 + beta
-        angle_top = 90 - beta
+        # Top and bottom panels are parallel (no taper), so both use angle=90.
+        _ = copy.deepcopy(self.edges["f"].settings)
+        _.setValues(self.thickness, angle=90)
+        _.edgeObjects(self, chars="yYH")
 
-        # Finger-joint settings for the bottom panel (angled to match taper).
-        fingerJointSettings = copy.deepcopy(self.edges["f"].settings)
-        fingerJointSettings.setValues(self.thickness, angle=angle_bottom)
-        fingerJointSettings.edgeObjects(self, chars="yYH")
-
-        # Finger-joint settings for the top panel (mirror of the bottom angle).
-        fingerJointSettings = copy.deepcopy(self.edges["f"].settings)
-        fingerJointSettings.setValues(self.thickness, angle=angle_top)
-        fingerJointSettings.edgeObjects(self, chars="zZH")
+        _ = copy.deepcopy(self.edges["f"].settings)
+        _.setValues(self.thickness, angle=90)
+        _.edgeObjects(self, chars="zZH")
 
         def drawTop(r, top_type, joint_type):
             """Render one face (top or bottom) as the appropriate panel style.
@@ -770,8 +737,8 @@ class HexagonBox(BayonetBox):
 
         with self.saved_context():
             # Draw bottom panel first, then top (order affects SVG layout).
-            drawTop(r0, self.bottom, "yY")
-            drawTop(r1, self.top, "zZ")
+            drawTop(r, self.bottom, "yY")
+            drawTop(r, self.top, "zZ")
             # Support walls must be placed inside this saved_context block so
             # they land after the face panels in the layout stream.  Outside the
             # block the cursor reverts to its pre-block position, causing the
@@ -783,9 +750,9 @@ class HexagonBox(BayonetBox):
         # In trapezoid mode the panel is half-height, so use the trapezoid wall
         # for space reservation to avoid excess vertical whitespace in the layout.
         if isTrapezoid:
-            self.drawTrapezoidWall(r=max(r0, r1), edges_char='F', move="up only")
+            self.drawTrapezoidWall(r=r, edges_char='F', move="up only")
         else:
-            self.regularPolygonWall(corners=n, r=max(r0, r1), edges='F', move="up only")
+            self.regularPolygonWall(corners=n, r=r, edges='F', move="up only")
 
         fingers_top = self.top in ("closed", "hole", "angled hole",
                                    "round lid", "angled lid2", "bayonet mount")
@@ -795,95 +762,68 @@ class HexagonBox(BayonetBox):
         t_ = self.edges["G"].startwidth()
         bottom_edge = ('y' if fingers_bottom else 'e')
         top_edge = ('z' if fingers_top else 'e')
-        d_top = max(0, -t_ * math.sin(math.radians(a)))
-        d_bottom = max(0.0, t_ * math.sin(math.radians(a)))
-        l -= (d_top + d_bottom)
+        # No taper: d_top = d_bottom = 0, so l is unchanged after this point.
 
         # Alignment-hole callback shared by all hex side panels.
-        # moveTo(0, -t) compensates for the 2*t trimming of side0: the natural
+        # moveTo(0, -t) compensates for the 2*t trimming of side: the natural
         # callback origin sits t to the left of where it was before trimming,
         # so shifting t rightward (−y in local coords) restores centre alignment
         # when new and old panels are stacked and centred.
         def draw_aligned_holes():
             self.moveTo(0, -self.thickness)
-            self.drawAlignmentHoles(side0_orig, l, "A")
+            self.drawAlignmentHoles(side_orig, l, "A")
 
         # Alignment-hole callback for the trapezoid long back wall.
         # The long wall spans two hex-side-lengths, so its pre-shrink width is
-        # 2*side0_orig.  Passing that as the `s` parameter to drawAlignmentHoles
-        # scales all fractional hole positions (corner clusters, centre-line
-        # through-holes, mid-band pin holes) proportionally to the wider panel.
+        # 2*side_orig.  Passing that as the `s` parameter scales all fractional
+        # hole positions proportionally to the wider panel.
         def draw_aligned_holes_long():
             self.moveTo(0, -self.thickness)
-            self.drawAlignmentHolesLong(2 * side0_orig, l, "A")
+            self.drawAlignmentHolesLong(2 * side_orig, l, "A")
+
+        # Standard stepped-tab side-panel border.  With no taper, d_top = d_bottom = 0
+        # and angle a = 0, so the border reduces to right-angle turns and the two
+        # inset steps are zero-length.  The shape is still defined explicitly (rather
+        # than a plain rectangle) so that the E-edge finger-joint tabs are placed
+        # correctly by polygonWall.
+        borders0 = [side, 90,
+                    0, -90, t_, 90, l, 90, t_, -90, 0,
+                    90, side, 90,
+                    0, -90, t_, 90, l, 90, t_, -90, 0, 90]
+        e0 = bottom_edge + 'E' + top_edge + 'E'
 
         if isTrapezoid:
             # Trapezoid side walls: 4 panels instead of 6.
             #
             #   1 × long back wall  — spans the join edge (length 2r)
             #   3 × standard walls  — one each for right slant, short front, left slant
-            #                         (all width = side0, same geometry as hex panels)
             #
-            # The long back wall uses the same stepped-tab border profile as the
-            # hex panels (borders0) but with a width of 2*side_orig − 2*t.  This
-            # wider panel connects to the two slant walls via the same E-edge tabs.
-            e0 = bottom_edge + 'E' + top_edge + 'E'
 
-            # Standard hex side-panel border (width = side0 / side1).
-            borders0 = [side0, 90 - a,
-                        d_bottom, -90, t_, 90, l, 90, t_, -90, d_top,
-                        90 + a, side1, 90 + a,
-                        d_top, -90, t_, 90, l, 90, t_, -90, d_bottom, 90 - a]
+            # Long back-wall border.  Width is 2*side_orig − 2*t because the panel
+            # spans two hex-side-lengths with finger-joint notches only at the two
+            # outer ends (no junction at the midpoint in a trapezoid box).
+            side_long = 2 * side_orig - 2 * t
+            borders_long = [side_long, 90,
+                            0, -90, t_, 90, l, 90, t_, -90, 0,
+                            90, side_long, 90,
+                            0, -90, t_, 90, l, 90, t_, -90, 0, 90]
 
-            # Long back-wall border.  The bottom/top widths are 2*side_orig − 2*t
-            # because the panel spans two hex-side-lengths and has only one finger-
-            # joint notch at each end (not at the midpoint — there is no wall
-            # junction there in a trapezoid box).
-            side0_long = 2 * side0_orig - 2 * t
-            side1_long = 2 * side1_orig - 2 * t
-            borders_long = [side0_long, 90 - a,
-                            d_bottom, -90, t_, 90, l, 90, t_, -90, d_top,
-                            90 + a, side1_long, 90 + a,
-                            d_top, -90, t_, 90, l, 90, t_, -90, d_bottom, 90 - a]
-
-            # Long back wall (1 panel).  The callback list mirrors the standard
-            # walls: index 0 fires at the bottom edge (drawMarkers2 label),
-            # index 1 fires at the first stepped-tab segment where the alignment
-            # holes are drawn relative to the full panel dimensions.
+            # Long back wall (1 panel).  callback[1] fires at the first stepped-tab
+            # segment where the alignment holes are drawn; callback[0] is None
+            # (the former drawMarkers2 stub has been removed).
             self.polygonWall(borders_long, edge=e0, correct_corners=False, move="right",
-                             callback=[lambda: self.drawMarkers2(2 * side0_orig, l, "A"),
-                                       draw_aligned_holes_long])
+                             callback=[None, draw_aligned_holes_long])
 
             # Three standard-width walls (right slant, front short, left slant).
             for _ in range(3):
                 self.polygonWall(borders0, edge=e0, correct_corners=False, move="right",
-                                 callback=[lambda: self.drawMarkers2(side0_orig, l, "A"),
-                                           draw_aligned_holes])
+                                 callback=[None, draw_aligned_holes])
 
-        elif n % 2:
-            # Odd number of sides: all side panels are identical.
-            e = bottom_edge + 'ege' + top_edge + 'eeGee'
-            borders = [side0, 90 - a, d_bottom, 0, l, 0, d_top, 90 + a, side1,
-                       90 + a, d_top, -90, t_, 90, l, 90, t_, -90, d_bottom, 90 - a]
-            for _ in range(n):
-                self.polygonWall(borders, edge=e, correct_corners=False, move="right")
         else:
-            # Even number of sides: all panels use the stepped-tab profile.
-            # (borders1 / e1 were a planned alternating-panel variant that was
-            # never activated; the single borders0 / e0 pattern is correct here.)
-            borders0 = [side0, 90 - a,
-                        d_bottom, -90, t_, 90, l, 90, t_, -90, d_top,
-                        90 + a, side1, 90 + a,
-                        d_top, -90, t_, 90, l, 90, t_, -90, d_bottom, 90 - a]
-            e0 = bottom_edge + 'E' + top_edge + 'E'
-
-            for _ in range(n // 2):
+            # Even number of sides (n=6): all panels use the stepped-tab profile.
+            for _ in range(n):
                 self.polygonWall(borders0, edge=e0, correct_corners=False, move="right",
-                                 callback=[lambda: self.drawMarkers2(side0_orig, l, "A"),
-                                           draw_aligned_holes])
-                self.polygonWall(borders0, edge=e0, correct_corners=False, move="right",
-                                 callback=[lambda: self.drawMarkers2(side0_orig, l, "A"),
-                                           draw_aligned_holes])
+                                 callback=[None, draw_aligned_holes])
 
         # Append a reference panel that engraves all parameter values onto a
         # flat piece of stock — useful for reproducing or identifying a cut job.
