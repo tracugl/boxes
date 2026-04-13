@@ -290,6 +290,87 @@ class HexagonBox(BayonetBox):
         self.hole(spacer,         2 * spacer,     r3)
         self.hole(2 * spacer,     spacer,         r3)
 
+    def drawAlignmentHolesLong(self, s, l, text):
+        """Cut and etch alignment features into the trapezoid long back wall.
+
+        The long back wall spans two hex-side-lengths (s = 2*side0_orig), so
+        placing the same three big holes as the standard wall would leave large
+        empty regions.  This method fills the extra width with a denser, custom
+        pattern centred on the same axis.
+
+        Pattern along the s-axis (bottom → top):
+            group-of-8  –  BIG  –  G6  –  BIG  –  G6  –  BIG(centre)
+                        –  G6   –  BIG –  G6   –  BIG  –  group-of-8
+
+        Interior elements are distributed at even tenths of s so the spacing is
+        exactly half of the standard wall's s/5 step — visually consistent and
+        physically comfortable at any reasonable box radius.
+
+        The corner group-of-8 clusters are copied verbatim from drawAlignmentHoles
+        and use fixed spacer offsets, so they sit the same physical distance from
+        each edge regardless of how wide the panel is.
+
+        @param s    - Pre-shrink panel height (2*side0_orig for the long wall).
+        @param l    - Panel width (slant length l from render()).
+        @param text - Unused; kept for API compatibility.
+        """
+        h = self.h
+        spacer = 15  # minimum clearance from panel edges, in mm
+
+        r1 = (h - spacer - spacer) / 2
+        r2 = 12.5
+        r3 = 3
+
+        # Five large through-holes along the vertical centre line (x = l/2).
+        # Distributed at odd-tenth fractions of s so they sit between the G6
+        # groups and alternate cleanly: BIG, G6, BIG, G6, BIG_centre, ...
+        for num in (1, 3, 5, 7, 9):
+            self.hole(l / 2, num * s / 10, r1)
+
+        # Four groups-of-6 (2 medium + 4 small dots), one at each even-tenth
+        # fraction of s.  Each group uses the same left/right x-positions as the
+        # standard wall: medium holes inset by r2/2+spacer from each edge, small
+        # dots at ±2*spacer above and below each medium hole.
+        for num in (2, 4, 6, 8):
+            y = num * s / 10
+            # Medium alignment-pin receivers, mirrored left/right.
+            self.hole(l - r2 / 2 - spacer, y, r2)  # right medium
+            self.hole(spacer + r2 / 2,     y, r2)  # left medium
+            # Small registration dots flanking each medium hole.
+            self.hole(l - spacer, y + 2 * spacer, r3)
+            self.hole(l - spacer, y - 2 * spacer, r3)
+            self.hole(spacer,     y + 2 * spacer, r3)
+            self.hole(spacer,     y - 2 * spacer, r3)
+
+        # Corner registration clusters — identical to drawAlignmentHoles.
+        # These are the "group-of-8": 8 small holes per end (4 per corner, forming
+        # an L-shape), each pair of corners surrounding one central medium hole.
+        # All positions use fixed spacer offsets so the clusters sit the same
+        # physical distance from the panel edges regardless of panel width.
+        self.hole(l - spacer,     s - spacer,     r3)
+        self.hole(l - spacer,     s - 2 * spacer, r3)
+        self.hole(l - 2 * spacer, s - spacer,     r3)
+
+        self.hole(l - spacer, s - 3 * spacer, r3)
+        self.hole(l / 2,      s - 3 * spacer, r2)  # top-centre medium hole
+        self.hole(l - spacer, 3 * spacer,     r3)
+        self.hole(l / 2,      3 * spacer,     r2)  # bottom-centre medium hole
+
+        self.hole(spacer,         s - 3 * spacer, r3)
+        self.hole(spacer,         3 * spacer,     r3)
+
+        self.hole(spacer,         s - spacer,     r3)
+        self.hole(spacer,         s - 2 * spacer, r3)
+        self.hole(2 * spacer,     s - spacer,     r3)
+
+        self.hole(l - spacer,     spacer,         r3)
+        self.hole(l - spacer,     2 * spacer,     r3)
+        self.hole(l - 2 * spacer, spacer,         r3)
+
+        self.hole(spacer,         spacer,         r3)
+        self.hole(spacer,         2 * spacer,     r3)
+        self.hole(2 * spacer,     spacer,         r3)
+
     def drawKites(self, r, joint_type, isTrapezoid):
         """Draw six kite-shaped cutouts inside the hexagonal spoke bottom panel.
 
@@ -710,6 +791,15 @@ class HexagonBox(BayonetBox):
             self.moveTo(0, -self.thickness)
             self.drawAlignmentHoles(side0_orig, l, "A")
 
+        # Alignment-hole callback for the trapezoid long back wall.
+        # The long wall spans two hex-side-lengths, so its pre-shrink width is
+        # 2*side0_orig.  Passing that as the `s` parameter to drawAlignmentHoles
+        # scales all fractional hole positions (corner clusters, centre-line
+        # through-holes, mid-band pin holes) proportionally to the wider panel.
+        def draw_aligned_holes_long():
+            self.moveTo(0, -self.thickness)
+            self.drawAlignmentHolesLong(2 * side0_orig, l, "A")
+
         if isTrapezoid:
             # Trapezoid side walls: 4 panels instead of 6.
             #
@@ -739,8 +829,13 @@ class HexagonBox(BayonetBox):
                             90 + a, side1_long, 90 + a,
                             d_top, -90, t_, 90, l, 90, t_, -90, d_bottom, 90 - a]
 
-            # Long back wall (1 panel).
-            self.polygonWall(borders_long, edge=e0, correct_corners=False, move="right")
+            # Long back wall (1 panel).  The callback list mirrors the standard
+            # walls: index 0 fires at the bottom edge (drawMarkers2 label),
+            # index 1 fires at the first stepped-tab segment where the alignment
+            # holes are drawn relative to the full panel dimensions.
+            self.polygonWall(borders_long, edge=e0, correct_corners=False, move="right",
+                             callback=[lambda: self.drawMarkers2(2 * side0_orig, l, "A"),
+                                       draw_aligned_holes_long])
 
             # Three standard-width walls (right slant, front short, left slant).
             for _ in range(3):
