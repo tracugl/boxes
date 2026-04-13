@@ -59,11 +59,8 @@ class HexagonBox(BayonetBox):
 
         self.buildArgParser("h", "outside")
         self.argparser.add_argument(
-            "--radius_bottom", action="store", type=float, default=500.0,
-            help="inner radius of the box bottom (at the corners)")
-        self.argparser.add_argument(
-            "--radius_top", action="store", type=float, default=500.0,
-            help="inner radius of the box top (at the corners)")
+            "--radius", action="store", type=float, default=500.0,
+            help="inner radius of the hexagon (at the corners)")
         self.argparser.add_argument(
             "--top", action="store", type=str, default="closed",
             choices=["closed"],
@@ -212,7 +209,7 @@ class HexagonBox(BayonetBox):
         """
         # Unused reference variables kept for potential future use.
         h = self.h
-        r = self.radius_bottom
+        r = self.radius
 
         # self.hole(l-10, s-10, 12)
         # self.rectangularHole(r/2, h/2, 5, 5, r=0, center_x=True, center_y=True)
@@ -657,10 +654,10 @@ class HexagonBox(BayonetBox):
     def render(self):
         """Generate all panels and walls that make up the hexagon box.
 
-        Handles tapered geometry (different top and bottom radii), outside vs
-        inside measurement modes, and all supported top/bottom style variants.
+        Handles outside vs inside measurement modes and all supported
+        top/bottom style variants.
         """
-        r0, r1, h, n, isTrapezoid = self.radius_bottom, self.radius_top, self.h, self.n, self.trapezoid
+        r0, r1, h, n, isTrapezoid = self.radius, self.radius, self.h, self.n, self.trapezoid
 
         if self.outside:
             # Convert outside measurements to inside by subtracting material thickness.
