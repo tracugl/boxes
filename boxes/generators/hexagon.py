@@ -23,10 +23,24 @@ import argparse
 import copy
 import datetime
 import math
+from collections import namedtuple
+
+import rectpack
+from rectpack import newPacker, PackingBin
 
 from boxes import Boxes, edges, boolarg
 from boxes.generators.bayonetbox import BayonetBox
 from boxes.Color import *
+
+# Lightweight record bundling a single cuttable component for sheet packing.
+# label   — unique string identifier (e.g. 'hex_bottom', 'support_3')
+# kind    — component category: 'hex_panel' | 'support' | 'side' | 'reference'
+# w, h    — natural bounding-box dimensions in mm, *before* the framework adds
+#           its own spacing (i.e. the values passed to self.move() by the draw
+#           method, which adds self.spacing internally).
+# draw_fn — zero-argument callable that draws this component using move=None
+#           (no cursor advance); the caller is responsible for ctx.translate.
+_ComponentSpec = namedtuple('_ComponentSpec', ['label', 'kind', 'w', 'h', 'draw_fn'])
 
 
 class HexagonBox(BayonetBox):
@@ -79,6 +93,39 @@ class HexagonBox(BayonetBox):
         self.argparser.add_argument(
             "--trapezoid", action="store", type=boolarg, default=False,
             help="If true, only draw a half-hexagon.")
+
+        # ── Sheet-layout / nesting arguments ─────────────────────────────────
+        # When sheet_width and sheet_height are both non-zero the generator
+        # switches from its default left-to-right row layout to a two-pass
+        # 2D bin-packing layout: first measure every component's bounding box,
+        # then use rectpack to pack them onto sheets of the specified size, and
+        # finally render each component at its packed position.  When either
+        # dimension is 0 the legacy unbounded layout is used unchanged.
+
+        self.argparser.add_argument(
+            "--sheet_width", action="store", type=float, default=0.0,
+            help="Width of one MDF sheet in mm. "
+                 "When non-zero (with sheet_height), components are packed onto "
+                 "sheets of this size. 0 = legacy unbounded layout.")
+        self.argparser.add_argument(
+            "--sheet_height", action="store", type=float, default=0.0,
+            help="Height of one MDF sheet in mm. Required with sheet_width.")
+        self.argparser.add_argument(
+            "--sheet_margin", action="store", type=float, default=2.0,
+            help="Minimum clearance added around every component before packing (mm).")
+        self.argparser.add_argument(
+            "--nest_algo", action="store", type=str, default="SkylineBlWm",
+            help="rectpack 2D bin-packing algorithm name (see svgmerge.py "
+                 "PACK_ALGO_CHOICES for valid values). Default: SkylineBlWm.")
+        self.argparser.add_argument(
+            "--nest_rotation", action="store", type=boolarg, default=False,
+            help="Allow 90-degree rotation of components during packing. "
+                 "Can improve sheet utilisation but rotation rendering is not "
+                 "yet fully implemented; leave False for now.")
+        self.argparser.add_argument(
+            "--nest_in_waste", action="store", type=boolarg, default=True,
+            help="Attempt to nest support walls inside kite cavities on hex "
+                 "panel sheets. Only applies when bottom=spoke.")
 
         self.lugs = 6
         self.n = 6
@@ -716,6 +763,421 @@ class HexagonBox(BayonetBox):
         # Second call: advance the layout cursor past the rendered panel.
         self.move(panel_width, panel_height, move)
 
+    # ── Sheet-layout helpers ──────────────────────────────────────────────────
+
+    def _measure_component(self, draw_call):
+        """Measure one component's bounding box without drawing it.
+
+        Temporarily replaces self.move with an intercepting wrapper that
+        captures the (width, height) values on the first ``before=True`` call —
+        these are the component's natural dimensions before the framework adds
+        its own spacing internally.  The draw_call must use ``move='right only'``
+        so that no ctx.save() is pushed and the canvas state is not disturbed.
+
+        @param draw_call - Zero-argument callable that invokes one drawing
+                           method with ``move='right only'``.
+        @returns (w, h) tuple in mm — component natural dimensions (pre-spacing).
+        """
+        captured = {}
+        _orig = self.move
+
+        def _intercept(x, y, where, before=False, label=""):
+            # Capture only the first before=True call — that belongs to the
+            # top-level component.  Any nested calls (e.g. from callbacks that
+            # invoke sub-components) are ignored via the 'not captured' guard.
+            if before and not captured:
+                captured['w'] = x
+                captured['h'] = y
+            return _orig(x, y, where, before=before, label=label)
+
+        self.move = _intercept
+        try:
+            draw_call()
+        finally:
+            # Always restore the original method even if draw_call raises.
+            self.move = _orig
+
+        return captured.get('w', 0.0), captured.get('h', 0.0)
+
+    def _kite_inscribed_rects(self, r):
+        """Return the axis-aligned bounding box of each kite cavity.
+
+        Replicates the kite geometry from drawKites() analytically using the
+        same ``r``, ``edge_width``, and ``spoke_width`` parameters.  The
+        returned positions are expressed in the hex-centre coordinate frame
+        (origin at the centre of the hexagon), which is the same frame used
+        by the kite vertex coordinates in drawKites().
+
+        For each kite the method returns its centroid and its axis-aligned
+        bounding-box dimensions.  A component centred at the kite centroid
+        and smaller than ``bb_w * SAFETY × bb_h * SAFETY`` (where SAFETY ≈
+        0.65 for diamond-shaped kites) will fit inside the kite polygon.
+
+        Returns an empty list when the frame or spoke geometry degenerates
+        (same conditions that cause drawKites to fall back to a solid panel).
+
+        @param r - Inner corner radius of the hexagon bottom panel (mm).
+        @returns List of (cx, cy, bb_w, bb_h) tuples — one per kite.
+        """
+        sqrt3 = math.sqrt(3)
+        cos30 = sqrt3 / 2.0
+
+        A_outer = r * cos30
+        A_inner = A_outer - self.edge_width
+        if A_inner <= 0:
+            return []
+
+        R_inner = A_inner / cos30
+        s = (A_inner / sqrt3) - (self.spoke_width / 2.0)
+        if s <= 0:
+            return []
+
+        # Master kite vertices — apex pointing upward (+y), before 30° rotation.
+        # These match the P1..P4 definitions in drawKites() exactly.
+        P1 = (0.0,             R_inner)
+        P2 = (s * sqrt3 / 2.0, R_inner - s / 2.0)
+        P3 = (0.0,             R_inner - 2.0 * s)
+        P4 = (-s * sqrt3 / 2.0, R_inner - s / 2.0)
+
+        def _rotate(pts, deg):
+            """Rotate a list of (x, y) points CCW around the origin."""
+            ang = math.radians(deg)
+            ca, sa = math.cos(ang), math.sin(ang)
+            return [(x * ca - y * sa, x * sa + y * ca) for x, y in pts]
+
+        # Apply the same 30° master alignment rotation used in drawKites.
+        kite_master = _rotate([P1, P2, P3, P4], 30)
+
+        result = []
+        for i in range(6):
+            verts = _rotate(kite_master, 60 * i)
+            xs = [v[0] for v in verts]
+            ys = [v[1] for v in verts]
+            min_x, max_x = min(xs), max(xs)
+            min_y, max_y = min(ys), max(ys)
+            cx = (min_x + max_x) / 2.0
+            cy = (min_y + max_y) / 2.0
+            bb_w = max_x - min_x
+            bb_h = max_y - min_y
+            result.append((cx, cy, bb_w, bb_h))
+
+        return result
+
+    # Safety factor applied to kite axis-aligned bounding boxes before
+    # checking component fit.  Kites are diamond-shaped, so their actual
+    # inscribed axis-aligned rectangle is roughly 65 % of the bounding box
+    # in each dimension.
+    _KITE_SAFETY = 0.65
+
+    def _pack_and_render(self, cut_components, ref_fn, ref_w, ref_h, r, isTrapezoid):
+        """Pack cut components onto MDF sheets and render them at packed positions.
+
+        Two-phase packing strategy
+        ──────────────────────────
+        Phase A  — Pack hex panels and side walls (all non-support components)
+                   using rectpack's SkylineBlWm algorithm (or the algorithm
+                   chosen via --nest_algo).  Supports are excluded from this
+                   phase so that kite cavities can be exploited first.
+
+        Phase B  — When ``--nest_in_waste`` is enabled and ``bottom=spoke``,
+                   compute the axis-aligned bounding box of every kite cavity
+                   from the phase-A hex-panel placements.  Greedily assign
+                   support walls to kite slots (first fit, no rotation).
+                   Remaining supports (those that did not fit any kite) are
+                   packed by a second rectpack pass that may open additional
+                   sheet bins appended after the phase-A sheets.
+
+        Sheet layout
+        ────────────
+        All cut-sheet zones are placed side-by-side horizontally in the single
+        SVG canvas, each preceded by a Color.OUTER_CUT border rectangle at the
+        exact sheet dimensions.  An info sheet (Color.ETCHING border + "DO NOT
+        CUT" label) follows the cut sheets and contains the reference panel.
+
+        Rendering
+        ─────────
+        Each component is drawn inside a saved_context() block: the context is
+        translated to the component's packed position, then the component's
+        draw_fn (which uses ``move=None``) is called.  ``move=None`` causes the
+        framework's move() to call ctx.save() / moveTo(spacing/2, spacing/2) /
+        ctx.restore() as usual, but without advancing the cursor — position
+        control is fully delegated to the outer ctx.translate().
+
+        @param cut_components - List of _ComponentSpec namedtuples (label, kind,
+                                w, h, draw_fn) for all cuttable parts.
+        @param ref_fn         - Zero-argument callable that draws the reference
+                                panel with move=None.
+        @param ref_w, ref_h   - Measured natural dimensions of the reference
+                                panel (mm, pre-spacing).
+        @param r              - Inner hex circumradius (mm), used to compute
+                                kite positions when nest_in_waste is True.
+        @param isTrapezoid    - Whether the box is in half-hexagon mode.
+        """
+        import math as _math   # local alias avoids shadowing outer scope math
+
+        sw        = int(self.sheet_width)
+        sh        = int(self.sheet_height)
+        margin    = self.sheet_margin
+        sp        = self.spacing
+        GAP       = 20          # mm gap between adjacent sheet zones in the SVG
+        # Fraction of kite bounding-box used as the available slot for nesting.
+        KITE_SF   = self._KITE_SAFETY
+
+        # ── Resolve packing algorithm ────────────────────────────────────────
+        try:
+            pack_algo = getattr(rectpack, self.nest_algo)
+        except AttributeError:
+            raise ValueError(
+                f"Unknown nest_algo '{self.nest_algo}'. "
+                "Check PACK_ALGO_CHOICES in boxes/svgmerge.py for valid names."
+            )
+
+        def _make_packer():
+            """Return a fresh newPacker configured with the user's algorithm."""
+            return newPacker(
+                rotation=False,   # rotation rendering not yet fully supported
+                pack_algo=pack_algo,
+                bin_algo=PackingBin.Global,
+            )
+
+        def _packed_rect_size(w, h):
+            """Round component dims up to integers including spacing and margin."""
+            return (
+                int(_math.ceil(w + sp + 2 * margin)),
+                int(_math.ceil(h + sp + 2 * margin)),
+            )
+
+        # ── Separate supports from primary components ────────────────────────
+        # Supports are held back so they can be tried in kite cavities first
+        # (Phase B).  All other components go into the primary rectpack run
+        # (Phase A).
+        primary   = [c for c in cut_components if c.kind != 'support']
+        supports  = [c for c in cut_components if c.kind == 'support']
+
+        # Sort primary components largest-area-first so the packer has the
+        # best chance of placing large hex panels before filling gaps.
+        primary = sorted(primary, key=lambda c: -(c.w * c.h))
+
+        # ── Phase A: pack hex panels + side walls ────────────────────────────
+        packer_a = _make_packer()
+        packer_a.add_bin(sw, sh, float("inf"))
+
+        for idx, comp in enumerate(primary):
+            pw, ph = _packed_rect_size(comp.w, comp.h)
+            if pw > sw or ph > sh:
+                raise ValueError(
+                    f"Component '{comp.label}' ({pw}×{ph} mm) is larger than "
+                    f"the sheet ({sw}×{sh} mm). Increase sheet dimensions or "
+                    f"reduce the box radius."
+                )
+            packer_a.add_rect(pw, ph, idx)
+
+        packer_a.pack()
+
+        # Build placement dict: primary-list-index → (bin_id, rx, ry)
+        placements_a = {}
+        for bid, abin in enumerate(packer_a):
+            for rect in abin:
+                placements_a[rect.rid] = (bid, rect.x, rect.y)
+
+        # Verify all primary components were placed.
+        for idx, comp in enumerate(primary):
+            if idx not in placements_a:
+                raise ValueError(
+                    f"Could not fit component '{comp.label}' onto any sheet. "
+                    "Check that its dimensions fit within the sheet size."
+                )
+
+        n_phase_a_bins = max(bid for bid, _, _ in placements_a.values()) + 1
+
+        # ── Phase B: kite-cavity nesting for support walls ───────────────────
+        # Compute the absolute position of every kite centroid on every sheet
+        # from the Phase-A hex-panel placements.
+        kite_nested_placements = {}   # support list index → (bin_id, abs_x, abs_y)
+        remaining_supports     = list(range(len(supports)))
+
+        do_kite_nesting = (
+            self.nest_in_waste
+            and self.bottom == "spoke"
+            and not isTrapezoid   # trapezoid has only 2 kites; skip for simplicity
+        )
+
+        if do_kite_nesting and supports:
+            kite_info = self._kite_inscribed_rects(r)
+
+            # Build a list of available kite slots from all Phase-A hex panels.
+            # Each slot carries the bin it belongs to and its absolute canvas
+            # position (bin-relative x/y + component translate offset).
+            # 'available' is a mutable list; we pop slots as they are consumed.
+            available_slots = []
+            for idx, comp in enumerate(primary):
+                if comp.kind != 'hex_panel':
+                    continue
+                bid, rx, ry = placements_a[idx]
+                # The framework's move(before=True, where=None) adds spacing/2
+                # then draws the component centred in its bounding box.
+                # Hex centre in canvas coords (approximate — symmetric polygon):
+                hex_cx = rx + sp / 2.0 + comp.w / 2.0
+                hex_cy = ry + sp / 2.0 + comp.h / 2.0
+                for kite_cx, kite_cy, bb_w, bb_h in kite_info:
+                    available_slots.append({
+                        'bid':     bid,
+                        'abs_x':   hex_cx + kite_cx,   # kite centroid, canvas
+                        'abs_y':   hex_cy + kite_cy,
+                        'slot_w':  bb_w * KITE_SF,     # conservative inscribed
+                        'slot_h':  bb_h * KITE_SF,
+                    })
+
+            # Greedy first-fit: for each support wall, try every available slot.
+            unassigned = []
+            for s_idx, comp in enumerate(supports):
+                # Support wall natural size including framework spacing.
+                needed_w = comp.w + sp
+                needed_h = comp.h + sp
+                placed = False
+                for slot_i, slot in enumerate(available_slots):
+                    fits = (
+                        needed_w <= slot['slot_w']
+                        and needed_h <= slot['slot_h']
+                    )
+                    if fits:
+                        # Centre the support wall at the kite centroid.
+                        draw_x = slot['abs_x'] - (comp.w + sp) / 2.0
+                        draw_y = slot['abs_y'] - (comp.h + sp) / 2.0
+                        kite_nested_placements[s_idx] = (slot['bid'], draw_x, draw_y)
+                        available_slots.pop(slot_i)
+                        placed = True
+                        break
+                if not placed:
+                    unassigned.append(s_idx)
+            remaining_supports = unassigned
+
+        # ── Phase C: pack remaining support walls ────────────────────────────
+        placements_c = {}    # support list index → (bin_id_offset_adjusted, rx, ry)
+
+        if remaining_supports:
+            supports_to_pack = [supports[i] for i in remaining_supports]
+            packer_c = _make_packer()
+            packer_c.add_bin(sw, sh, float("inf"))
+
+            for local_idx, comp in enumerate(supports_to_pack):
+                pw, ph = _packed_rect_size(comp.w, comp.h)
+                if pw > sw or ph > sh:
+                    raise ValueError(
+                        f"Support wall ({pw}×{ph} mm) is larger than the sheet "
+                        f"({sw}×{sh} mm)."
+                    )
+                packer_c.add_rect(pw, ph, local_idx)
+
+            packer_c.pack()
+
+            for bid, abin in enumerate(packer_c):
+                for rect in abin:
+                    orig_s_idx = remaining_supports[rect.rid]
+                    # Store the *local* bin ID (0-based within Phase C).  The
+                    # Phase-A offset is added during rendering so that this dict
+                    # can be used directly for n_total_cut_bins computation below.
+                    placements_c[orig_s_idx] = (bid, rect.x, rect.y)
+
+            for local_idx, comp in enumerate(supports_to_pack):
+                orig_s_idx = remaining_supports[local_idx]
+                if orig_s_idx not in placements_c:
+                    raise ValueError(
+                        f"Could not fit support wall '{comp.label}' onto any sheet."
+                    )
+
+        # n_total_cut_bins = Phase-A bins + Phase-C bins.
+        # placements_c holds *local* bin IDs (0-based within Phase C), so
+        # adding 1 to the max gives the Phase-C bin count directly.
+        n_total_cut_bins = n_phase_a_bins + (
+            max((bid for bid, _, _ in placements_c.values()), default=-1) + 1
+        )
+
+        # ── Rendering ────────────────────────────────────────────────────────
+        # All rendering happens in a single saved_context so that the cursor
+        # returns to its pre-render position after we finish.  Components are
+        # positioned by ctx.translate() before each draw_fn() call.
+        with self.saved_context():
+            # Shift to the drawing area origin (same offset that move() would
+            # apply to the first component in the normal layout path).
+            self.moveTo(sp / 2.0, sp / 2.0)
+
+            # ── Draw cut-sheet border rectangles ─────────────────────────────
+            # Border drawn first (behind components) at each bin's x-offset.
+            # Color.OUTER_CUT is the standard cut-line colour used everywhere.
+            self.set_source_color(Color.OUTER_CUT)
+            for bin_id in range(n_total_cut_bins):
+                x_off = bin_id * (sw + GAP)
+                with self.saved_context():
+                    self.moveTo(x_off, 0)
+                    self.ctx.rectangle(0, 0, sw, sh)
+                    self.ctx.stroke()
+
+            # ── Draw primary (non-support) components ─────────────────────────
+            for p_idx, comp in enumerate(primary):
+                bid, rx, ry = placements_a[p_idx]
+                x_off = bid * (sw + GAP)
+                with self.saved_context():
+                    self.moveTo(x_off + rx, ry)
+                    comp.draw_fn()
+
+            # ── Draw kite-nested support walls ───────────────────────────────
+            for s_idx, comp in enumerate(supports):
+                if s_idx not in kite_nested_placements:
+                    continue
+                bid, abs_x, abs_y = kite_nested_placements[s_idx]
+                x_off = bid * (sw + GAP)
+                with self.saved_context():
+                    # abs_x/abs_y are already in bin-local coords (not offset).
+                    self.moveTo(x_off + abs_x, abs_y)
+                    comp.draw_fn()
+
+            # ── Draw remaining (non-kite) support walls ───────────────────────
+            for s_idx, comp in enumerate(supports):
+                if s_idx not in placements_c:
+                    continue
+                local_bid, rx, ry = placements_c[s_idx]
+                # Phase-C local bin IDs are 0-based within Phase C; add the
+                # Phase-A count to get the absolute sheet index.
+                bid = n_phase_a_bins + local_bid
+                x_off = bid * (sw + GAP)
+                with self.saved_context():
+                    self.moveTo(x_off + rx, ry)
+                    comp.draw_fn()
+
+            # ── Info sheet: border + reference panel + "DO NOT CUT" label ────
+            info_x_off = n_total_cut_bins * (sw + GAP)
+            # Bounding box of the info sheet content.
+            info_w = int(_math.ceil(ref_w + sp + 2 * margin))
+            info_h = int(_math.ceil(ref_h + sp + 2 * margin))
+
+            # Etching-colour border signals "not a cut sheet" to laser software.
+            self.set_source_color(Color.ETCHING)
+            with self.saved_context():
+                self.moveTo(info_x_off, 0)
+                self.ctx.rectangle(0, 0, info_w, info_h)
+                self.ctx.stroke()
+
+            # "DO NOT CUT" label etched at the top-centre of the info sheet.
+            self.text(
+                "DO NOT CUT — REFERENCE ONLY",
+                info_x_off + info_w / 2.0,
+                info_h + 4,
+                align="middle center",
+                fontsize=6,
+                color=Color.ETCHING,
+            )
+            # Flush the text "T" entry from Part.path into Part.pathes so that
+            # the subsequent ctx.new_part() call inside ref_fn() → move(before=True)
+            # does not create a new Part while the old one still has an open path,
+            # which would trigger the assert(not self.path) in Part.transform().
+            self.ctx.stroke()
+
+            # Reference panel content drawn at margin offset inside info sheet.
+            with self.saved_context():
+                self.moveTo(info_x_off + margin, margin)
+                ref_fn()
+
     def render(self):
         """Generate all panels and walls that make up the hexagon box.
 
@@ -771,7 +1233,7 @@ class HexagonBox(BayonetBox):
         _.setValues(self.thickness, angle=90)
         _.edgeObjects(self, chars="zZH")
 
-        def drawTop(r, top_type, joint_type):
+        def drawTop(r, top_type, joint_type, move="right"):
             """Render one face (top or bottom) as the appropriate panel style.
 
             Top is always 'closed'; bottom is 'spoke' or 'closed'.  In
@@ -788,6 +1250,10 @@ class HexagonBox(BayonetBox):
             @param r          - Inner corner radius of this face.
             @param top_type   - 'closed' or 'spoke'.
             @param joint_type - Two-character edge string, e.g. 'yY' or 'zZ'.
+            @param move       - Layout direction string passed to the underlying
+                                wall method.  Use 'right' for the normal layout,
+                                'right only' for dry-run measurement, or None
+                                when the caller manages position via ctx.translate.
             """
             # Build the support-hole callback for closed panels.  Fires at the
             # V0-start slot (index 1); index 0 is None so the kites/centre slot
@@ -806,10 +1272,10 @@ class HexagonBox(BayonetBox):
                     if self.supports:
                         spoke_cbs.append(lambda: self.drawSupportHoles(r=r, isTrapezoid=True))
                     self.drawTrapezoidWall(
-                        r=r, edges_char=joint_type[1], move="right",
+                        r=r, edges_char=joint_type[1], move=move,
                         callback=spoke_cbs)
                 else:  # "closed"
-                    self.drawTrapezoidWall(r=r, edges_char=joint_type[1], move="right",
+                    self.drawTrapezoidWall(r=r, edges_char=joint_type[1], move=move,
                                            callback=support_cb)
             else:
                 if top_type == "spoke":
@@ -817,30 +1283,15 @@ class HexagonBox(BayonetBox):
                     if self.supports:
                         spoke_cbs.append(lambda: self.drawSupportHoles(r=r))
                     self.regularPolygonWall(
-                        corners=n, r=r, edges=joint_type[1], move="right",
+                        corners=n, r=r, edges=joint_type[1], move=move,
                         callback=spoke_cbs)
                 else:  # "closed"
-                    self.regularPolygonWall(corners=n, r=r, edges=joint_type[1], move="right",
+                    self.regularPolygonWall(corners=n, r=r, edges=joint_type[1], move=move,
                                             callback=support_cb)
 
-        with self.saved_context():
-            # Draw bottom panel first, then top (order affects SVG layout).
-            drawTop(r, self.bottom, "yY")
-            drawTop(r, self.top, "zZ")
-            # Support walls must be placed inside this saved_context block so
-            # they land after the face panels in the layout stream.  Outside the
-            # block the cursor reverts to its pre-block position, causing the
-            # walls to overlap whatever is drawn next.
-            if self.supports:
-                self.drawSupports(isTrapezoid=isTrapezoid)
-
-        # Invisible up-only move reserves vertical space for the panels above.
-        # In trapezoid mode the panel is half-height, so use the trapezoid wall
-        # for space reservation to avoid excess vertical whitespace in the layout.
-        if isTrapezoid:
-            self.drawTrapezoidWall(r=r, edges_char='F', move="up only")
-        else:
-            self.regularPolygonWall(corners=n, r=r, edges='F', move="up only")
+        # ── Variables shared by both the original and sheet-layout paths ─────
+        # Computed once here so the sheet-layout path can build component
+        # closures without duplicating these calculations.
 
         fingers_top = self.top in ("closed", "hole", "angled hole",
                                    "round lid", "angled lid2", "bayonet mount")
@@ -849,8 +1300,7 @@ class HexagonBox(BayonetBox):
 
         t_ = self.edges["G"].startwidth()
         bottom_edge = ('y' if fingers_bottom else 'e')
-        top_edge = ('z' if fingers_top else 'e')
-        # No taper: d_top = d_bottom = 0, so l is unchanged after this point.
+        top_edge    = ('z' if fingers_top    else 'e')
 
         # Alignment-hole callback shared by all hex side panels.
         # moveTo(0, -t) compensates for the 2*t trimming of side: the natural
@@ -880,21 +1330,148 @@ class HexagonBox(BayonetBox):
                     0, -90, t_, 90, l, 90, t_, -90, 0, 90]
         e0 = bottom_edge + 'E' + top_edge + 'E'
 
+        # Trapezoid-specific: long back wall border (2 hex-side-lengths wide).
+        side_long    = 2 * side_orig - 2 * t
+        borders_long = [side_long, 90,
+                        0, -90, t_, 90, l, 90, t_, -90, 0,
+                        90, side_long, 90,
+                        0, -90, t_, 90, l, 90, t_, -90, 0, 90]
+
+        # ── Branch: sheet-layout vs. legacy row layout ────────────────────────
+        if self.sheet_width > 0 and self.sheet_height > 0:
+            # ── SHEET-LAYOUT PATH ────────────────────────────────────────────
+            # Collect all cuttable components as _ComponentSpec records by doing
+            # a dry-run measurement pass (move='right only') inside a
+            # saved_context so the cursor movements are discarded.  Each
+            # component also gets a draw_fn closure (move=None) for the actual
+            # rendering phase driven by _pack_and_render.
+            cut_components = []
+
+            with self.saved_context():
+                # ── Hex bottom panel ─────────────────────────────────────────
+                w, h = self._measure_component(
+                    lambda: drawTop(r, self.bottom, "yY", move="right only"))
+                cut_components.append(_ComponentSpec(
+                    label='hex_bottom', kind='hex_panel', w=w, h=h,
+                    draw_fn=lambda: drawTop(r, self.bottom, "yY", move=None)))
+
+                # ── Hex top panel ────────────────────────────────────────────
+                w, h = self._measure_component(
+                    lambda: drawTop(r, self.top, "zZ", move="right only"))
+                cut_components.append(_ComponentSpec(
+                    label='hex_top', kind='hex_panel', w=w, h=h,
+                    draw_fn=lambda: drawTop(r, self.top, "zZ", move=None)))
+
+                # ── Support walls (all identical) ────────────────────────────
+                if self.supports:
+                    h_supp = self.h
+                    if self.outside:
+                        h_supp = self.adjustSize(h_supp)
+                    sl   = self.support_length
+                    r1   = (self.h - 2 * self._SPACER) / 2
+                    n_supp = 3 if isTrapezoid else 6
+
+                    # Closure for the centre-hole callback — shared by all walls.
+                    if r1 > 0:
+                        def _draw_hole(sl=sl, h_supp=h_supp, r1=r1):
+                            self.hole(sl / 2, h_supp / 2, r1)
+                        def _draw_supp(sl=sl, h_supp=h_supp, r1=r1, _dh=_draw_hole):
+                            self.rectangularWall(sl, h_supp, "fefe",
+                                                 callback=[_dh], move=None)
+                        _supp_meas = lambda sl=sl, h_supp=h_supp, r1=r1, _dh=_draw_hole: \
+                            self.rectangularWall(sl, h_supp, "fefe",
+                                                 callback=[_dh], move="right only")
+                    else:
+                        def _draw_supp(sl=sl, h_supp=h_supp):
+                            self.rectangularWall(sl, h_supp, "fefe", move=None)
+                        _supp_meas = lambda sl=sl, h_supp=h_supp: \
+                            self.rectangularWall(sl, h_supp, "fefe", move="right only")
+
+                    sw_w, sw_h = self._measure_component(_supp_meas)
+                    for i in range(n_supp):
+                        cut_components.append(_ComponentSpec(
+                            label=f'support_{i}', kind='support',
+                            w=sw_w, h=sw_h, draw_fn=_draw_supp))
+
+                # ── Side walls ───────────────────────────────────────────────
+                if isTrapezoid:
+                    # 1 long back wall + 3 standard walls.
+                    lw_w, lw_h = self._measure_component(
+                        lambda: self.polygonWall(
+                            borders_long, edge=e0, correct_corners=False,
+                            move="right only",
+                            callback=[None, draw_aligned_holes_long]))
+                    cut_components.append(_ComponentSpec(
+                        label='side_long', kind='side', w=lw_w, h=lw_h,
+                        draw_fn=lambda: self.polygonWall(
+                            borders_long, edge=e0, correct_corners=False,
+                            move=None,
+                            callback=[None, draw_aligned_holes_long])))
+
+                    std_w, std_h = self._measure_component(
+                        lambda: self.polygonWall(
+                            borders0, edge=e0, correct_corners=False,
+                            move="right only",
+                            callback=[None, draw_aligned_holes]))
+                    for i in range(3):
+                        cut_components.append(_ComponentSpec(
+                            label=f'side_{i}', kind='side', w=std_w, h=std_h,
+                            draw_fn=lambda: self.polygonWall(
+                                borders0, edge=e0, correct_corners=False,
+                                move=None,
+                                callback=[None, draw_aligned_holes])))
+                else:
+                    # 6 identical standard side walls.
+                    std_w, std_h = self._measure_component(
+                        lambda: self.polygonWall(
+                            borders0, edge=e0, correct_corners=False,
+                            move="right only",
+                            callback=[None, draw_aligned_holes]))
+                    for i in range(n):
+                        cut_components.append(_ComponentSpec(
+                            label=f'side_{i}', kind='side', w=std_w, h=std_h,
+                            draw_fn=lambda: self.polygonWall(
+                                borders0, edge=e0, correct_corners=False,
+                                move=None,
+                                callback=[None, draw_aligned_holes])))
+
+            # Measure reference panel outside the discarded context so its
+            # draw_fn fires from a stable cursor position inside _pack_and_render.
+            ref_w, ref_h = self._measure_component(
+                lambda: self.drawReferencePanel(move="right only"))
+            ref_fn = lambda: self.drawReferencePanel(move=None)
+
+            # Hand off to the packer — all drawing happens inside _pack_and_render.
+            self._pack_and_render(cut_components, ref_fn, ref_w, ref_h,
+                                  r, isTrapezoid)
+            return  # skip the legacy layout path below
+
+        # ── LEGACY ROW LAYOUT PATH (original behaviour, unchanged) ───────────
+        with self.saved_context():
+            # Draw bottom panel first, then top (order affects SVG layout).
+            drawTop(r, self.bottom, "yY")
+            drawTop(r, self.top, "zZ")
+            # Support walls must be placed inside this saved_context block so
+            # they land after the face panels in the layout stream.  Outside the
+            # block the cursor reverts to its pre-block position, causing the
+            # walls to overlap whatever is drawn next.
+            if self.supports:
+                self.drawSupports(isTrapezoid=isTrapezoid)
+
+        # Invisible up-only move reserves vertical space for the panels above.
+        # In trapezoid mode the panel is half-height, so use the trapezoid wall
+        # for space reservation to avoid excess vertical whitespace in the layout.
+        if isTrapezoid:
+            self.drawTrapezoidWall(r=r, edges_char='F', move="up only")
+        else:
+            self.regularPolygonWall(corners=n, r=r, edges='F', move="up only")
+
         if isTrapezoid:
             # Trapezoid side walls: 4 panels instead of 6.
             #
             #   1 × long back wall  — spans the join edge (length 2r)
             #   3 × standard walls  — one each for right slant, short front, left slant
             #
-
-            # Long back-wall border.  Width is 2*side_orig − 2*t because the panel
-            # spans two hex-side-lengths with finger-joint notches only at the two
-            # outer ends (no junction at the midpoint in a trapezoid box).
-            side_long = 2 * side_orig - 2 * t
-            borders_long = [side_long, 90,
-                            0, -90, t_, 90, l, 90, t_, -90, 0,
-                            90, side_long, 90,
-                            0, -90, t_, 90, l, 90, t_, -90, 0, 90]
 
             # Long back wall (1 panel).  callback[1] fires at the first stepped-tab
             # segment where the alignment holes are drawn; callback[0] is None
