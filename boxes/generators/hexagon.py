@@ -79,6 +79,9 @@ class HexagonBox(BayonetBox):
             "--support_length", action="store", type=float, default=150.0,
             help="length of the internal supports.")
         self.argparser.add_argument(
+            "--supports", action="store", type=boolarg, default=True,
+            help="add internal support walls and matching finger-joint slots in the top and bottom panels.")
+        self.argparser.add_argument(
             "--trapezoid", action="store", type=boolarg, default=False,
             help="If true, only draw a half-hexagon.")
 
@@ -731,36 +734,36 @@ class HexagonBox(BayonetBox):
             @param top_type   - 'closed' or 'spoke'.
             @param joint_type - Two-character edge string, e.g. 'yY' or 'zZ'.
             """
-            # Build the support-hole callback once; reused by "closed" branches
-            # when the opposite face is "spoke".  None at index 0 means the
-            # centre-callback slot (kites) is skipped — only the V0-start slot
-            # (index 1) fires, which is what drawSupportHoles expects.
-            if self.bottom == "spoke":
+            # Build the support-hole callback for closed panels.  Fires at the
+            # V0-start slot (index 1); index 0 is None so the kites/centre slot
+            # is skipped.  Active whenever self.supports is True, regardless of
+            # whether the opposite face is "spoke" or "closed".
+            if self.supports:
                 support_cb = [None, lambda: self.drawSupportHoles(r=r, isTrapezoid=isTrapezoid)]
             else:
                 support_cb = None
 
             if isTrapezoid:
                 if top_type == "spoke":
+                    # Build spoke callbacks; only append drawSupportHoles when
+                    # supports are enabled so the slot geometry matches the walls.
+                    spoke_cbs = [lambda: self.drawKites(r=r, joint_type=joint_type, isTrapezoid=True)]
+                    if self.supports:
+                        spoke_cbs.append(lambda: self.drawSupportHoles(r=r, isTrapezoid=True))
                     self.drawTrapezoidWall(
                         r=r, edges_char=joint_type[1], move="right",
-                        callback=[
-                            lambda: self.drawKites(r=r, joint_type=joint_type, isTrapezoid=True),
-                            lambda: self.drawSupportHoles(r=r, isTrapezoid=True),
-                        ])
-                    self.drawSupports(isTrapezoid=True)
+                        callback=spoke_cbs)
                 else:  # "closed"
                     self.drawTrapezoidWall(r=r, edges_char=joint_type[1], move="right",
                                            callback=support_cb)
             else:
                 if top_type == "spoke":
+                    spoke_cbs = [lambda: self.drawKites(r=r, joint_type=joint_type, isTrapezoid=False)]
+                    if self.supports:
+                        spoke_cbs.append(lambda: self.drawSupportHoles(r=r))
                     self.regularPolygonWall(
                         corners=n, r=r, edges=joint_type[1], move="right",
-                        callback=[
-                            lambda: self.drawKites(r=r, joint_type=joint_type, isTrapezoid=False),
-                            lambda: self.drawSupportHoles(r=r),
-                        ])
-                    self.drawSupports()
+                        callback=spoke_cbs)
                 else:  # "closed"
                     self.regularPolygonWall(corners=n, r=r, edges=joint_type[1], move="right",
                                             callback=support_cb)
@@ -769,6 +772,12 @@ class HexagonBox(BayonetBox):
             # Draw bottom panel first, then top (order affects SVG layout).
             drawTop(r0, self.bottom, "yY")
             drawTop(r1, self.top, "zZ")
+
+        # Draw support walls after both face panels, regardless of bottom style.
+        # Previously only generated when bottom='spoke'; now controlled by the
+        # --supports flag so a closed-bottom board can still have internal walls.
+        if self.supports:
+            self.drawSupports(isTrapezoid=isTrapezoid)
 
         # Invisible up-only move reserves vertical space for the panels above.
         # In trapezoid mode the panel is half-height, so use the trapezoid wall
