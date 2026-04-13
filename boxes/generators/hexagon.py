@@ -42,12 +42,7 @@ def dist(dx, dy):
 
 
 class HexagonBox(BayonetBox):
-    """Box with a regular hexagon as the base.
-
-    Supports tapered (top radius != bottom radius) geometry, several lid
-    styles inherited from BayonetBox, and an optional decorative 'spoke'
-    pattern on the bottom panel.
-    """
+    """Box with a regular hexagon or half hexagon as the base. """
 
     ui_group = "Box"
 
