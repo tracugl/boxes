@@ -35,13 +35,17 @@ from boxes import Boxes, edges
 class HexmoRectangle(Boxes):
     """Rectangular tray with a fixed 3×5 internal grid, compatible with HexmoHexagon stacking.
 
-    The ``--radius`` parameter controls the overall dimensions and must match the
-    ``--radius`` used on HexmoHexagon boxes you want to connect to this tray:
+    The ``--radius`` parameter is the **inner corner-to-corner radius** of a regular
+    hexagon and must be set to the same value used on the HexmoHexagon boxes you want
+    to connect to this tray.  All dimensions are derived from it using the same
+    formulas as HexmoHexagon so that edges and faces mate flush:
 
-    - Short wall length  = ``radius``      (equals one hexagon side)
-    - Long wall length   = ``radius × √3`` (equals the hexagon flat-to-flat distance)
-    - Column inner width = ``radius / 3``  (3 equal columns across the short axis)
-    - Row inner height   = ``radius × √3 / 5`` (5 equal rows along the long axis)
+    - Short wall inner width  W = ``radius − 2 × thickness``
+      (matches one HexmoHexagon side-wall length)
+    - Long wall inner width   H = ``radius × √3``
+      (matches the HexmoHexagon flat-to-flat inner cavity distance)
+    - Column inner width      = ``(W − 2t) / 3`` (3 equal columns across the short axis)
+    - Row inner height        = ``(H − 4t) / 5`` (5 equal rows along the long axis)
 
     FingerJoint settings are set to match HexmoHexagon (finger=5, space=5,
     surroundingspaces=2, play=0.2) so that joints between the two box types are
@@ -78,10 +82,10 @@ class HexmoRectangle(Boxes):
         self.buildArgParser("h", "outside")
         self.argparser.add_argument(
             "--radius", action="store", type=float, default=500.0,
-            help="Hexagon-compatibility radius (mm).  The short wall of the rectangle "
-                 "will be exactly this length, matching one edge of a HexmoHexagon box "
-                 "with the same radius.  Short dimension W = radius; "
-                 "long dimension H = radius × √3.",
+            help="Inner corner-to-corner radius of the matching HexmoHexagon (mm). "
+                 "Use the same value as the HexmoHexagon --radius to ensure edges "
+                 "mate flush.  Short wall W = radius − 2×thickness; "
+                 "long wall H = radius × √3.",
         )
 
     def render(self) -> None:
@@ -94,8 +98,9 @@ class HexmoRectangle(Boxes):
           - 2 × vertical divider  (H × h)  — split the box into 3 columns
           - 4 × horizontal divider (W × h) — split the box into 5 rows
 
-        When ``--outside`` is set, ``radius`` is treated as the outer box width
-        (including wall material) rather than the inner cavity.
+        When ``--outside`` is set, ``radius`` is treated as the outer hexagon
+        circumradius (matching HexmoHexagon's outside-mode convention) and is
+        converted to an inner radius before deriving W and H.
 
         Crossing-joint convention (slot-and-tab):
           Vertical dividers carry ``SlottedEdge`` on their **bottom** edges:
@@ -118,19 +123,30 @@ class HexmoRectangle(Boxes):
         h = self.h
 
         # --- Geometry -----------------------------------------------------------
-        # W is the inner cavity short dimension (= one hexagon side for compatibility).
-        # H is the inner cavity long dimension (= hexagon flat-to-flat distance).
-        W = r
-        H = r * math.sqrt(3)
-
+        # Derive inner cavity dimensions from the hexagon circumradius r using the
+        # same formulas as HexmoHexagon so that edges mate flush.
+        #
+        # regularPolygon(6, radius=r) returns (r, apothem, side) where:
+        #   side   = r              (for a regular hexagon, side == circumradius)
+        #   apothem = r × cos(30°) = r × √3 / 2  (centre-to-flat-face distance)
+        #
+        # If --outside is set the user has given the OUTER circumradius; convert to
+        # inner using the same hex formula HexmoHexagon uses (subtract the radial
+        # wall contribution = t / cos(30°) = 2t/√3).
         if self.outside:
-            # When the user specifies outside dimensions, convert to inner cavity
-            # by subtracting the wall material thickness from both ends of each axis.
-            # W and H both have outer walls on two sides → subtract 2 × t.
-            W = self.adjustSize(W)
-            H = self.adjustSize(H)
-            # Box height: only the base contributes (open top) → subtract 1 × t.
+            r -= self.thickness / math.cos(math.radians(360 / (2 * 6)))
             h = self.adjustSize(h, e2=False)
+
+        _, apothem, side = self.regularPolygon(6, radius=r)
+
+        # W: inner short dimension = hexagon side length minus two wall thicknesses
+        # (the same subtraction HexmoHexagon applies before passing side to
+        # rectangularWall, so the walls line up flush when the two boxes join).
+        W = side - 2 * t
+
+        # H: inner long dimension = hexagon flat-to-flat inner cavity distance.
+        # For a regular hexagon, flat-to-flat = 2 × apothem = r × √3.
+        H = 2 * apothem
 
         # --- Grid geometry ------------------------------------------------------
         # The 3-column × 5-row grid divides the inner cavity dimensions evenly.
