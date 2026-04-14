@@ -113,19 +113,29 @@ class HexmoRectangle(Boxes):
             h = self.adjustSize(h, e2=False)
 
         # --- Outer walls --------------------------------------------------------
-        # Edge string "ffef": [bottom='f', right='f', top='e', left='f']
-        # This matches TrayLayout's outer-wall convention:
-        #   bottom 'f' tabs slot into the base plate's perimeter 'F' slots.
-        #   side 'f' tabs interlock with the perpendicular wall's 'f' tabs at each corner.
-        #   top is left open ('e') — a lid can be added in a later phase.
+        # Short walls (front/back, spanning W) provide tabs on their small
+        # (height-direction) edges — 'f' on left and right.
+        # Long walls (left/right, spanning H) receive those tabs via 'F' slots
+        # on their small (height-direction) edges.
+        #
+        # Edge string breakdown:
+        #   "ffef": [bottom='f', right='f', top='e', left='f']  ← short walls
+        #   "fFeF": [bottom='f', right='F', top='e', left='F']  ← long walls
+        #
+        # The short wall side-tabs ('f') project into the long wall end-slots ('F'),
+        # creating flush corners where both outer faces are coplanar.
+        # Both wall types use bottom='f' so their base-edge tabs slot into the
+        # base plate's perimeter 'F' counter-part slots.
+        # Top is left open ('e') — a lid can be added in a later phase.
 
-        # Two short outer walls spanning the W (radius) axis.
+        # Two short outer walls spanning the W (radius) axis — provide corner tabs.
         for _ in range(2):
             self.rectangularWall(W, h, "ffef", move="right")
 
-        # Two long outer walls spanning the H (radius × √3) axis.
+        # Two long outer walls spanning the H (radius × √3) axis — receive corner tabs.
+        # 'F' on the small (h) edges provides the matching slots for the short wall tabs.
         for _ in range(2):
-            self.rectangularWall(H, h, "ffef", move="right")
+            self.rectangularWall(H, h, "fFeF", move="right")
 
         # Advance the layout cursor to a fresh row below the wall panels.
         # "up only" moves without drawing — the width argument is irrelevant.
