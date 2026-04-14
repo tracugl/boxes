@@ -28,7 +28,7 @@ from boxes import Boxes, edges, boolarg
 from boxes.Color import *
 
 
-class HexagonBox(Boxes):
+class HexmoHexagon(Boxes):
     """Box with a regular hexagon or half hexagon as the base. """
 
     ui_group = "Box"
