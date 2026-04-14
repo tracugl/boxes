@@ -28,12 +28,12 @@ docker compose down      # stop
 To smoke-test a generator, hit the render endpoint directly:
 
 ```bash
-curl "http://localhost:4455/HexagonBox?render=1&top=closed&bottom=spoke&radius=100&thickness=6"
+curl "http://localhost:4455/HexmoHexagon?render=1&top=closed&bottom=spoke&radius=100&thickness=6"
 ```
 
-Replace `HexagonBox` with any generator class name. `render=1` triggers SVG output; omitting it returns the HTML form page.
+Replace `HexmoHexagon` with any generator class name. `render=1` triggers SVG output; omitting it returns the HTML form page.
 
-**HexagonBox parameter names**: use `radius=...` directly — the generator exposes a single `radius` parameter.
+**HexmoHexagon parameter names**: use `radius=...` directly — the generator exposes a single `radius` parameter.
 
 ### Measuring SVG panel dimensions
 
