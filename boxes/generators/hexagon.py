@@ -95,11 +95,18 @@ class HexagonBox(BayonetBox):
         finger-jointed on both long edges ('fefe' pattern), so they can be
         laser-cut from the same template.
 
-        A single large circular through-hole is cut in the centre of each
-        support, using the same sizing formula as drawAlignmentHoles:
-            r1 = (h - spacer - spacer) / 2
-        where 'spacer' is the minimum clearance margin from the panel edges.
-        If 'spacer' yields a non-positive radius the hole is omitted.
+        Through-holes are placed along the horizontal centre line (y = h/2),
+        distributed across the support length to remove as much material as
+        possible while keeping at least _SPACER clearance from both panel ends.
+        The hole-count algorithm mirrors drawAlignmentHoles but is transposed:
+        holes run along the x-axis (support length) rather than the y-axis.
+        In every x-gap between adjacent holes, _drawSupportGapFeatures attempts
+        to insert smaller sub-holes near the top and bottom panel edges.
+
+        Hole sizing: r1 = (h − 2·_SPACER) / 2 — identical formula to
+        drawAlignmentHoles, so diameters are consistent across all panel types.
+        Uses raw self.h (not adjustSize-shrunk) to keep diameters constant
+        regardless of whether --outside is set.
 
         @param isTrapezoid - When True, render 3 support walls instead of 6.
         """
@@ -108,30 +115,81 @@ class HexagonBox(BayonetBox):
             h = self.adjustSize(h)
         sl = self.support_length
 
-        # Mirror the hole-radius formula used by drawAlignmentHoles so that the
-        # support hole is consistent with the rest of the geometry.  Use self.h
-        # (raw box height, not adjustSize-shrunk) to keep diameters identical
-        # regardless of whether --outside is set.
+        # Hole radius: same formula as drawAlignmentHoles.  Raw self.h keeps the
+        # diameter identical whether or not --outside shrinks the rendered height.
         r1 = (self.h - 2 * self._SPACER) / 2
+
+        MIN_CLEAR = 5.0
 
         # Number of support walls: 6 for a full hexagon, 3 for a trapezoid.
         n_supports = 3 if isTrapezoid else 6
 
-        if r1 > 0:
-            # Callback fires at the bottom-left corner (edge 0) with the
-            # x-axis pointing right and y-axis pointing into the panel.
-            # From that origin, (sl/2, h/2) is the geometric centre of the
-            # rectangle, which is exactly where the through-hole should sit.
-            def draw_center_hole():
-                self.hole(sl / 2, h / 2, r1)
+        def draw_holes():
+            """Place through-holes on one support panel.
 
-            for _ in range(n_supports):
-                self.rectangularWall(sl, h, "fefe", callback=[draw_center_hole], move="right")
-        else:
-            # Panel is too short for the hole to clear the edges — render
-            # without a hole rather than producing invalid geometry.
-            for _ in range(n_supports):
-                self.rectangularWall(sl, h, "fefe", move="right")
+            Preference order:
+              1. Big holes (r1): packed along sl when support is wide enough for
+                 full _SPACER clearance.  Also fills x-axis gaps with sub-holes.
+              2. Medium holes (r2): fallback when big holes don't fit.  Two medium
+                 holes replace the single big hole for short supports (e.g. sl=90).
+              3. Nothing: support too short even for medium holes.
+
+            Fires at the bottom-left origin (edge 0) of each rectangularWall
+            call.  The x-axis runs right along sl and y runs up along h.
+            """
+            sp = self._SPACER
+
+            # ── Attempt big holes (r1) ──────────────────────────────────────────
+            if r1 > 0:
+                x_floor = sp + r1
+                available = sl - 2 * x_floor
+
+                if available >= 0:
+                    # Big holes fit with full _SPACER clearance — use them.
+                    n = max(1, 1 + int(available / (2 * r1 + MIN_CLEAR)))
+                    if n == 1:
+                        big_xs = [sl / 2]
+                    else:
+                        step = available / (n - 1)
+                        big_xs = [x_floor + i * step for i in range(n)]
+
+                    for x in big_xs:
+                        self.hole(x, h / 2, r1)
+
+                    # Fill gaps between big holes with sub-hole pairs.
+                    lo_bounds = [sp]                   + [x + r1 for x in big_xs]
+                    hi_bounds = [x - r1 for x in big_xs] + [sl - sp]
+                    for x_lo, x_hi in zip(lo_bounds, hi_bounds):
+                        self._drawSupportGapFeatures(h, x_lo, x_hi)
+                    return  # big holes drawn — done
+
+            # ── Fallback: medium holes (r2) ─────────────────────────────────────
+            # Reached when r1 ≤ 0 (very short box) or big holes don't fit along sl.
+            # Medium holes are smaller so more can fit on a narrow support.
+            r2 = self._R2
+            x_floor_med = sp + r2
+            available_med = sl - 2 * x_floor_med
+
+            if available_med < 0:
+                # Support too short even for medium holes — render blank.
+                return
+
+            n_med = max(1, 1 + int(available_med / (2 * r2 + MIN_CLEAR)))
+            if n_med == 1:
+                med_xs = [sl / 2]
+            else:
+                step = available_med / (n_med - 1)
+                med_xs = [x_floor_med + i * step for i in range(n_med)]
+
+            for x in med_xs:
+                self.hole(x, h / 2, r2)
+
+            # Medium holes are a reduced-clearance fallback — gaps between them
+            # are too small (≈ MIN_CLEAR) to fit any sub-hole groups, so no
+            # gap-filling pass is performed here.
+
+        for _ in range(n_supports):
+            self.rectangularWall(sl, h, "fefe", callback=[draw_holes], move="right")
 
     def drawSupportHoles(self, r, isTrapezoid=False):
         """Cut finger-joint slots into the bottom panel for all three spoke axes.
@@ -297,6 +355,70 @@ class HexagonBox(BayonetBox):
             # Gap too narrow for smalls — place medium pair only.
             self.hole(l - r2/2 - sp, y_mid, r2)
             self.hole(sp + r2/2,     y_mid, r2)
+
+    def _drawSupportGapFeatures(self, h, x_lo, x_hi):
+        """Fill the x-axis gap between two support holes with sub-hole pairs.
+
+        Transposed counterpart of _drawGapFeatures: gaps run along x (the
+        support-length axis) rather than y, and sub-holes are placed near the
+        top and bottom edges of the support panel (y ≈ _SPACER and
+        y ≈ h − _SPACER) rather than near the left/right edges.
+
+        Attempts to place, symmetrically within the inner gap [x_lo, x_hi]:
+          - Full G6 equivalent (left-small + centre-medium + right-small,
+            each repeated at top and bottom): 6 holes total, when
+            half-gap ≥ r2 + 2·r3 + 2·MIN_CLEAR  (≈ 28.5 mm).
+          - G2-medium pair only (top + bottom): 2 holes, when
+            half-gap ≥ r2 + MIN_CLEAR  (≈ 17.5 mm).
+          - Nothing when the gap or the panel height is too small.
+
+        Vertical guard: h ≥ 2·_SPACER + 3·r2 + MIN_CLEAR (≈ 72.5 mm) ensures
+        the top and bottom medium holes never overlap each other.
+
+        @param h    - Support panel height (raw box height, mm).
+        @param x_lo - Inner left boundary of the gap (outer edge of left neighbour).
+        @param x_hi - Inner right boundary of the gap (outer edge of right neighbour).
+        """
+        r2 = self._R2
+        r3 = self._R3
+        sp = self._SPACER
+        MIN_CLEAR = 5.0
+
+        # Vertical guard: binding constraint is top-medium vs bottom-medium overlap.
+        # Condition: (h − sp − r2/2) − r2  ≥  (sp + r2/2) + r2 + MIN_CLEAR
+        # Rearranges to: h ≥ 2·sp + 3·r2 + MIN_CLEAR ≈ 72.5 mm.
+        if h < 2 * sp + 3 * r2 + MIN_CLEAR:
+            return
+
+        half_gap = (x_hi - x_lo) / 2
+        x_mid    = (x_lo + x_hi) / 2
+
+        # Thresholds mirror _drawGapFeatures — geometry depends only on gap
+        # half-width and hole sizes, not on which axis is the gap axis.
+        half_for_G2m = r2 + MIN_CLEAR              # ≈ 17.5 mm
+        sm_offset    = r2 + r3 + MIN_CLEAR         # ≈ 20.5 mm — guarantees MIN_CLEAR
+                                                    # between each small and medium edge
+        half_for_G6  = sm_offset + r3 + MIN_CLEAR  # ≈ 28.5 mm
+
+        # Precompute y-positions for readability.
+        y_bot_r3 = sp                # small hole centre, near bottom edge
+        y_top_r3 = h - sp            # small hole centre, near top edge
+        y_bot_r2 = sp + r2 / 2      # medium hole centre, near bottom
+        y_top_r2 = h - sp - r2 / 2  # medium hole centre, near top
+
+        if half_gap >= half_for_G6:
+            # Full G6 equivalent: three x-positions × two y-positions (top+bottom).
+            self.hole(x_mid - sm_offset, y_bot_r3, r3)  # left-small,    bottom
+            self.hole(x_mid - sm_offset, y_top_r3, r3)  # left-small,    top
+            self.hole(x_mid,             y_bot_r2, r2)  # centre-medium, bottom
+            self.hole(x_mid,             y_top_r2, r2)  # centre-medium, top
+            self.hole(x_mid + sm_offset, y_bot_r3, r3)  # right-small,   bottom
+            self.hole(x_mid + sm_offset, y_top_r3, r3)  # right-small,   top
+
+        elif half_gap >= half_for_G2m:
+            # Gap too narrow for smalls — medium pair top and bottom only.
+            self.hole(x_mid, y_bot_r2, r2)  # bottom medium
+            self.hole(x_mid, y_top_r2, r2)  # top medium
 
     def drawAlignmentHoles(self, s, l, text):
         """Cut and etch alignment features into a side panel for stacking hexagons.
