@@ -125,48 +125,68 @@ class HexagonBox(BayonetBox):
         n_supports = 3 if isTrapezoid else 6
 
         def draw_holes():
-            """Place big through-holes and gap sub-holes on one support panel.
+            """Place through-holes on one support panel.
+
+            Preference order:
+              1. Big holes (r1): packed along sl when support is wide enough for
+                 full _SPACER clearance.  Also fills x-axis gaps with sub-holes.
+              2. Medium holes (r2): fallback when big holes don't fit.  Two medium
+                 holes replace the single big hole for short supports (e.g. sl=90).
+              3. Nothing: support too short even for medium holes.
 
             Fires at the bottom-left origin (edge 0) of each rectangularWall
             call.  The x-axis runs right along sl and y runs up along h.
             """
-            if r1 <= 0:
-                # Box height too small for any hole to clear the top/bottom edges.
+            sp = self._SPACER
+
+            # ── Attempt big holes (r1) ──────────────────────────────────────────
+            if r1 > 0:
+                x_floor = sp + r1
+                available = sl - 2 * x_floor
+
+                if available >= 0:
+                    # Big holes fit with full _SPACER clearance — use them.
+                    n = max(1, 1 + int(available / (2 * r1 + MIN_CLEAR)))
+                    if n == 1:
+                        big_xs = [sl / 2]
+                    else:
+                        step = available / (n - 1)
+                        big_xs = [x_floor + i * step for i in range(n)]
+
+                    for x in big_xs:
+                        self.hole(x, h / 2, r1)
+
+                    # Fill gaps between big holes with sub-hole pairs.
+                    lo_bounds = [sp]                   + [x + r1 for x in big_xs]
+                    hi_bounds = [x - r1 for x in big_xs] + [sl - sp]
+                    for x_lo, x_hi in zip(lo_bounds, hi_bounds):
+                        self._drawSupportGapFeatures(h, x_lo, x_hi)
+                    return  # big holes drawn — done
+
+            # ── Fallback: medium holes (r2) ─────────────────────────────────────
+            # Reached when r1 ≤ 0 (very short box) or big holes don't fit along sl.
+            # Medium holes are smaller so more can fit on a narrow support.
+            r2 = self._R2
+            x_floor_med = sp + r2
+            available_med = sl - 2 * x_floor_med
+
+            if available_med < 0:
+                # Support too short even for medium holes — render blank.
                 return
 
-            # Minimum x for a big-hole centre: _SPACER clearance from the end.
-            x_floor = self._SPACER + r1
-
-            # Length available for additional holes beyond the first.  Each
-            # extra hole slot requires 2·r1 (diameter) + MIN_CLEAR (gap).
-            available = sl - 2 * x_floor
-
-            if available < 0:
-                # Even a single centred hole would violate _SPACER clearance.
-                return
-
-            # Pack as many big holes as MIN_CLEAR allows — no upper cap so that
-            # every available slot reduces waste.
-            n = max(1, 1 + int(available / (2 * r1 + MIN_CLEAR)))
-
-            if n == 1:
-                # Single hole: always centred on the panel length.
-                big_xs = [sl / 2]
+            n_med = max(1, 1 + int(available_med / (2 * r2 + MIN_CLEAR)))
+            if n_med == 1:
+                med_xs = [sl / 2]
             else:
-                # Distribute n holes evenly across [x_floor, sl − x_floor].
-                step = available / (n - 1)
-                big_xs = [x_floor + i * step for i in range(n)]
+                step = available_med / (n_med - 1)
+                med_xs = [x_floor_med + i * step for i in range(n_med)]
 
-            # Draw all big holes centred vertically at h/2.
-            for x in big_xs:
-                self.hole(x, h / 2, r1)
+            for x in med_xs:
+                self.hole(x, h / 2, r2)
 
-            # Fill every gap (edge→first, hole→hole, last→edge) with sub-holes.
-            # lo_bounds[i] and hi_bounds[i] bracket the inner space of gap i.
-            lo_bounds = [self._SPACER]             + [x + r1 for x in big_xs]
-            hi_bounds = [x - r1 for x in big_xs]  + [sl - self._SPACER]
-            for x_lo, x_hi in zip(lo_bounds, hi_bounds):
-                self._drawSupportGapFeatures(h, x_lo, x_hi)
+            # Medium holes are a reduced-clearance fallback — gaps between them
+            # are too small (≈ MIN_CLEAR) to fit any sub-hole groups, so no
+            # gap-filling pass is performed here.
 
         for _ in range(n_supports):
             self.rectangularWall(sl, h, "fefe", callback=[draw_holes], move="right")
