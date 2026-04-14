@@ -25,11 +25,10 @@ import datetime
 import math
 
 from boxes import Boxes, edges, boolarg
-from boxes.generators.bayonetbox import BayonetBox
 from boxes.Color import *
 
 
-class HexagonBox(BayonetBox):
+class HexagonBox(Boxes):
     """Box with a regular hexagon or half hexagon as the base. """
 
     ui_group = "Box"
@@ -80,7 +79,6 @@ class HexagonBox(BayonetBox):
             "--trapezoid", action="store", type=boolarg, default=False,
             help="If true, only draw a half-hexagon.")
 
-        self.lugs = 6
         self.n = 6
 
     def drawSupports(self, isTrapezoid=False):
