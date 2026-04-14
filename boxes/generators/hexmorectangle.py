@@ -61,6 +61,12 @@ class HexmoRectangle(Boxes):
 
     ui_group = "Box"
 
+    # Alignment-hole geometry constants — identical values to HexmoHexagon so
+    # that pins and holes from both box types are interchangeable during assembly.
+    _SPACER = 15    # minimum edge-to-hole-centre clearance (mm)
+    _R2     = 12.5  # radius of medium alignment-pin receiver holes (mm)
+    _R3     = 3     # radius of small registration pilot holes (mm)
+
     def __init__(self) -> None:
         """Initialise argument parser with FingerJoint settings and the ``--radius`` parameter."""
         Boxes.__init__(self)
@@ -87,6 +93,177 @@ class HexmoRectangle(Boxes):
                  "mate flush.  Short wall W = radius − 2×thickness; "
                  "long wall H = radius × √3.",
         )
+
+    def _drawCornerGroup8Rect(self, s, l):
+        """Draw the four corner L-clusters for a rectangularWall panel.
+
+        Exact transposed counterpart of HexmoHexagon._drawCornerGroup8: every
+        ``hole(x, y, r)`` call has its x and y arguments swapped so the 18-hole
+        pattern fits the ``rectangularWall`` callback coordinate frame, where
+        x runs along the wall length (s) and y runs along the panel height (l).
+
+        The visual layout is identical to the hexagon variant; only the axis
+        assignment changes.  Calling this from a ``rectangularWall`` callback
+        therefore produces alignment holes that are pin-compatible with holes on
+        adjacent HexmoHexagon panels.
+
+        @param s - Panel length along the wall (x-axis of the rectangularWall callback).
+        @param l - Panel height (box height, y-axis of the rectangularWall callback).
+        """
+        sp = self._SPACER
+        r2 = self._R2
+        r3 = self._R3
+
+        # Right-end corner L-clusters: three small holes at the far-right,
+        # near the top (y ≈ l) and bottom (y ≈ 0) edges respectively.
+        self.hole(s - sp,         l - sp,     r3)
+        self.hole(s - 2 * sp,     l - sp,     r3)
+        self.hole(s - sp,         l - 2 * sp, r3)
+
+        # Centre-strip registration pins at 3·sp from both ends of the wall.
+        # Each end has a medium hole centred on y=l/2 flanked by small holes at
+        # y=sp (bottom) and y=l-sp (top), mirroring the hexagon's centre-column strip.
+        self.hole(s - 3 * sp, l - sp, r3)   # right end, near top
+        self.hole(s - 3 * sp, l / 2,  r2)   # right-end centre medium
+        self.hole(3 * sp,     l - sp, r3)   # left end, near top
+        self.hole(3 * sp,     l / 2,  r2)   # left-end centre medium
+        self.hole(s - 3 * sp, sp,     r3)   # right end, near bottom
+        self.hole(3 * sp,     sp,     r3)   # left end, near bottom
+
+        # Right-end bottom corner L-cluster.
+        self.hole(s - sp,         sp,         r3)
+        self.hole(s - 2 * sp,     sp,         r3)
+        self.hole(s - sp,         2 * sp,     r3)
+
+        # Left-end top corner L-cluster.
+        self.hole(sp,         l - sp,     r3)
+        self.hole(2 * sp,     l - sp,     r3)
+        self.hole(sp,         l - 2 * sp, r3)
+
+        # Left-end bottom corner L-cluster.
+        self.hole(sp,         sp,         r3)
+        self.hole(2 * sp,     sp,         r3)
+        self.hole(sp,         2 * sp,     r3)
+
+    def _drawSupportGapFeatures(self, h, x_lo, x_hi):
+        """Fill the x-axis gap between two features with a symmetric hole sub-group.
+
+        Copied verbatim from HexmoHexagon so that divider panels produced by
+        this generator carry the same sub-hole pattern as HexmoHexagon support
+        panels, keeping all hole types pin-compatible across the system.
+
+        Attempts to place, symmetrically within [x_lo, x_hi]:
+          - Full G6 equivalent (left-small + centre-medium + right-small,
+            top + bottom = 6 holes) when half-gap ≥ r2 + 2·r3 + 2·MIN_CLEAR.
+          - G2-medium pair (top + bottom, 2 holes) when half-gap ≥ r2 + MIN_CLEAR.
+          - Nothing when the gap or panel height is too small.
+
+        @param h    - Panel height (box h), used for y-positions of hole pairs.
+        @param x_lo - Inner left boundary of the gap (outer edge of left neighbour).
+        @param x_hi - Inner right boundary of the gap (outer edge of right neighbour).
+        """
+        r2 = self._R2
+        r3 = self._R3
+        sp = self._SPACER
+        MIN_CLEAR = 5.0
+
+        # Vertical guard: top-medium vs bottom-medium must not overlap.
+        # Condition: h ≥ 2·sp + 3·r2 + MIN_CLEAR ≈ 72.5 mm.
+        if h < 2 * sp + 3 * r2 + MIN_CLEAR:
+            return
+
+        half_gap = (x_hi - x_lo) / 2
+        x_mid    = (x_lo + x_hi) / 2
+
+        half_for_G2m = r2 + MIN_CLEAR
+        sm_offset    = r2 + r3 + MIN_CLEAR   # ensures MIN_CLEAR between small and medium edges
+        half_for_G6  = sm_offset + r3 + MIN_CLEAR
+
+        # Precompute y-positions for the top/bottom hole pairs.
+        y_bot_r3 = sp
+        y_top_r3 = h - sp
+        y_bot_r2 = sp + r2 / 2
+        y_top_r2 = h - sp - r2 / 2
+
+        if half_gap >= half_for_G6:
+            # Full G6 equivalent: three x-positions × two y-positions (top + bottom).
+            self.hole(x_mid - sm_offset, y_bot_r3, r3)
+            self.hole(x_mid - sm_offset, y_top_r3, r3)
+            self.hole(x_mid,             y_bot_r2, r2)
+            self.hole(x_mid,             y_top_r2, r2)
+            self.hole(x_mid + sm_offset, y_bot_r3, r3)
+            self.hole(x_mid + sm_offset, y_top_r3, r3)
+
+        elif half_gap >= half_for_G2m:
+            # Gap too narrow for small flanking holes — medium pair only.
+            self.hole(x_mid, y_bot_r2, r2)
+            self.hole(x_mid, y_top_r2, r2)
+
+    def drawAlignmentHolesRect(self, s, l):
+        """Cut alignment features into an outer wall drawn by rectangularWall.
+
+        Transposed counterpart of HexmoHexagon.drawAlignmentHoles: the 'long'
+        axis of the hole pattern runs along x (wall length = s) rather than
+        along y (wall height = l), matching the ``rectangularWall`` callback
+        coordinate frame where the turtle faces right along the wall.
+
+        The layout algorithm is identical to drawAlignmentHoles:
+          1. Corner group-of-8 clusters at both ends (via _drawCornerGroup8Rect).
+          2. Up to three large through-holes along the y = l/2 centre line,
+             spaced to avoid the corner clusters.
+          3. Gap filling between adjacent features (via _drawSupportGapFeatures).
+
+        The big-hole radius r1 = (l − 2·_SPACER) / 2 is derived from l (the box
+        height) using the same formula as drawAlignmentHoles so that holes are
+        sized identically on mating panels from both generator types.
+
+        @param s - Wall length (x-axis of rectangularWall callback).
+        @param l - Panel height / box height (y-axis of rectangularWall callback).
+        """
+        sp = self._SPACER
+        r2 = self._R2
+        MIN_CLEAR = 5.0
+
+        # Large through-hole radius — fills most of the panel height, leaving
+        # _SPACER clearance at both the top and bottom edges.
+        r1 = (l - 2 * sp) / 2
+
+        # Minimum x-distance from either end where a big hole centre can sit
+        # without its edge overlapping the corner cluster's medium hole.
+        x_floor = 3 * sp + r2 + r1 + MIN_CLEAR
+
+        # Available length for the interior big-hole band.
+        available = s - 2 * x_floor
+
+        if available < 0:
+            # Wall too short for any interior big holes — corner clusters only.
+            big_xs = []
+        else:
+            n = min(3, max(1, 1 + int(available / (2 * r1 + MIN_CLEAR))))
+            # Force odd count so the distribution is symmetric and s/2 is always
+            # included, providing a track pass-through aperture at mid-wall.
+            if n % 2 == 0:
+                n -= 1
+            if n == 1:
+                big_xs = [s / 2]
+            else:
+                step = available / (n - 1)
+                big_xs = [x_floor + i * step for i in range(n)]
+
+        # Large through-holes along the vertical centre line (y = l/2).
+        for x in big_xs:
+            self.hole(x, l / 2, r1)
+
+        # Fill every gap between adjacent features with sub-hole pairs.
+        corner_inner = 3 * sp + r2                        # inner x-edge of corner medium hole
+        lo_bounds = [corner_inner]      + [x + r1 for x in big_xs]
+        hi_bounds = [x - r1 for x in big_xs] + [s - corner_inner]
+        for x_lo, x_hi in zip(lo_bounds, hi_bounds):
+            self._drawSupportGapFeatures(l, x_lo, x_hi)
+
+        # Corner clusters — drawn last so their fixed-offset holes are never
+        # masked by the dynamic interior features.
+        self._drawCornerGroup8Rect(s, l)
 
     def render(self) -> None:
         """Generate all panels for the HexmoRectangle box (Phase 2: outer shell + 3×5 grid).
@@ -183,9 +360,12 @@ class HexmoRectangle(Boxes):
         # Vertical divider 1 is centred at col_w + t/2 along W.
         # Vertical divider 2 is centred at 2·col_w + 3t/2 along W.
         # fingerHolesAt(x, 0, h, 90): holes at x from inner-left, going up h.
+        # drawAlignmentHolesRect adds the HexmoHexagon-compatible alignment
+        # pattern so that this wall can be pinned flush to a hexagon side face.
         def short_wall_cb():
             self.fingerHolesAt(col_w + t / 2,           0, h, 90)
             self.fingerHolesAt(2 * col_w + 3 * t / 2,   0, h, 90)
+            self.drawAlignmentHolesRect(W, h)
 
         # Long outer walls (H × h): four horizontal dividers pass through.
         # Divider i is centred at (i+1)·row_h + (2i+1)·t/2 along H (i = 0..3).
@@ -193,6 +373,24 @@ class HexmoRectangle(Boxes):
             for i in range(4):
                 pos = (i + 1) * row_h + (2 * i + 1) * t / 2
                 self.fingerHolesAt(pos, 0, h, 90)
+            self.drawAlignmentHolesRect(H, h)
+
+        # Vertical dividers (H × h): alignment holes placed per row segment.
+        # Each of the 5 row segments spans [j*(row_h+t), j*(row_h+t)+row_h] along
+        # x (the H axis); crossing slots at the remaining t-wide positions hold no
+        # holes.  _drawSupportGapFeatures fills each segment with top/bottom hole
+        # pairs compatible with HexmoHexagon support panels.
+        def vert_div_cb():
+            for j in range(5):
+                x_lo = j * (row_h + t)
+                self._drawSupportGapFeatures(h, x_lo, x_lo + row_h)
+
+        # Horizontal dividers (W × h): alignment holes placed per column segment.
+        # Each of the 3 column segments spans [j*(col_w+t), j*(col_w+t)+col_w].
+        def horiz_div_cb():
+            for j in range(3):
+                x_lo = j * (col_w + t)
+                self._drawSupportGapFeatures(h, x_lo, x_lo + col_w)
 
         # Base plate ((W+2t) × (H+2t)): fingerHoles for all six dividers.
         # At callback-0 the turtle sits at the inner-bottom-left corner of the
@@ -266,7 +464,7 @@ class HexmoRectangle(Boxes):
         for _ in range(2):
             self.rectangularWall(H, h,
                                  [e_vert_bot, 'f', 'e', 'f'],
-                                 move="right")
+                                 callback=[vert_div_cb], move="right")
 
         # Advance cursor past the vertical divider row.
         self.rectangularWall(1, h, "eeee", move="up only")
@@ -283,4 +481,4 @@ class HexmoRectangle(Boxes):
         for _ in range(4):
             self.rectangularWall(W, h,
                                  [e_horiz_bot, 'f', e_horiz_top, 'f'],
-                                 move="right")
+                                 callback=[horiz_div_cb], move="right")
