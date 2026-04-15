@@ -40,11 +40,14 @@ class HexmoRectangle(Boxes):
     to connect to this tray.  All dimensions are derived from it using the same
     formulas as HexmoHexagon so that edges and faces mate flush:
 
-    - Short wall inner width  W = ``radius − 2 × thickness``
-      (matches one HexmoHexagon side-wall length)
+    - Short wall panel width  W = ``radius − 2 × thickness``
+      (matches the laser-cut panel width of one HexmoHexagon side-wall, ensuring
+      flush edge-to-edge alignment when the two box types are placed side by side)
+    - Short wall inner cavity = ``W − 2t`` (after subtracting the two long-wall
+      thicknesses on either end of the short dimension)
     - Long wall inner width   H = ``radius × √3``
       (matches the HexmoHexagon flat-to-flat inner cavity distance)
-    - Column inner width      = ``(W − 2t) / 3`` (3 equal columns across the short axis)
+    - Column inner width      = ``(W − 4t) / 3`` (3 equal columns across the short axis)
     - Row inner height        = ``(H − 4t) / 5`` (5 equal rows along the long axis)
 
     FingerJoint settings are set to match HexmoHexagon (finger=5, space=5,
@@ -271,9 +274,9 @@ class HexmoRectangle(Boxes):
         Draws eleven panels:
           - 2 × short outer wall  (W × h)  — span the short (radius) axis
           - 2 × long outer wall   (H × h)  — span the long (radius × √3) axis
-          - 1 × base plate        ((W + 2t) × (H + 2t))
+          - 1 × base plate        (W × (H + 2t))
           - 2 × vertical divider  (H × h)  — split the box into 3 columns
-          - 4 × horizontal divider (W × h) — split the box into 5 rows
+          - 4 × horizontal divider ((W−2t) × h) — split the box into 5 rows
 
         When ``--outside`` is set, ``radius`` is treated as the outer hexagon
         circumradius (matching HexmoHexagon's outside-mode convention) and is
@@ -329,7 +332,12 @@ class HexmoRectangle(Boxes):
         # The 3-column × 5-row grid divides the inner cavity dimensions evenly.
         # 2 vertical dividers (each thickness t) occupy 2t of the W width.
         # 4 horizontal dividers (each thickness t) occupy 4t of the H height.
-        col_w = (W - 2 * t) / 3   # inner width of each of the 3 columns
+        # The short wall panel is drawn with inner dimension W − 2t (so the
+        # laser-cut bounding box = (W−2t) + 2t = W, matching the HexmoHexagon
+        # side-wall width).  The box inner cavity in the short direction is
+        # therefore W − 2t, and 2 vertical dividers (each thickness t) leave
+        # (W − 2t) − 2t = W − 4t for the 3 column interiors.
+        col_w = (W - 4 * t) / 3   # inner width of each of the 3 columns
         row_h = (H - 4 * t) / 5   # inner height of each of the 5 rows
 
         # --- Crossing slot edges ------------------------------------------------
@@ -360,12 +368,13 @@ class HexmoRectangle(Boxes):
         # Vertical divider 1 is centred at col_w + t/2 along W.
         # Vertical divider 2 is centred at 2·col_w + 3t/2 along W.
         # fingerHolesAt(x, 0, h, 90): holes at x from inner-left, going up h.
-        # drawAlignmentHolesRect adds the HexmoHexagon-compatible alignment
-        # pattern so that this wall can be pinned flush to a hexagon side face.
+        # drawAlignmentHolesRect(W-2t, h): alignment holes span the short wall's
+        # inner dimension (W-2t) so that hole positions are compatible with the
+        # matching HexmoHexagon side-wall holes (both panels are W = side-2t wide).
         def short_wall_cb():
             self.fingerHolesAt(col_w + t / 2,           0, h, 90)
             self.fingerHolesAt(2 * col_w + 3 * t / 2,   0, h, 90)
-            self.drawAlignmentHolesRect(W, h)
+            self.drawAlignmentHolesRect(W - 2 * t, h)
 
         # Long outer walls (H × h): four horizontal dividers pass through.
         # Divider i is centred at (i+1)·row_h + (2i+1)·t/2 along H (i = 0..3).
@@ -430,8 +439,10 @@ class HexmoRectangle(Boxes):
         # Top is left open ('e') — a lid can be added in a later phase.
 
         # Two short outer walls spanning the W (radius) axis — with vertical-divider holes.
+        # The panel is drawn with inner dimension W-2t so its laser-cut bounding box
+        # equals W (= side-2t = HexmoHexagon edge-wall width), enabling flush assembly.
         for _ in range(2):
-            self.rectangularWall(W, h, "ffef",
+            self.rectangularWall(W - 2 * t, h, "ffef",
                                  callback=[short_wall_cb], move="right")
 
         # Two long outer walls spanning the H (radius × √3) axis — with horizontal-divider holes.
@@ -444,11 +455,15 @@ class HexmoRectangle(Boxes):
 
         # --- Base plate ---------------------------------------------------------
         # The base plate spans the full outer footprint of the box.
-        # Each outer wall's bottom 'f' tabs extend t inward into the base perimeter,
-        # so the base plate must be (W + 2t) wide and (H + 2t) deep.
-        # 'F' (counter-part finger joint) on all four edges receives the wall tabs.
+        # Short walls have inner dimension W−2t and 'f' tabs on both vertical sides,
+        # so their outer extent = (W−2t) + 2t = W.  Long walls have inner H and
+        # 'F' (female) on their vertical sides (no outward protrusion there), but
+        # because edgeCorner adds a step of t at each top/bottom corner for their
+        # 'F' side edges, the long wall outer extent = H + 2t.
+        # Base plate must therefore be W wide × (H + 2t) deep.
+        # 'F' on all four edges receives the bottom 'f' tabs from every outer wall.
         # The base_cb callback adds fingerHoles for all six inner dividers.
-        self.rectangularWall(W + 2 * t, H + 2 * t, "FFFF",
+        self.rectangularWall(W, H + 2 * t, "FFFF",
                              callback=[base_cb], move="right")
 
         # Advance cursor past the base plate row before drawing dividers.
@@ -478,7 +493,10 @@ class HexmoRectangle(Boxes):
         # dividers' bottom slots at mid-height during assembly.
         # Left / right edges ('f'): end-tabs seating into fingerHoles on the long
         # outer walls.
+        # Horizontal dividers span the inner short cavity (W−2t) between the two
+        # long outer walls, with 'f' end-tabs on left and right seating into the
+        # fingerHoles on those long walls.  Inner dimension = W−2t; bbox = W.
         for _ in range(4):
-            self.rectangularWall(W, h,
+            self.rectangularWall(W - 2 * t, h,
                                  [e_horiz_bot, 'f', e_horiz_top, 'f'],
                                  callback=[horiz_div_cb], move="right")
