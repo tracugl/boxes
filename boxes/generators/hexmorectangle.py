@@ -562,17 +562,21 @@ class HexmoRectangle(Boxes):
                     self.fingerHolesAt(j * (col_w + t), y_c, col_w, 0)
 
         # --- Outer walls --------------------------------------------------------
-        # Short walls (front/back, spanning W) provide tabs on their small
+        # Long walls (left/right, spanning H) provide tabs on their small
         # (height-direction) edges — 'f' on left and right.
-        # Long walls (left/right, spanning H) receive those tabs via 'F' slots
+        # Short walls (front/back, spanning W) receive those tabs via 'F' slots
         # on their small (height-direction) edges.
         #
         # Edge string breakdown:
-        #   "ffef": [bottom='f', right='f', top='e', left='f']  ← short walls
-        #   "fFeF": [bottom='f', right='F', top='e', left='F']  ← long walls
+        #   "fFeF": [bottom='f', right='F', top='e', left='F']  ← short walls
+        #   "ffef": [bottom='f', right='f', top='e', left='f']  ← long walls
         #
-        # The short wall side-tabs ('f') project into the long wall end-slots ('F'),
-        # creating flush corners where both outer faces are coplanar.
+        # The long wall side-tabs ('f') project into the short wall end-slots ('F'),
+        # creating flush corners where both outer faces are coplanar.  This
+        # arrangement is preferred over the reverse because the short wall alignment-
+        # hole clusters sit ~t mm from the panel edge; removing the protruding 'f'
+        # tab from the short wall ends gives those clusters a clean flat edge rather
+        # than having small pilot holes directly adjacent to a finger-joint tab tip.
         # Both wall types use bottom='f' so their base-edge tabs slot into the
         # base plate's perimeter 'F' counter-part slots.
         # Top is left open ('e') — a lid can be added in a later phase.
@@ -581,12 +585,12 @@ class HexmoRectangle(Boxes):
         # The panel is drawn with inner dimension W-2t so its laser-cut bounding box
         # equals W (= side-2t = HexmoHexagon edge-wall width), enabling flush assembly.
         for _ in range(2):
-            self.rectangularWall(W - 2 * t, h, "ffef",
+            self.rectangularWall(W - 2 * t, h, "fFeF",
                                  callback=[short_wall_cb], move="right")
 
         # Two long outer walls spanning the H (radius × √3) axis — with horizontal-divider holes.
         for _ in range(2):
-            self.rectangularWall(H, h, "fFeF",
+            self.rectangularWall(H, h, "ffef",
                                  callback=[long_wall_cb], move="right")
 
         # Advance the layout cursor to a fresh row below the wall panels.
@@ -594,11 +598,11 @@ class HexmoRectangle(Boxes):
 
         # --- Base plate ---------------------------------------------------------
         # The base plate spans the full outer footprint of the box.
-        # Short walls have inner dimension W−2t and 'f' tabs on both vertical sides,
-        # so their outer extent = (W−2t) + 2t = W.  Long walls have inner H and
-        # 'F' (female) on their vertical sides (no outward protrusion there), but
-        # because edgeCorner adds a step of t at each top/bottom corner for their
-        # 'F' side edges, the long wall outer extent = H + 2t.
+        # For both 'f' and 'F' side edges, spacing() = thickness = t, so the
+        # overallwidth formula (x + left.spacing() + right.spacing()) gives the
+        # same outer extents regardless of which wall carries the tab:
+        #   short walls: (W−2t) + t + t = W
+        #   long walls:  H     + t + t = H + 2t
         # Base plate must therefore be W wide × (H + 2t) deep.
         # 'F' on all four edges receives the bottom 'f' tabs from every outer wall.
         # The base_cb callback adds fingerHoles for all six inner dividers.
