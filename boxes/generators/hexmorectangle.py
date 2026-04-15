@@ -114,39 +114,32 @@ class HexmoRectangle(Boxes):
         @param l - Panel height (box height, y-axis of the rectangularWall callback).
         """
         sp = self._SPACER
-        # sp_y: height-direction (y) margin for BOTTOM-edge holes, enlarged by one
-        # thickness to match the HexmoHexagon edge wall's bottom hole positions.  The
-        # hex polygonWall callback fires with the turtle origin at -t (below the inner
-        # bottom edge), compressing the effective height range.  Using sp_y = sp + t
-        # at the bottom replicates that offset so bottom holes are co-located on both
-        # panel types.
-        #
-        # For TOP-edge holes the equivalent compression pushes the usable ceiling
-        # downward by the same t — but in the rectangularWall callback frame the top
-        # boundary is already at y=l with no additional margin.  Top holes therefore
-        # use plain sp (without the extra t) so that their physical distance from the
-        # top edge equals the hex panel's corresponding hole distance.
-        sp_y = sp + self.thickness
-        # y_center: vertical centre adjusted for the same affine shift that the hex
-        # callback's moveTo(0, -t) applies to the height axis.  Derived from the
-        # empirical mapping fb(y_cb) ≈ y_cb + 0.106 − (y_cb−21)·(t/h_usable):
-        # solving fb = h/2 − t·(1−1/√3)/2 gives y_center = l/2 + t·(1−1/√3).
-        y_center = l / 2 + self.thickness * (1 - 1 / math.sqrt(3))
+        t  = self.thickness
+        # sp_y: height-direction margin for bottom-edge holes.  Both rectangularWall
+        # and polygonWall callbacks fire with y=0 at the inner bottom face, so bottom
+        # holes sit at plain sp — no thickness offset is needed.
+        sp_y = sp
+        # y_center: vertical position of the corner-strip medium holes.  Set to 3·sp
+        # to match HexmoHexagon._drawCornerGroup8, which places its centre medium hole
+        # at y = 3·sp from the inner bottom face.
+        y_center = 3 * sp
         r2 = self._R2
         r3 = self._R3
 
-        # Right-end top corner L-cluster: three small holes at the far-right,
-        # near the top edge.  Top margin is sp (not sp_y) — see note above.
-        self.hole(s - sp,         l - sp,         r3)
-        self.hole(s - 2 * sp,     l - sp,         r3)
-        self.hole(s - sp,         l - 2 * sp,     r3)
+        # Right-end top corner L-cluster: three small holes at the far-right, near
+        # the top edge.  Top positions subtract an extra t: the rectangularWall
+        # h_callback ≈ h + t (outside-adjusted) while the hex polygonWall uses
+        # plain h, so subtracting t aligns both panel types in physical space.
+        self.hole(s - sp,         l - sp - t,         r3)
+        self.hole(s - 2 * sp,     l - sp - t,         r3)
+        self.hole(s - sp,         l - 2 * sp - t,     r3)
 
         # Centre-strip registration pins at 3·sp from both ends of the wall.
-        # Medium holes use y_center (adjusted) instead of l/2 so they align with
-        # the hex's centre-column medium holes in physical space.
-        self.hole(s - 3 * sp, l - sp,      r3)   # right end, near top
+        # Top small holes use l − sp − t (same outside-adjusted correction as the
+        # corner cluster).  Medium holes use y_center = 3·sp, matching the hex.
+        self.hole(s - 3 * sp, l - sp - t,  r3)   # right end, near top
         self.hole(s - 3 * sp, y_center,    r2)   # right-end centre medium
-        self.hole(3 * sp,     l - sp,      r3)   # left end, near top
+        self.hole(3 * sp,     l - sp - t,  r3)   # left end, near top
         self.hole(3 * sp,     y_center,    r2)   # left-end centre medium
         self.hole(s - 3 * sp, sp_y,        r3)   # right end, near bottom
         self.hole(3 * sp,     sp_y,        r3)   # left end, near bottom
@@ -156,10 +149,10 @@ class HexmoRectangle(Boxes):
         self.hole(s - 2 * sp,     sp_y,         r3)
         self.hole(s - sp,         sp_y + sp,    r3)
 
-        # Left-end top corner L-cluster.  Top margin is sp — see note above.
-        self.hole(sp,         l - sp,         r3)
-        self.hole(2 * sp,     l - sp,         r3)
-        self.hole(sp,         l - 2 * sp,     r3)
+        # Left-end top corner L-cluster.  Same top-alignment correction as right end.
+        self.hole(sp,         l - sp - t,         r3)
+        self.hole(2 * sp,     l - sp - t,         r3)
+        self.hole(sp,         l - 2 * sp - t,     r3)
 
         # Left-end bottom corner L-cluster.
         self.hole(sp,         sp_y,         r3)
@@ -186,15 +179,15 @@ class HexmoRectangle(Boxes):
         r2 = self._R2
         r3 = self._R3
         sp = self._SPACER
-        # sp_y: height-direction margin for bottom-edge holes (sp + t).
-        # Top-edge holes use plain sp.  See _drawCornerGroup8Rect for explanation.
-        sp_y = sp + self.thickness
+        # sp_y: height-direction margin for bottom-edge holes.  Plain sp — both
+        # callbacks place y=0 at the inner bottom face, so no thickness offset.
+        sp_y = sp
         MIN_CLEAR = 5.0
 
         # Vertical guard: bottom-medium top edge (sp_y + r2) must clear top-medium
-        # bottom edge (h − sp − r2) by at least MIN_CLEAR.
-        # Rearranged: h ≥ sp_y + sp + 3·r2 + MIN_CLEAR.
-        if h < sp_y + sp + 3 * r2 + MIN_CLEAR:
+        # bottom edge (h − sp − t − r2) by at least MIN_CLEAR.
+        # Rearranged: h ≥ 2·sp + t + 3·r2 + MIN_CLEAR.
+        if h < 2 * sp + self.thickness + 3 * r2 + MIN_CLEAR:
             return
 
         half_gap = (x_hi - x_lo) / 2
@@ -205,13 +198,14 @@ class HexmoRectangle(Boxes):
         half_for_G6  = sm_offset + r3 + MIN_CLEAR
 
         # Precompute y-positions for the top/bottom hole pairs.
-        # Bottom uses sp_y = sp + t (compressed by thickness, same as hex bottom).
-        # Top uses plain sp — no extra thickness — to match the hex top-edge offset.
-        # See _drawCornerGroup8Rect for the detailed explanation of this asymmetry.
+        # Bottom: sp_y = sp (inner bottom face + clearance).
+        # Top: h − sp − t compensates for the rectangularWall h_callback being
+        # ≈ h + t (outside-adjusted); subtracting t matches the hex polygonWall's
+        # plain h − sp top-edge position in physical space.
         y_bot_r3 = sp_y
-        y_top_r3 = h - sp
+        y_top_r3 = h - sp - self.thickness
         y_bot_r2 = sp_y + r2 / 2
-        y_top_r2 = h - sp - r2 / 2
+        y_top_r2 = h - sp - self.thickness - r2 / 2
 
         if half_gap >= half_for_G6:
             # Full G6 equivalent: three x-positions × two y-positions (top + bottom).
@@ -278,12 +272,12 @@ class HexmoRectangle(Boxes):
                 step = available / (n - 1)
                 big_xs = [x_floor + i * step for i in range(n)]
 
-        # Large through-holes along the adjusted centre line.
-        # The hex callback's effective height origin is shifted by -t (moveTo origin
-        # at -t below inner edge), so the physical centre of a hex panel is not at
-        # y_cb = l/2 but at y_cb = l/2 + t·(1−1/√3).  Use the same shift here so
-        # that big holes on both panel types are co-located in physical space.
-        y_big = l / 2 + self.thickness * (1 - 1 / math.sqrt(3))
+        # Large through-holes along the centre line.
+        # The rectangularWall h_callback = h_outer − t (bottom 'f' only), so
+        # l = outer_h − t and the hex's inner height h_hex = outer_h − 2·t = l − t.
+        # Physical inner-cavity centre = h_hex / 2 = (l − t) / 2, matching the
+        # hex polygonWall's y_big = h_hex / 2.
+        y_big = (l - self.thickness) / 2
         for x in big_xs:
             self.hole(x, y_big, r1)
 
