@@ -33,34 +33,34 @@ from boxes import Boxes, edges
 
 
 class HexmoRectangle(Boxes):
-    """Rectangular tray with a fixed 3×5 internal grid, compatible with HexmoHexagon stacking.
+    """Rectangular tray with a fixed 3×5 internal grid, compatible with HexmoHexagon stacking."""
+    
+    # The ``--radius`` parameter is the **inner corner-to-corner radius** of a regular
+    # hexagon and must be set to the same value used on the HexmoHexagon boxes you want
+    # to connect to this tray.  All dimensions are derived from it using the same
+    # formulas as HexmoHexagon so that edges and faces mate flush:
 
-    The ``--radius`` parameter is the **inner corner-to-corner radius** of a regular
-    hexagon and must be set to the same value used on the HexmoHexagon boxes you want
-    to connect to this tray.  All dimensions are derived from it using the same
-    formulas as HexmoHexagon so that edges and faces mate flush:
+    # - Short wall panel width  W = ``radius − 2 × thickness``
+    #   (matches the laser-cut panel width of one HexmoHexagon side-wall, ensuring
+    #   flush edge-to-edge alignment when the two box types are placed side by side)
+    # - Short wall inner cavity = ``W − 2t`` (after subtracting the two long-wall
+    #   thicknesses on either end of the short dimension)
+    # - Long wall inner width   H = ``radius × √3``
+    #   (matches the HexmoHexagon flat-to-flat inner cavity distance)
+    # - Column inner width      = ``(W − 4t) / 3`` (3 equal columns across the short axis)
+    # - Row inner height        = ``(H − 4t) / 5`` (5 equal rows along the long axis)
 
-    - Short wall panel width  W = ``radius − 2 × thickness``
-      (matches the laser-cut panel width of one HexmoHexagon side-wall, ensuring
-      flush edge-to-edge alignment when the two box types are placed side by side)
-    - Short wall inner cavity = ``W − 2t`` (after subtracting the two long-wall
-      thicknesses on either end of the short dimension)
-    - Long wall inner width   H = ``radius × √3``
-      (matches the HexmoHexagon flat-to-flat inner cavity distance)
-    - Column inner width      = ``(W − 4t) / 3`` (3 equal columns across the short axis)
-    - Row inner height        = ``(H − 4t) / 5`` (5 equal rows along the long axis)
+    # FingerJoint settings are set to match HexmoHexagon (finger=5, space=5,
+    # surroundingspaces=2, play=0.2) so that joints between the two box types are
+    # compatible.
 
-    FingerJoint settings are set to match HexmoHexagon (finger=5, space=5,
-    surroundingspaces=2, play=0.2) so that joints between the two box types are
-    compatible.
-
-    Internal 3×5 grid crossing-joint convention:
-      - Vertical dividers (2, spanning H): slots cut from the **bottom** edge,
-        depth h/2, allowing horizontal dividers to slide in from above.
-      - Horizontal dividers (4, spanning W): slots cut from the **top** edge,
-        depth h/2, meshing with the vertical dividers' bottom slots at the
-        midpoint of the wall height.
-    """
+    # Internal 3×5 grid crossing-joint convention:
+    #   - Vertical dividers (2, spanning H): slots cut from the **bottom** edge,
+    #     depth h/2, allowing horizontal dividers to slide in from above.
+    #   - Horizontal dividers (4, spanning W): slots cut from the **top** edge,
+    #     depth h/2, meshing with the vertical dividers' bottom slots at the
+    #     midpoint of the wall height.
+    # 
 
     ui_group = "Box"
 
@@ -114,39 +114,57 @@ class HexmoRectangle(Boxes):
         @param l - Panel height (box height, y-axis of the rectangularWall callback).
         """
         sp = self._SPACER
+        # sp_y: height-direction (y) margin for BOTTOM-edge holes, enlarged by one
+        # thickness to match the HexmoHexagon edge wall's bottom hole positions.  The
+        # hex polygonWall callback fires with the turtle origin at -t (below the inner
+        # bottom edge), compressing the effective height range.  Using sp_y = sp + t
+        # at the bottom replicates that offset so bottom holes are co-located on both
+        # panel types.
+        #
+        # For TOP-edge holes the equivalent compression pushes the usable ceiling
+        # downward by the same t — but in the rectangularWall callback frame the top
+        # boundary is already at y=l with no additional margin.  Top holes therefore
+        # use plain sp (without the extra t) so that their physical distance from the
+        # top edge equals the hex panel's corresponding hole distance.
+        sp_y = sp + self.thickness
+        # y_center: vertical centre adjusted for the same affine shift that the hex
+        # callback's moveTo(0, -t) applies to the height axis.  Derived from the
+        # empirical mapping fb(y_cb) ≈ y_cb + 0.106 − (y_cb−21)·(t/h_usable):
+        # solving fb = h/2 − t·(1−1/√3)/2 gives y_center = l/2 + t·(1−1/√3).
+        y_center = l / 2 + self.thickness * (1 - 1 / math.sqrt(3))
         r2 = self._R2
         r3 = self._R3
 
-        # Right-end corner L-clusters: three small holes at the far-right,
-        # near the top (y ≈ l) and bottom (y ≈ 0) edges respectively.
-        self.hole(s - sp,         l - sp,     r3)
-        self.hole(s - 2 * sp,     l - sp,     r3)
-        self.hole(s - sp,         l - 2 * sp, r3)
+        # Right-end top corner L-cluster: three small holes at the far-right,
+        # near the top edge.  Top margin is sp (not sp_y) — see note above.
+        self.hole(s - sp,         l - sp,         r3)
+        self.hole(s - 2 * sp,     l - sp,         r3)
+        self.hole(s - sp,         l - 2 * sp,     r3)
 
         # Centre-strip registration pins at 3·sp from both ends of the wall.
-        # Each end has a medium hole centred on y=l/2 flanked by small holes at
-        # y=sp (bottom) and y=l-sp (top), mirroring the hexagon's centre-column strip.
-        self.hole(s - 3 * sp, l - sp, r3)   # right end, near top
-        self.hole(s - 3 * sp, l / 2,  r2)   # right-end centre medium
-        self.hole(3 * sp,     l - sp, r3)   # left end, near top
-        self.hole(3 * sp,     l / 2,  r2)   # left-end centre medium
-        self.hole(s - 3 * sp, sp,     r3)   # right end, near bottom
-        self.hole(3 * sp,     sp,     r3)   # left end, near bottom
+        # Medium holes use y_center (adjusted) instead of l/2 so they align with
+        # the hex's centre-column medium holes in physical space.
+        self.hole(s - 3 * sp, l - sp,      r3)   # right end, near top
+        self.hole(s - 3 * sp, y_center,    r2)   # right-end centre medium
+        self.hole(3 * sp,     l - sp,      r3)   # left end, near top
+        self.hole(3 * sp,     y_center,    r2)   # left-end centre medium
+        self.hole(s - 3 * sp, sp_y,        r3)   # right end, near bottom
+        self.hole(3 * sp,     sp_y,        r3)   # left end, near bottom
 
         # Right-end bottom corner L-cluster.
-        self.hole(s - sp,         sp,         r3)
-        self.hole(s - 2 * sp,     sp,         r3)
-        self.hole(s - sp,         2 * sp,     r3)
+        self.hole(s - sp,         sp_y,         r3)
+        self.hole(s - 2 * sp,     sp_y,         r3)
+        self.hole(s - sp,         sp_y + sp,    r3)
 
-        # Left-end top corner L-cluster.
-        self.hole(sp,         l - sp,     r3)
-        self.hole(2 * sp,     l - sp,     r3)
-        self.hole(sp,         l - 2 * sp, r3)
+        # Left-end top corner L-cluster.  Top margin is sp — see note above.
+        self.hole(sp,         l - sp,         r3)
+        self.hole(2 * sp,     l - sp,         r3)
+        self.hole(sp,         l - 2 * sp,     r3)
 
         # Left-end bottom corner L-cluster.
-        self.hole(sp,         sp,         r3)
-        self.hole(2 * sp,     sp,         r3)
-        self.hole(sp,         2 * sp,     r3)
+        self.hole(sp,         sp_y,         r3)
+        self.hole(2 * sp,     sp_y,         r3)
+        self.hole(sp,         sp_y + sp,    r3)
 
     def _drawSupportGapFeatures(self, h, x_lo, x_hi):
         """Fill the x-axis gap between two features with a symmetric hole sub-group.
@@ -168,11 +186,15 @@ class HexmoRectangle(Boxes):
         r2 = self._R2
         r3 = self._R3
         sp = self._SPACER
+        # sp_y: height-direction margin for bottom-edge holes (sp + t).
+        # Top-edge holes use plain sp.  See _drawCornerGroup8Rect for explanation.
+        sp_y = sp + self.thickness
         MIN_CLEAR = 5.0
 
-        # Vertical guard: top-medium vs bottom-medium must not overlap.
-        # Condition: h ≥ 2·sp + 3·r2 + MIN_CLEAR ≈ 72.5 mm.
-        if h < 2 * sp + 3 * r2 + MIN_CLEAR:
+        # Vertical guard: bottom-medium top edge (sp_y + r2) must clear top-medium
+        # bottom edge (h − sp − r2) by at least MIN_CLEAR.
+        # Rearranged: h ≥ sp_y + sp + 3·r2 + MIN_CLEAR.
+        if h < sp_y + sp + 3 * r2 + MIN_CLEAR:
             return
 
         half_gap = (x_hi - x_lo) / 2
@@ -183,9 +205,12 @@ class HexmoRectangle(Boxes):
         half_for_G6  = sm_offset + r3 + MIN_CLEAR
 
         # Precompute y-positions for the top/bottom hole pairs.
-        y_bot_r3 = sp
+        # Bottom uses sp_y = sp + t (compressed by thickness, same as hex bottom).
+        # Top uses plain sp — no extra thickness — to match the hex top-edge offset.
+        # See _drawCornerGroup8Rect for the detailed explanation of this asymmetry.
+        y_bot_r3 = sp_y
         y_top_r3 = h - sp
-        y_bot_r2 = sp + r2 / 2
+        y_bot_r2 = sp_y + r2 / 2
         y_top_r2 = h - sp - r2 / 2
 
         if half_gap >= half_for_G6:
@@ -253,9 +278,14 @@ class HexmoRectangle(Boxes):
                 step = available / (n - 1)
                 big_xs = [x_floor + i * step for i in range(n)]
 
-        # Large through-holes along the vertical centre line (y = l/2).
+        # Large through-holes along the adjusted centre line.
+        # The hex callback's effective height origin is shifted by -t (moveTo origin
+        # at -t below inner edge), so the physical centre of a hex panel is not at
+        # y_cb = l/2 but at y_cb = l/2 + t·(1−1/√3).  Use the same shift here so
+        # that big holes on both panel types are co-located in physical space.
+        y_big = l / 2 + self.thickness * (1 - 1 / math.sqrt(3))
         for x in big_xs:
-            self.hole(x, l / 2, r1)
+            self.hole(x, y_big, r1)
 
         # Fill every gap between adjacent features with sub-hole pairs.
         corner_inner = 3 * sp + r2                        # inner x-edge of corner medium hole
@@ -380,13 +410,53 @@ class HexmoRectangle(Boxes):
         # inner dimension (W-2t) so that hole positions are compatible with the
         # matching HexmoHexagon side-wall holes (both panels are W = side-2t wide).
         def short_wall_cb():
+            """Place fingerHoles and alignment holes on a short outer wall panel.
+
+            Registered as the edge-0 (bottom) callback for ``rectangularWall``; called
+            once per short wall during SVG generation.  Draws two vertical-divider
+            fingerHole rows then delegates to ``drawAlignmentHolesRect`` to cut the
+            full alignment-hole pattern across a compressed x-band whose spacing
+            matches the HexmoHexagon edge-wall hole spacing.
+
+            The x-band compression (``s_rect``) and origin shift (``dx``) replicate
+            the affine transform that the hexagon's ``polygonWall`` miter geometry
+            applies to its edge-wall callbacks, so that big holes on both panel types
+            are co-located in physical space when the two box types are assembled
+            side-by-side.
+
+            Captures from enclosing scope: ``col_w``, ``t``, ``h``, ``W``, ``r``.
+            """
             self.fingerHolesAt(col_w + t / 2,           0, h, 90)
             self.fingerHolesAt(2 * col_w + 3 * t / 2,   0, h, 90)
-            self.drawAlignmentHolesRect(W - 2 * t, h)
+            # Compute s_rect so that big-hole spacing in x matches the HexmoHexagon
+            # edge wall's y-spacing.  The hex's polygonWall fires the callback with an
+            # effective x-scale of (radius - 2t) / radius due to the miter setup at
+            # each hex vertex (moveTo(-t/√3, 0) in the callback frame).  We replicate
+            # that same compressed distribution by shrinking the interior band while
+            # keeping the corner cluster positions (x_floor) fixed.
+            sp_loc   = self._SPACER
+            r1_loc   = (h - 2 * sp_loc) / 2
+            x_floor  = 3 * sp_loc + self._R2 + r1_loc + 5.0
+            s_rect   = 2 * x_floor + (self.radius - 2 * x_floor) * (self.radius - 2 * t) / self.radius
+            # dx: origin shift so that rect hole x-positions align with hex hole y-positions
+            # after the hex moveTo(0, -t) has been applied.  Derived empirically:
+            # dx = t*(2 - 1/√3).
+            dx = t * (2 - 1 / math.sqrt(3))
+            self.moveTo(-dx, 0)
+            self.drawAlignmentHolesRect(s_rect, h)
 
         # Long outer walls (H × h): four horizontal dividers pass through.
         # Divider i is centred at (i+1)·row_h + (2i+1)·t/2 along H (i = 0..3).
         def long_wall_cb():
+            """Place fingerHoles and alignment holes on a long outer wall panel.
+
+            Registered as the edge-0 (bottom) callback for ``rectangularWall``; called
+            once per long wall.  Draws four horizontal-divider fingerHole rows at their
+            respective row-centre positions, then delegates to ``drawAlignmentHolesRect``
+            to cut the full alignment-hole pattern spanning the long wall's inner width H.
+
+            Captures from enclosing scope: ``row_h``, ``t``, ``h``, ``H``.
+            """
             for i in range(4):
                 pos = (i + 1) * row_h + (2 * i + 1) * t / 2
                 self.fingerHolesAt(pos, 0, h, 90)
@@ -398,6 +468,16 @@ class HexmoRectangle(Boxes):
         # holes.  _drawSupportGapFeatures fills each segment with top/bottom hole
         # pairs compatible with HexmoHexagon support panels.
         def vert_div_cb():
+            """Place alignment holes in each row segment of a vertical divider.
+
+            Registered as the edge-0 callback for the two vertical divider panels.
+            For each of the 5 row segments along the long axis, calls
+            ``_drawSupportGapFeatures`` to fill the segment with top/bottom hole pairs
+            matching the HexmoHexagon support-panel pattern.  The crossing-slot regions
+            (width ``t``) between segments receive no holes.
+
+            Captures from enclosing scope: ``row_h``, ``t``, ``h``.
+            """
             for j in range(5):
                 x_lo = j * (row_h + t)
                 self._drawSupportGapFeatures(h, x_lo, x_lo + row_h)
@@ -405,6 +485,16 @@ class HexmoRectangle(Boxes):
         # Horizontal dividers (W × h): alignment holes placed per column segment.
         # Each of the 3 column segments spans [j*(col_w+t), j*(col_w+t)+col_w].
         def horiz_div_cb():
+            """Place alignment holes in each column segment of a horizontal divider.
+
+            Registered as the edge-0 callback for the four horizontal divider panels.
+            For each of the 3 column segments along the short axis, calls
+            ``_drawSupportGapFeatures`` to fill the segment with top/bottom hole pairs
+            matching the HexmoHexagon support-panel pattern.  The crossing-slot regions
+            (width ``t``) between segments receive no holes.
+
+            Captures from enclosing scope: ``col_w``, ``t``, ``h``.
+            """
             for j in range(3):
                 x_lo = j * (col_w + t)
                 self._drawSupportGapFeatures(h, x_lo, x_lo + col_w)
@@ -419,6 +509,24 @@ class HexmoRectangle(Boxes):
         # Horizontal dividers: 3 'f' sections each of length col_w, spaced col_w+t
         # apart in the W direction; centred at (i+1)·row_h+(2i+1)·t/2 in H.
         def base_cb():
+            """Draw fingerHoles for all six inner dividers on the base plate.
+
+            Registered as the edge-0 callback for the base plate ``rectangularWall``.
+            At callback-0 the turtle's origin is at the inner bottom-left corner of
+            the base face, with x along the short (W) axis and y along the long (H)
+            axis.
+
+            Two vertical-divider rows are placed at column-centre x-positions
+            (``col_w + t/2`` and ``2·col_w + 3t/2``); each row consists of 5
+            finger-hole segments of length ``row_h``, separated by ``t``-wide gaps at
+            the horizontal crossing positions.
+
+            Four horizontal-divider rows are placed at row-centre y-positions; each
+            row consists of 3 finger-hole segments of length ``col_w``, separated by
+            ``t``-wide gaps at the vertical crossing positions.
+
+            Captures from enclosing scope: ``col_w``, ``row_h``, ``t``.
+            """
             # Vertical divider fingerHoles (angle=90 → drawn along H direction).
             for i in range(2):
                 x_c = (i + 1) * col_w + (2 * i + 1) * t / 2
