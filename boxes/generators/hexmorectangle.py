@@ -278,9 +278,11 @@ class HexmoRectangle(Boxes):
           - 2 × vertical divider  (H × h)  — split the box into 3 columns
           - 4 × horizontal divider ((W−2t) × h) — split the box into 5 rows
 
-        When ``--outside`` is set, ``radius`` is treated as the outer hexagon
-        circumradius (matching HexmoHexagon's outside-mode convention) and is
-        converted to an inner radius before deriving W and H.
+        ``--radius`` is always the inner corner-to-corner radius of the matching
+        HexmoHexagon; W is derived from it without any outside-mode adjustment so
+        that the short wall bbox = W regardless of outside mode.  When
+        ``--outside`` is set, ``h`` and ``H`` are adjusted to inner dimensions
+        (matching HexmoHexagon's outside-mode convention); W is unchanged.
 
         Crossing-joint convention (slot-and-tab):
           Vertical dividers carry ``SlottedEdge`` on their **bottom** edges:
@@ -309,20 +311,26 @@ class HexmoRectangle(Boxes):
         # regularPolygon(6, radius=r) returns (r, apothem, side) where:
         #   side   = r              (for a regular hexagon, side == circumradius)
         #   apothem = r × cos(30°) = r × √3 / 2  (centre-to-flat-face distance)
-        #
-        # If --outside is set the user has given the OUTER circumradius; convert to
-        # inner using the same hex formula HexmoHexagon uses (subtract the radial
-        # wall contribution = t / cos(30°) = 2t/√3).
+
+        # W: the --radius parameter is *always* interpreted as the inner
+        # corner-to-corner radius of the matching HexmoHexagon, regardless of
+        # whether --outside is set.  This ensures the short wall bounding box
+        # W = radius − 2t matches the HexmoHexagon side-wall panel width computed
+        # with the same raw radius.  The outside flag must NOT be applied to r
+        # before this step; doing so would reduce W by t/cos(30°) relative to the
+        # hexagon panel, preventing flush assembly.
+        _, _, side_raw = self.regularPolygon(6, radius=self.radius)
+        W = side_raw - 2 * t
+
+        # H and h: if --outside is set the user has given the OUTER height/radius;
+        # convert to inner using the same formula HexmoHexagon uses.  This keeps
+        # the box interior depth and the long-axis cavity correct for outside mode
+        # while leaving W unaffected (see above).
         if self.outside:
             r -= self.thickness / math.cos(math.radians(360 / (2 * 6)))
             h = self.adjustSize(h, e2=False)
 
-        _, apothem, side = self.regularPolygon(6, radius=r)
-
-        # W: inner short dimension = hexagon side length minus two wall thicknesses
-        # (the same subtraction HexmoHexagon applies before passing side to
-        # rectangularWall, so the walls line up flush when the two boxes join).
-        W = side - 2 * t
+        _, apothem, _ = self.regularPolygon(6, radius=r)
 
         # H: inner long dimension = hexagon flat-to-flat inner cavity distance.
         # For a regular hexagon, flat-to-flat = 2 × apothem = r × √3.
