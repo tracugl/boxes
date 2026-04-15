@@ -230,7 +230,7 @@ class HexmoRectangle(Boxes):
             self.hole(x_mid, y_bot_r2, r2)
             self.hole(x_mid, y_top_r2, r2)
 
-    def drawAlignmentHolesRect(self, s):
+    def drawAlignmentHolesRect(self, s, gap_features=True):
         """Cut alignment features into an outer wall drawn by rectangularWall.
 
         Transposed counterpart of HexmoHexagon.drawAlignmentHoles: the 'long'
@@ -246,7 +246,8 @@ class HexmoRectangle(Boxes):
           1. Corner group-of-8 clusters at both ends (via _drawCornerGroup8Rect).
           2. Up to three large through-holes along the y = l_eff/2 centre line,
              spaced to avoid the corner clusters.
-          3. Gap filling between adjacent features (via _drawSupportGapFeatures).
+          3. Gap filling between adjacent features (via _drawSupportGapFeatures),
+             controlled by the ``gap_features`` flag.
 
         The big-hole radius uses the fixed class constant _R4, matching the radius
         produced by HexmoHexagon for the same h value (r4 = (h − 2·_SPACER) / 2
@@ -254,7 +255,14 @@ class HexmoRectangle(Boxes):
         rather than re-deriving from l ensures identical hole sizes regardless of
         outside mode.
 
-        @param s - Wall length (x-axis of rectangularWall callback).
+        @param s            - Wall length (x-axis of rectangularWall callback).
+        @param gap_features - When True (default) the gaps between big holes and
+                              the corner clusters are filled with top/bottom hole
+                              pairs via ``_drawSupportGapFeatures``.  Pass False
+                              for the short outer walls, where those gap holes
+                              fall directly on the vertical-divider finger-joint
+                              slots cut by ``fingerHolesAt`` in ``short_wall_cb``,
+                              causing physical material conflicts.
         """
         sp = self._SPACER
         r2 = self._R2
@@ -297,11 +305,14 @@ class HexmoRectangle(Boxes):
             self.hole(x, y_big, r4)
 
         # Fill every gap between adjacent features with sub-hole pairs.
+        # Skipped when gap_features=False (e.g. short outer walls), where the
+        # gap x-centres coincide with vertical-divider finger-joint slots.
         corner_inner = 3 * sp + r2                        # inner x-edge of corner medium hole
-        lo_bounds = [corner_inner]      + [x + r4 for x in big_xs]
-        hi_bounds = [x - r4 for x in big_xs] + [s - corner_inner]
-        for x_lo, x_hi in zip(lo_bounds, hi_bounds):
-            self._drawSupportGapFeatures(x_lo, x_hi)
+        if gap_features:
+            lo_bounds = [corner_inner]      + [x + r4 for x in big_xs]
+            hi_bounds = [x - r4 for x in big_xs] + [s - corner_inner]
+            for x_lo, x_hi in zip(lo_bounds, hi_bounds):
+                self._drawSupportGapFeatures(x_lo, x_hi)
 
         # Corner clusters — drawn last so their fixed-offset holes are never
         # masked by the dynamic interior features.
@@ -452,7 +463,10 @@ class HexmoRectangle(Boxes):
             # dx = t*(2 - 1/√3).
             dx = t * (2 - 1 / math.sqrt(3))
             self.moveTo(-dx, 0)
-            self.drawAlignmentHolesRect(s_rect)
+            # gap_features=False: the gap-fill medium holes at x_mid of the two
+            # inter-big-hole gaps land directly on the vertical-divider finger
+            # slots (fingerHolesAt above), so they must be suppressed here.
+            self.drawAlignmentHolesRect(s_rect, gap_features=False)
 
         # Long outer walls (H × h): four horizontal dividers pass through.
         # Divider i is centred at (i+1)·row_h + (2i+1)·t/2 along H (i = 0..3).
