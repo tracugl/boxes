@@ -562,7 +562,7 @@ class HexmoRectangle(Boxes):
         Draws eleven panels:
           - 2 × short outer wall  (W × h)  — span the short (radius) axis
           - 2 × long outer wall   (H × h)  — span the long (radius × √3) axis
-          - 1 × base plate        (W × (H + 2t))
+          - 1 × base plate        ((H + 2t) × W)  — rotated so H is horizontal
           - 2 × vertical divider  (H × h)  — split the box into 3 columns
           - 4 × horizontal divider ((W−2t) × h) — split the box into 5 rows
 
@@ -857,31 +857,37 @@ class HexmoRectangle(Boxes):
             """Draw fingerHoles for all six inner dividers on the base plate.
 
             Registered as the edge-0 callback for the base plate ``rectangularWall``.
-            At callback-0 the turtle's origin is at the inner bottom-left corner of
-            the base face, with x along the short (W) axis and y along the long (H)
-            axis.
+            The base plate is drawn as ``rectangularWall(H, W−2t, …)`` so that the
+            longer H edge runs horizontally in the SVG (left-to-right), matching the
+            laser cutter's preferred orientation.  At callback-0 the turtle's origin
+            is at the inner bottom-left corner of the base face, with x along the
+            long (H) axis and y along the short (W−2t) axis.
 
-            Two vertical-divider rows are placed at column-centre x-positions
-            (``col_w + t/2`` and ``2·col_w + 3t/2``); each row consists of 5
-            finger-hole segments of length ``row_h``, separated by ``t``-wide gaps at
-            the horizontal crossing positions.
+            Two vertical-divider rows are placed at column-centre y-positions
+            (``col_w + t/2`` and ``2·col_w + 3t/2`` along W); each row consists of 5
+            finger-hole segments of length ``row_h`` drawn along x (H direction,
+            angle=0), separated by ``t``-wide gaps at the horizontal crossing
+            positions.
 
-            Four horizontal-divider rows are placed at row-centre y-positions; each
-            row consists of 3 finger-hole segments of length ``col_w``, separated by
-            ``t``-wide gaps at the vertical crossing positions.
+            Four horizontal-divider rows are placed at row-centre x-positions
+            (along H); each row consists of 3 finger-hole segments of length
+            ``col_w`` drawn along y (W direction, angle=90), separated by ``t``-wide
+            gaps at the vertical crossing positions.
 
             Captures from enclosing scope: ``col_w``, ``row_h``, ``t``.
             """
-            # Vertical divider fingerHoles (angle=90 → drawn along H direction).
+            # Vertical divider fingerHoles (angle=0 → drawn along H direction, now x).
+            # x_c is the divider's W-direction position, now the y-axis of the panel.
             for i in range(2):
                 x_c = (i + 1) * col_w + (2 * i + 1) * t / 2
                 for j in range(5):
-                    self.fingerHolesAt(x_c, j * (row_h + t), row_h, 90)
-            # Horizontal divider fingerHoles (angle=0 → drawn along W direction).
+                    self.fingerHolesAt(j * (row_h + t), x_c, row_h, 0)
+            # Horizontal divider fingerHoles (angle=90 → drawn along W direction, now y).
+            # y_c is the divider's H-direction position, now the x-axis of the panel.
             for i in range(4):
                 y_c = (i + 1) * row_h + (2 * i + 1) * t / 2
                 for j in range(3):
-                    self.fingerHolesAt(j * (col_w + t), y_c, col_w, 0)
+                    self.fingerHolesAt(y_c, j * (col_w + t), col_w, 90)
 
         # --- Outer walls --------------------------------------------------------
         # Long walls (left/right, spanning H) provide tabs on their small
@@ -953,7 +959,11 @@ class HexmoRectangle(Boxes):
         # With 'F' on all four edges (spacing = t each), the outer bounding box
         # becomes (W−2t+2t) × (H+2t) = W × (H+2t), which equals the assembled
         # outer footprint of the box. ✓
-        self.rectangularWall(W - 2 * t, H, "FFFF",
+        # Base plate drawn as (H × W−2t) so the longer H edge is horizontal in the
+        # SVG output — matching the laser cutter's left-to-right preferred direction.
+        # All four edges remain 'F' so the perimeter tabs accept the outer wall 'f'
+        # bottom tabs regardless of orientation.
+        self.rectangularWall(H, W - 2 * t, "FFFF",
                              callback=[base_cb], move="right")
 
         # Advance cursor past the base plate row before drawing dividers.
