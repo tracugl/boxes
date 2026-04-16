@@ -190,8 +190,15 @@ class _ShortWallTopEdge(edges.BaseEdge):
 
 
 class HexmoRectangle(Boxes):
-    """Rectangular tray with a fixed 3×5 internal grid, compatible with HexmoHexagon stacking."""
-    
+    """Rectangular tray with a 3×N internal grid, compatible with HexmoHexagon stacking.
+
+    The number of column compartments N is controlled by ``--num_columns`` (default 0 = auto).
+    When auto, N is chosen based on ``--radius`` so that the compartment cells remain a
+    useful size: large boxes (radius ≥ 400) use 5 columns; medium boxes
+    (300 ≤ radius < 400) use 3 columns; small boxes (radius < 300) use 2 columns
+    (a single central divider).
+    """
+
     # The ``--radius`` parameter is the **inner corner-to-corner radius** of a regular
     # hexagon and must be set to the same value used on the HexmoHexagon boxes you want
     # to connect to this tray.  All dimensions are derived from it using the same
@@ -277,6 +284,16 @@ class HexmoRectangle(Boxes):
                  "that many extra mm of depth so the panels seat fully despite laser "
                  "kerf and material-thickness variation.  1–2 mm is typical.  "
                  "Default 1.0.",
+        )
+        self.argparser.add_argument(
+            "--num_columns", action="store", type=int, default=0,
+            help="Number of column compartments along the long (H = radius × √3) axis "
+                 "(they appear as columns in the SVG output).  "
+                 "Determines how many horizontal dividers are cut: N columns require N−1 "
+                 "dividers.  0 (default) auto-selects based on --radius: "
+                 "radius ≥ 400 → 5 columns, 300 ≤ radius < 400 → 3 columns, "
+                 "radius < 300 → 2 columns (one central divider).  "
+                 "Minimum value is 1 (no horizontal dividers); maximum is 5.",
         )
 
     def _drawCornerGroup8Rect(self, s):
@@ -638,14 +655,18 @@ class HexmoRectangle(Boxes):
         self.move(panel_width, panel_height, move)
 
     def render(self) -> None:
-        """Generate all panels for the HexmoRectangle box (Phase 2: outer shell + 3×5 grid).
+        """Generate all panels for the HexmoRectangle box (outer shell + 3×N grid).
 
-        Draws eleven panels:
+        Draws ``5 + 2 + n_div_h`` panels, where ``n_div_h = n_cols − 1``:
           - 2 × short outer wall  (W × h)  — span the short (radius) axis
           - 2 × long outer wall   (H × h)  — span the long (radius × √3) axis
           - 1 × base plate        ((H + 2t) × W)  — rotated so H is horizontal
           - 2 × vertical divider  (H × h)  — split the box into 3 columns
-          - 4 × horizontal divider ((W−2t) × h) — split the box into 5 rows
+          - n_div_h × horizontal divider ((W−2t) × h) — split the box into n_cols columns
+
+        ``n_cols`` is determined by ``--num_columns`` (0 = auto-select from radius):
+          radius ≥ 400 → 5 columns (4 dividers); 300 ≤ radius < 400 → 3 columns (2 dividers);
+          radius < 300 → 2 columns (1 central divider).
 
         ``--radius`` is always the inner corner-to-corner radius of the matching
         HexmoHexagon; W is derived from it without any outside-mode adjustment so
@@ -655,12 +676,12 @@ class HexmoRectangle(Boxes):
 
         Crossing-joint convention (slot-and-tab):
           Vertical dividers carry ``SlottedEdge`` on their **bottom** edges:
-          five 'f' sections (finger-tabs for the base plate) separated by four
-          Slot notches of depth h/2.  Horizontal dividers carry ``SlottedEdge``
-          on their **top** edges: three 'e' sections separated by two Slot
-          notches of depth h/2.  The two sets of notches interlock at mid-height
-          when the horizontal dividers are lowered over the vertical ones during
-          assembly.
+          n_cols 'f' sections (finger-tabs for the base plate) separated by
+          n_div_h Slot notches of depth h/2.  Horizontal dividers carry
+          ``SlottedEdge`` on their **top** edges: three 'e' sections separated
+          by two Slot notches of depth h/2.  The two sets of notches interlock
+          at mid-height when the horizontal dividers are lowered over the
+          vertical ones during assembly.
 
         All outer walls carry fingerHoles callbacks so the divider 'f' end-tabs
         seat against each outer wall's inner face at the correct grid positions.
@@ -705,17 +726,40 @@ class HexmoRectangle(Boxes):
         # For a regular hexagon, flat-to-flat = 2 × apothem = r × √3.
         H = 2 * apothem
 
+        # --- Column-count selection ---------------------------------------------
+        # n_cols controls how many compartments the long axis is divided into
+        # (they appear as columns in the SVG output); n_div_h = n_cols − 1
+        # horizontal dividers are required.
+        #
+        # When --num_columns is 0 (auto), the count is chosen to keep cell sizes
+        # practical: a large box (radius ≥ 400) gets 5 columns, a medium box
+        # (300 ≤ radius < 400) gets 3 columns, and a small box (radius < 300)
+        # gets 2 columns (a single central divider).  The threshold at 300 matches
+        # the observation that 4 dividers are unnecessary at that scale.
+        if self.num_columns == 0:
+            if self.radius >= 400:
+                n_cols = 5
+            elif self.radius >= 300:
+                n_cols = 3
+            else:
+                n_cols = 2
+        else:
+            n_cols = max(1, self.num_columns)
+
+        # Number of horizontal dividers = one fewer than the number of column cells.
+        n_div_h = n_cols - 1
+
         # --- Grid geometry ------------------------------------------------------
-        # The 3-column × 5-row grid divides the inner cavity dimensions evenly.
+        # The 3-column × n_cols-row grid divides the inner cavity dimensions evenly.
         # 2 vertical dividers (each thickness t) occupy 2t of the W width.
-        # 4 horizontal dividers (each thickness t) occupy 4t of the H height.
+        # n_div_h horizontal dividers (each thickness t) occupy n_div_h·t of H.
         # The short wall panel is drawn with inner dimension W − 2t (so the
         # laser-cut bounding box = (W−2t) + 2t = W, matching the HexmoHexagon
         # side-wall width).  The box inner cavity in the short direction is
         # therefore W − 2t, and 2 vertical dividers (each thickness t) leave
         # (W − 2t) − 2t = W − 4t for the 3 column interiors.
-        col_w = (W - 4 * t) / 3   # inner width of each of the 3 columns
-        row_h = (H - 4 * t) / 5   # inner height of each of the 5 rows
+        col_w = (W - 4 * t) / 3              # inner width of each of the 3 columns
+        row_h = (H - n_div_h * t) / n_cols   # inner height of each row cell
 
         # Support spoke geometry.  sw=0 suppresses the spoke and all its cutouts.
         sw  = self.spoke_width
@@ -734,10 +778,11 @@ class HexmoRectangle(Boxes):
 
         # --- Crossing slot edges ------------------------------------------------
         # Vertical dividers span H and use 'f' sections (connecting to base plate)
-        # separated by Slot notches of depth h/2 at the 4 horizontal crossing
+        # separated by Slot notches of depth h/2 at the n_div_h horizontal crossing
         # positions.  The slot is cut from the BOTTOM of the flat panel, so when
         # the divider stands upright the notch opens upward from the base.
-        e_vert_bot = edges.SlottedEdge(self, [row_h] * 5, 'f', slots=h / 2 + tol)
+        # n_cols segments of row_h, separated by n_div_h crossing slots.
+        e_vert_bot = edges.SlottedEdge(self, [row_h] * n_cols, 'f', slots=h / 2 + tol)
 
         # Horizontal dividers span W−2t and use a composite top edge:
         #   - When the spoke is present: _HorizDivSpokeEdge, which draws the
@@ -876,7 +921,7 @@ class HexmoRectangle(Boxes):
             Captures from enclosing scope: ``row_h``, ``t``, ``h``, ``H``,
             ``dx``, ``x_floor``, ``div_pos``.
             """
-            for i in range(4):
+            for i in range(n_div_h):
                 # Horizontal dividers are h−t tall (body); 'f' top tabs are not
                 # part of the end tab that slots into this wall, so fingerHoles
                 # span only the body height h−t.
@@ -886,28 +931,28 @@ class HexmoRectangle(Boxes):
             self.moveTo(-dx, 0)
             self._drawCornerGroup8Rect(H + 2 * dx)
             self.moveTo(dx, 0)
-            # Segments 0 and 4: single big hole at x_floor / H-x_floor.
-            # The segment midpoints are too close to the corner clusters for a full
-            # gap band; x_floor is the minimum safe distance from the corner cluster.
-            # Guard: the right edge of the hole (x_floor + r4) must also clear the
-            # left edge of the first horizontal-divider finger slot at x = row_h,
-            # otherwise the big circle punches into the interlock joint.  When
-            # row_h is small (small --radius) there is simply no room and the hole
-            # is suppressed rather than overlapping the joint.
+            # Segments 0 and n_cols−1 (the two end segments): single big hole at
+            # x_floor / H−x_floor.  The segment midpoints are too close to the corner
+            # clusters for a full gap band; x_floor is the minimum safe distance from
+            # the corner cluster.  Guard: the right edge of the hole (x_floor + r4)
+            # must also clear the left edge of the first horizontal-divider finger
+            # slot at x = row_h, otherwise the big circle punches into the interlock
+            # joint.  When row_h is small (small --radius) there is simply no room
+            # and the hole is suppressed rather than overlapping the joint.
             l_eff = self.h - 2 * t
             y_big = l_eff / 2
             if x_floor + self._R4 + self._MIN_CLEAR <= row_h:
                 self.hole(x_floor,     y_big, self._R4)
                 self.hole(H - x_floor, y_big, self._R4)
-            # Segments 1, 2, 3: full gap band when the segment is wide enough,
-            # otherwise a single centred big hole.
+            # Interior segments 1 … n_cols−2: full gap band when the segment is wide
+            # enough, otherwise a single centred big hole.
             # The _drawGapBandFeatures threshold duplicates the guard inside that
             # method (half_gap >= md_off + r2 + mc) so we can choose the fallback
             # without modifying the method's signature.
             sm_off = self._R4 + self._MIN_CLEAR + self._R3
             md_off = sm_off + self._R3 + self._MIN_CLEAR + self._R2
             half_gap = row_h / 2
-            for j in (1, 2, 3):
+            for j in range(1, n_cols - 1):
                 x_lo = j * (row_h + t)
                 x_hi = x_lo + row_h
                 if half_gap >= md_off + self._R2 + self._MIN_CLEAR:
@@ -938,8 +983,8 @@ class HexmoRectangle(Boxes):
                 # pattern and is simpler to cut than the multi-hole G6 cluster.
                 self._drawSupportSegmentHole(x_lo, x_lo + step)
 
-        # Vertical dividers (H × h): 5 row segments, step = row_h.
-        vert_div_cb  = lambda: _seg_hole_cb(5, row_h)
+        # Vertical dividers (H × h): n_cols row segments, step = row_h.
+        vert_div_cb  = lambda: _seg_hole_cb(n_cols, row_h)
         # Horizontal dividers (W−2t × h): 3 column segments, step = col_w.
         # NOTE: the spoke-to-divider connection is handled by the 'f' sections on
         # the top edge (via _HorizDivSpokeEdge) — no extra fingerHoles needed here.
@@ -949,11 +994,11 @@ class HexmoRectangle(Boxes):
         # six dividers.  At callback-0 the turtle sits at the inner-bottom-left
         # corner of the base face; x is measured along W−2t, y along H.
         #
-        # Vertical dividers: 5 'f' sections each of length row_h, spaced row_h+t
+        # Vertical dividers: n_cols 'f' sections each of length row_h, spaced row_h+t
         # apart in the H direction; centred at col_w+t/2 and 2·col_w+3t/2 in W.
         #
         # Horizontal dividers: 3 'f' sections each of length col_w, spaced col_w+t
-        # apart in the W direction; centred at (i+1)·row_h+(2i+1)·t/2 in H.
+        # apart in the W direction; centred at div_pos(i) in H for i in [0, n_div_h).
         def base_cb():
             """Draw fingerHoles for all six inner dividers on the base plate.
 
@@ -965,27 +1010,29 @@ class HexmoRectangle(Boxes):
             long (H) axis and y along the short (W−2t) axis.
 
             Two vertical-divider rows are placed at column-centre y-positions
-            (``col_w + t/2`` and ``2·col_w + 3t/2`` along W); each row consists of 5
-            finger-hole segments of length ``row_h`` drawn along x (H direction,
-            angle=0), separated by ``t``-wide gaps at the horizontal crossing
-            positions.
+            (``col_w + t/2`` and ``2·col_w + 3t/2`` along W); each row consists of
+            n_cols finger-hole segments of length ``row_h`` drawn along x (H
+            direction, angle=0), separated by ``t``-wide gaps at the horizontal
+            crossing positions.
 
-            Four horizontal-divider rows are placed at row-centre x-positions
+            n_div_h horizontal-divider rows are placed at row-centre x-positions
             (along H); each row consists of 3 finger-hole segments of length
             ``col_w`` drawn along y (W direction, angle=90), separated by ``t``-wide
             gaps at the vertical crossing positions.
 
-            Captures from enclosing scope: ``col_w``, ``row_h``, ``t``.
+            Captures from enclosing scope: ``col_w``, ``row_h``, ``t``,
+            ``n_cols``, ``n_div_h``.
             """
             # Vertical divider fingerHoles (angle=0 → drawn along H direction, now x).
             # x_c is the divider's W-direction position, now the y-axis of the panel.
+            # n_cols segments of row_h at positions j*(row_h+t) for j in [0, n_cols).
             for i in range(2):
                 x_c = (i + 1) * col_w + (2 * i + 1) * t / 2
-                for j in range(5):
+                for j in range(n_cols):
                     self.fingerHolesAt(j * (row_h + t), x_c, row_h, 0)
             # Horizontal divider fingerHoles (angle=90 → drawn along W direction, now y).
             # y_c is the divider's H-direction position, now the x-axis of the panel.
-            for i in range(4):
+            for i in range(n_div_h):
                 for j in range(3):
                     self.fingerHolesAt(div_pos(i), j * (col_w + t), col_w, 90)
 
@@ -1113,7 +1160,7 @@ class HexmoRectangle(Boxes):
 
             Captures from enclosing scope: ``row_h``, ``t``, ``sw``.
             """
-            for i in range(4):
+            for i in range(n_div_h):
                 # One sw-length fingerHoles run per divider: receives the sw-wide
                 # 'f' strip from _HorizDivSpokeEdge.
                 self.fingerHolesAt(div_pos(i), 0, sw, 90)
@@ -1137,13 +1184,13 @@ class HexmoRectangle(Boxes):
         # Both columns then end at the same turtle y = H2, which maps to the
         # same TOP position in the SVG — i.e. the two columns are top-aligned.
         #
-        # After the _HorizDivSpokeEdge.margin() fix, every col1 panel has
-        # overallHeight = h + t (2 short walls + 4 horiz dividers).
-        # H1 = 6·(h+t) + 6·s  (6 panels × [oH + s], where s = self.spacing).
+        # Column 1 contains 2 short outer walls + n_div_h horizontal dividers.
+        # Every col1 panel has overallHeight = h + t (due to _HorizDivSpokeEdge.margin()).
+        # H1 = (2 + n_div_h)·(h+t) + (2 + n_div_h)·s  (panels × [oH + s]).
         #
         # move="down only" with y_param P advances the cursor by −(P+s).
-        # To advance by −H1 set P = H1−s = 6·(h+t) + 5·s.
-        col1_align_param = 6 * (h + t) + 5 * self.spacing
+        # To advance by −H1 set P = H1−s = (2+n_div_h)·(h+t) + (1+n_div_h)·s.
+        col1_align_param = (2 + n_div_h) * (h + t) + (1 + n_div_h) * self.spacing
         if col1_align_param > 0:
             self.rectangularWall(W, col1_align_param, "eeee", move="down only")
 
@@ -1156,11 +1203,11 @@ class HexmoRectangle(Boxes):
             self.rectangularWall(W - 2 * t, h, short_wall_edges,
                                  callback=[short_wall_cb], move="up")
 
-        # Four horizontal dividers (W−2t × h−t body; 'f' top tabs → bbox h).
+        # n_div_h horizontal dividers (W−2t × h−t body; 'f' top tabs → bbox h).
         # Bottom SlottedEdge 'f': base plate connection.
         # Top _HorizDivSpokeEdge (or SlottedEdge 'e' without spoke).
         # Left/right 'f': end-tabs into long outer wall fingerHoles.
-        for _ in range(4):
+        for _ in range(n_div_h):
             self.rectangularWall(W - 2 * t, h - t,
                                  [e_horiz_bot, 'f', e_horiz_top, 'f'],
                                  callback=[horiz_div_cb], move="up")
