@@ -32,6 +32,154 @@ import math
 from boxes import Boxes, edges
 
 
+class _HorizDivSpokeEdge(edges.BaseEdge):
+    """Horizontal divider top edge: crossing slots with 'f' finger tabs in the spoke region.
+
+    The horizontal divider spans W−2t = 3·col_w + 2·t.  Its top edge is divided
+    into three col_w sections by two slot notches (for the vertical-divider
+    interlock at mid-height).  When the spoke is present, the MIDDLE section is
+    itself split into three sub-parts:
+
+        'e' (pre-spoke gap) | 'f' (spoke width sw) | 'e' (post-spoke gap)
+
+    The outer two sections (1 and 3) remain plain 'e'.
+
+    The central 'f' (FingerJointEdge) section projects finger tabs UPWARD from the
+    divider top edge.  These tabs slot into ``fingerHolesAt`` cuts in the spoke
+    panel's face, locking the dividers and spoke together at the top of the box.
+
+    **Height management:** 'f' tabs add ``t`` to the panel bounding-box height.
+    To keep the assembled height at exactly ``h``, horizontal dividers are drawn
+    with panel height ``h − t`` (see ``render()``).  The tabs then bring the total
+    to ``(h − t) + t = h``.  The crossing-slot depth is also reduced from ``h/2``
+    to ``h/2 − t`` so the interlock with vertical dividers still meets at y=``h/2``
+    in the assembled box.
+
+    Each segment is drawn by calling the edge object directly (no CompoundEdge
+    step-adjustments), so all sections share the same baseline at y = panel-height.
+
+    @param boxes      - Parent Boxes instance providing the drawing context.
+    @param col_w      - Width of each column segment in mm.
+    @param slot_depth - Depth of the crossing-slot notches (= h/2 − t when spoke present).
+    @param sw         - Spoke width in mm (only this central span gets 'f' tabs).
+    """
+
+    def __init__(self, boxes, col_w, slot_depth, sw) -> None:
+        super().__init__(boxes, None)
+        self._col_w      = col_w
+        self._slot_depth = slot_depth
+        self._sw         = sw
+
+        # Compute the plain-'e' sub-sections flanking the 'f' strip inside the
+        # middle section.  The middle section spans [col_w+t, 2·col_w+t].
+        # The spoke occupies [side_gap, side_gap+sw] where
+        #   side_gap = ((3·col_w + 2·t) − sw) / 2.
+        t           = boxes.thickness
+        total_w     = 3 * col_w + 2 * t          # = W − 2t
+        side_gap    = (total_w - sw) / 2
+        mid_start   = col_w + t                   # x-start of middle section
+        self._pre   = max(0.0, side_gap - mid_start)           # gap before 'f'
+        self._post  = max(0.0, (2 * col_w + t) - (side_gap + sw))  # gap after 'f'
+
+    def startWidth(self) -> float:
+        """Return 0; the edge starts flush with the panel boundary."""
+        return 0.0
+
+    def endWidth(self) -> float:
+        """Return 0; the edge ends flush with the panel boundary."""
+        return 0.0
+
+    def __call__(self, length, **kw):
+        """Draw the composite edge for ``length`` mm.
+
+        Draws section-1 ('e'), crossing slot, the mixed middle section
+        ('e'+'f'+'e'), crossing slot, then section-3 ('e').  The total
+        length equals W−2t = 3·col_w + 2·t, which must equal ``length``.
+
+        @param length - Total edge length (must equal W−2t).
+        """
+        t      = self.boxes.thickness
+        e_edge = self.edges['e']
+        f_edge = self.edges['f']
+        slot   = edges.Slot(self.boxes, self._slot_depth)
+
+        # Section 1: full col_w, plain 'e'
+        e_edge(self._col_w)
+        # First crossing slot (t wide, slot_depth deep)
+        slot(t)
+        # Section 2 (middle): 'e' gap + 'f' spoke tabs + 'e' gap.
+        # 'f' tabs project upward into the spoke face's fingerHoles.  The panel
+        # is drawn at height h−t so that tabs + body = h total bounding-box.
+        if self._pre > 0:
+            e_edge(self._pre)
+        f_edge(self._sw)
+        if self._post > 0:
+            e_edge(self._post)
+        # Second crossing slot
+        slot(t)
+        # Section 3: full col_w, plain 'e'
+        e_edge(self._col_w)
+
+
+class _ShortWallTopEdge(edges.BaseEdge):
+    """Short outer wall top edge: plain 'e' flanking a central 'F' counterpart slot.
+
+    Draws the top edge of a short outer wall as three segments in sequence:
+        'e' (side_gap mm) | 'F' (sw mm) | 'e' (side_gap mm)
+
+    where ``side_gap = (W − 2t − sw) / 2``.  The central ``'F'`` section cuts
+    FingerJointEdgeCounterPart notches into the wall's top EDGE (open at the edge,
+    not a closed rectangle on the face), exactly matching the spoke panel's ``'f'``
+    end tabs (both spanning ``sw`` mm).
+
+    **Why not CompoundEdge?**
+    ``CompoundEdge`` calls ``self.step(e.startWidth() - lastwidth)`` between each
+    pair of segments.  When transitioning from ``'e'`` (endWidth=0) to ``'F'``
+    (startWidth=t), it calls ``step(t)``, which moves the turtle t mm outward
+    (perpendicular to the edge), growing the panel bounding-box height from h to
+    h+t.  This class avoids that by calling each segment's ``__call__`` directly
+    with no step adjustments, keeping all sections at the same baseline y=h and
+    the wall bounding box exactly ``h`` mm tall.
+
+    @param boxes    - Parent Boxes instance providing the drawing context.
+    @param side_gap - Plain 'e' length on each side of the counterpart slot (mm).
+    @param sw       - Spoke width in mm; also the length of the central 'F' section.
+    """
+
+    def __init__(self, boxes, side_gap, sw) -> None:
+        super().__init__(boxes, None)
+        self._side_gap = side_gap
+        self._sw       = sw
+
+    def startWidth(self) -> float:
+        """Return 0; the edge starts flush with the panel boundary."""
+        return 0.0
+
+    def endWidth(self) -> float:
+        """Return 0; the edge ends flush with the panel boundary."""
+        return 0.0
+
+    def __call__(self, length, **kw):
+        """Draw the short outer wall top edge.
+
+        Sequence: plain 'e' for ``side_gap`` mm, then 'F' counterpart notches for
+        ``sw`` mm, then plain 'e' for ``side_gap`` mm.  All three segments are
+        called directly (no ``step()`` between them), so the total bounding-box
+        height stays exactly h.
+
+        @param length - Total edge length (= W−2t = 2·side_gap + sw).
+        """
+        e_edge = self.edges['e']
+        F_edge = self.edges['F']
+        # Left plain section — no joint, open top edge
+        e_edge(self._side_gap)
+        # Central 'F' counterpart notches — cut INTO the edge, open at the top,
+        # matching the spoke panel's 'f' end tabs (sw mm long on both panels).
+        F_edge(self._sw)
+        # Right plain section — no joint, open top edge
+        e_edge(self._side_gap)
+
+
 class HexmoRectangle(Boxes):
     """Rectangular tray with a fixed 3×5 internal grid, compatible with HexmoHexagon stacking."""
     
@@ -101,11 +249,24 @@ class HexmoRectangle(Boxes):
         )
         self.argparser.add_argument(
             "--spoke_width", action="store", type=float, default=120.0,
-            help="Height of the centre support spoke on the underside of the base plate "
-                 "(mm).  The spoke runs the full long-axis length (H = radius × √3), "
-                 "centred in the short axis, providing bending resistance under train "
-                 "load.  Set to 0 to omit the spoke.  The base plate receives matching "
-                 "fingerHoles along its centre line.",
+            help="Pass any non-zero value to include the centre support spoke; pass 0 "
+                 "to omit it.  The spoke is a flat panel spanning the full inner short "
+                 "axis (W − 2×thickness) and the full long axis (H = radius × √3).  "
+                 "Its short ends carry finger tabs ('f') that slot into "
+                 "FingerJointEdgeCounterPart notches on the top edge of each short "
+                 "outer wall, and its face carries fingerHoles so that the four "
+                 "horizontal dividers can lock in from below.  The numeric value of "
+                 "this parameter is no longer used as a width — the span is always "
+                 "W − 2t.  Default 120 (non-zero → spoke included).",
+        )
+        self.argparser.add_argument(
+            "--slot_tolerance", action="store", type=float, default=1.0,
+            help="Extra depth added to both the vertical-divider bottom slots and the "
+                 "horizontal-divider top slots (mm).  The two slot sets meet exactly at "
+                 "mid-height with tolerance=0; adding a positive value gives each slot "
+                 "that many extra mm of depth so the panels seat fully despite laser "
+                 "kerf and material-thickness variation.  1–2 mm is typical.  "
+                 "Default 1.0.",
         )
 
     def _drawCornerGroup8Rect(self, s):
@@ -476,21 +637,33 @@ class HexmoRectangle(Boxes):
         row_h = (H - 4 * t) / 5   # inner height of each of the 5 rows
 
         # Support spoke geometry.  sw=0 suppresses the spoke and all its cutouts.
-        sw = self.spoke_width
+        sw  = self.spoke_width
+        # Extra slot depth added to both crossing-slot sets so panels seat fully
+        # despite laser kerf and material-thickness variation.
+        tol = self.slot_tolerance
 
         # --- Crossing slot edges ------------------------------------------------
         # Vertical dividers span H and use 'f' sections (connecting to base plate)
         # separated by Slot notches of depth h/2 at the 4 horizontal crossing
         # positions.  The slot is cut from the BOTTOM of the flat panel, so when
         # the divider stands upright the notch opens upward from the base.
-        e_vert_bot = edges.SlottedEdge(self, [row_h] * 5, 'f', slots=h / 2)
+        e_vert_bot = edges.SlottedEdge(self, [row_h] * 5, 'f', slots=h / 2 + tol)
 
-        # Horizontal dividers span W and use plain 'e' sections on their top edge
-        # separated by Slot notches of depth h/2 at the 2 vertical crossing
-        # positions.  The slot is cut from the TOP of the flat panel; when the
-        # divider stands upright it opens downward from the top, meshing with the
-        # vertical divider's bottom slot at the h/2 midpoint.
-        e_horiz_top = edges.SlottedEdge(self, [col_w] * 3, 'e', slots=h / 2)
+        # Horizontal dividers span W−2t and use a composite top edge:
+        #   - When the spoke is present: _HorizDivSpokeEdge, which draws the
+        #     outer two col_w sections as plain 'e' and the middle col_w section
+        #     as 'e'+'f'+'e'.  The 'f' tabs (sw wide) project upward into the
+        #     spoke's fingerHoles.  To keep the assembled height at h, the
+        #     horizontal dividers are drawn at height h−t (body only); the tabs
+        #     add t back → total bounding-box = h.  The crossing-slot depth is
+        #     reduced from h/2 to h/2−t so the interlock with vertical dividers
+        #     (whose slots go upward h/2 from the bottom) still meets at y=h/2
+        #     in the assembled box: (h−t) − (h/2−t) = h/2 ✓
+        #   - When the spoke is omitted: plain SlottedEdge('e') as before.
+        if sw > 0:
+            e_horiz_top = _HorizDivSpokeEdge(self, col_w, h / 2 - t + tol, sw)
+        else:
+            e_horiz_top = edges.SlottedEdge(self, [col_w] * 3, 'e', slots=h / 2 + tol)
 
         # Horizontal divider bottom: 'f' sections connect to base plate at the
         # three col_w spans; crossing positions use plain 'e' (no tabs there since
@@ -542,22 +715,10 @@ class HexmoRectangle(Boxes):
             # after the hex moveTo(0, -t) has been applied.  Derived empirically:
             # dx = t*(2 - 1/√3).
             dx = t * (2 - 1 / math.sqrt(3))
-            if sw > 0:
-                # Rectangular slot at the open-top edge of this short wall for the
-                # flat support spoke.  The spoke (plain rectangle, no finger tabs)
-                # slides into this slot from the side and is glued flush.  The slot
-                # is placed BEFORE moveTo(-dx, 0) so its coordinates are in the
-                # un-shifted absolute frame of the inner face.
-                #   x: centred in the inner width (W−2t)
-                #   y: top of the inner face (l_eff = h−2t), open at that edge
-                #   width: sw (spoke panel width, W direction)
-                #   height: t (one material thickness, Z direction)
-                x_c      = (W - 2 * t) / 2
-                # y-centre = h - t/2 → slot spans y = h-t to y = h, opening at the
-                # outer panel edge ('e' top in boxes.py = open bottom in assembly).
-                # This is the "slotting flush" geometry: spoke face is coplanar with
-                # the panel's open edge, not recessed into the panel body.
-                self.rectangularHole(x_c, h - t / 2, sw, t)
+            # NOTE: the spoke-to-short-wall connection is now handled by the 'F'
+            # FingerJointEdgeCounterPart on the top edge of this panel (edge[2] in
+            # rectangularWall).  The edge notches are drawn as part of the panel
+            # outline — no rectangularHole callback needed here.
             self.moveTo(-dx, 0)
             # gap_features=False: the gap-fill medium holes at x_mid of the two
             # inter-big-hole gaps land directly on the vertical-divider finger
@@ -613,7 +774,10 @@ class HexmoRectangle(Boxes):
             """
             for i in range(4):
                 pos = (i + 1) * row_h + (2 * i + 1) * t / 2
-                self.fingerHolesAt(pos, 0, h, 90)
+                # Horizontal dividers are h−t tall (body); 'f' top tabs are not
+                # part of the end tab that slots into this wall, so fingerHoles
+                # span only the body height h−t.
+                self.fingerHolesAt(pos, 0, h - t, 90)
             # Shift the corner clusters by dx so they land at sp-dx from each inner
             # edge — the same distance as the short wall's hex-aligned corner clusters.
             dx = t * (2 - 1 / math.sqrt(3))
@@ -675,19 +839,10 @@ class HexmoRectangle(Boxes):
                 # One large hole per column segment — matches the outer-wall big-hole
                 # pattern and is simpler to cut than the multi-hole G6 cluster.
                 self._drawSupportSegmentHole(x_lo, x_lo + col_w)
-            if sw > 0:
-                # Open-ended notch at the top centre of this horizontal divider
-                # for the flat support spoke to rest in.  The notch is sw wide
-                # (spanning the spoke's full W footprint) and t deep (one material
-                # thickness), so the spoke sits flush with the divider's top edge.
-                # y-centre set so the notch's top coincides with the inner face's
-                # top boundary (l_eff), making the slot open at the panel edge.
-                x_c      = (W - 2 * t) / 2
-                # y-centre = h - t/2 → slot spans y = h-t to y = h, opening at the
-                # outer panel edge ('e' top in boxes.py = open bottom in assembly).
-                # This is the "slotting flush" geometry: spoke face is coplanar with
-                # the panel's open edge, not recessed into the panel body.
-                self.rectangularHole(x_c, h - t / 2, sw, t)
+            # NOTE: the spoke-to-divider connection is handled by the 'f'
+            # FingerJointEdge sections on the top edge (via _HorizDivSpokeEdge).
+            # Those tabs project upward into the spoke's fingerHoles drawn by
+            # spoke_cb.  No rectangularHole needed here.
 
         # Base plate ((W−2t) × H inner, W × (H+2t) outer): fingerHoles for all
         # six dividers.  At callback-0 the turtle sits at the inner-bottom-left
@@ -751,8 +906,33 @@ class HexmoRectangle(Boxes):
         # Two short outer walls spanning the W (radius) axis — with vertical-divider holes.
         # The panel is drawn with inner dimension W-2t so its laser-cut bounding box
         # equals W (= side-2t = HexmoHexagon edge-wall width), enabling flush assembly.
+        #
+        # Short wall edge list when the spoke is present:
+        #   [bottom='f', right='F', top=CompoundEdge, left='F']
+        #
+        # The top edge uses a CompoundEdge(['e', 'F', 'e'], [gap, sw, gap]):
+        #   - Plain 'e' for (W-2t-sw)/2 on each side — no joint, open edge
+        #   - FingerJointEdgeCounterPart ('F') for the central sw mm only
+        #     → notches cut into the top EDGE (open at edge, not as a face
+        #     rectangle), matching the spoke's 'f' end tabs exactly.
+        #   The spoke's end tab length (sw) equals the 'F' centre section length,
+        #   so the tab pattern aligns perfectly.
+        #
+        # When the spoke is omitted the top reverts to plain 'e': "fFeF".
+        if sw > 0:
+            side_gap    = (W - 2 * t - sw) / 2
+            # _ShortWallTopEdge draws 'e'+'F'+'e' without step() adjustments.
+            # CompoundEdge cannot be used here: it calls step(t) when transitioning
+            # from 'e' (endWidth=0) to 'F' (startWidth=t), which grows the panel
+            # bounding-box from h to h+t — exactly the 106.4 mm symptom the user
+            # reported.  _ShortWallTopEdge calls each segment directly, keeping the
+            # wall at exactly h mm.
+            e_short_top = _ShortWallTopEdge(self, side_gap, sw)
+            short_wall_edges = ['f', 'F', e_short_top, 'F']
+        else:
+            short_wall_edges = "fFeF"
         for _ in range(2):
-            self.rectangularWall(W - 2 * t, h, "fFeF",
+            self.rectangularWall(W - 2 * t, h, short_wall_edges,
                                  callback=[short_wall_cb], move="right")
 
         # Two long outer walls spanning the H (radius × √3) axis — with horizontal-divider holes.
@@ -806,8 +986,9 @@ class HexmoRectangle(Boxes):
         # Horizontal dividers span the inner short cavity (W−2t) between the two
         # long outer walls, with 'f' end-tabs on left and right seating into the
         # fingerHoles on those long walls.  Inner dimension = W−2t; bbox = W.
+        # Panel height h−t (body only); 'f' top tabs project t upward → total bbox = h.
         for _ in range(4):
-            self.rectangularWall(W - 2 * t, h,
+            self.rectangularWall(W - 2 * t, h - t,
                                  [e_horiz_bot, 'f', e_horiz_top, 'f'],
                                  callback=[horiz_div_cb], move="right")
 
@@ -816,13 +997,46 @@ class HexmoRectangle(Boxes):
 
         # --- Centre support spoke -----------------------------------------------
         # Flat horizontal panel at the open top of the box (opposite to the base
-        # plate), running the full long-axis length H, centred in the short (W)
-        # direction.  Like a narrow partial lid, it braces the open end against
-        # racking.
+        # plate), running the full long-axis length H and centred in the short (W)
+        # direction.  Width = sw (spoke_width parameter).
         #
-        # The spoke itself is a plain rectangle — no finger tabs on any edge.  It
-        # slides into the aligned slots in the short walls and horizontal dividers
-        # from the side and is glued in place.  Edge string "eeee": all four edges
-        # are plain ('e'), no joints cut into the spoke panel itself.
+        #   Short ends (edges[1]=right, edges[3]=left): 'f' finger tabs, sw long.
+        #     These project into the central 'F' section of _ShortWallTopEdge on
+        #     each short outer wall's top — notches cut INTO the wall's top edge,
+        #     open at the edge, spanning exactly sw mm.  Tab and slot lengths match.
+        #
+        #   Face (bottom): fingerHoles at each of the 4 horizontal-divider H
+        #     positions.  Each divider has an sw-long 'f' strip on its top edge
+        #     (from _HorizDivSpokeEdge) that projects upward into these slots.
+        #
+        #   Long edges (edges[0]=bottom, edges[2]=top): plain 'e'.
+        #
+        # rectangularWall(H, sw, "efef"):
+        #   edges[0]=bottom='e', edges[1]=right='f', edges[2]=top='e', edges[3]=left='f'
+
+        def spoke_cb():
+            """Draw fingerHoles for all four horizontal dividers on the spoke face.
+
+            For each horizontal divider (4 positions along H), draws a single
+            sw-length run of fingerHoles in the W direction (angle=90).  This
+            matches the sw-wide 'f' strip produced by ``_HorizDivSpokeEdge`` on the
+            divider's top edge — the 'f' tabs project upward into these slots.
+
+            The spoke panel spans y = 0 to y = sw in its callback frame, which
+            corresponds to the spoke's full W footprint (side_gap to side_gap+sw
+            in the assembled box).  The divider's 'f' strip falls exactly in this
+            range, so a single ``fingerHolesAt(x_div, 0, sw, 90)`` per divider
+            produces the complete matching slot set.
+
+            Captures from enclosing scope: ``row_h``, ``t``, ``sw``.
+            """
+            for i in range(4):
+                # H-direction position of divider i (matches long_wall_cb).
+                x_div = (i + 1) * row_h + (2 * i + 1) * t / 2
+                # One sw-length fingerHoles run per divider: receives the sw-wide
+                # 'f' strip from _HorizDivSpokeEdge.
+                self.fingerHolesAt(x_div, 0, sw, 90)
+
         if sw > 0:
-            self.rectangularWall(H, sw, "eeee", move="right")
+            self.rectangularWall(H, sw, "efef",
+                                 callback=[spoke_cb], move="right")
