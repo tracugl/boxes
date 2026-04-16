@@ -940,74 +940,62 @@ class HexmoRectangle(Boxes):
         # =======================================================================
         # SVG layout — two-column vertical stack
         #
-        # The boxes framework places panels sequentially: move="up" stacks panels
-        # vertically (y advances, x stays fixed) within a column, and
-        # move="right only" advances x to start the next column at whatever y the
-        # cursor is currently at.  This produces a compact near-square bounding
-        # box instead of a long horizontal strip.
+        # In the boxes framework, move="up" advances the turtle y-coordinate
+        # upward and maps to LOWER SVG y values (top of the image).  Panels
+        # drawn later (at higher turtle y) therefore appear HIGHER in the SVG.
+        #
+        # To place column 1 (narrow, short panels) at the TOP of the SVG while
+        # keeping it on the LEFT, we use the following trick:
+        #
+        #   1. move="right only" by W — pre-advance the cursor to column 2's
+        #      x-position without drawing anything.  Column 2 will sit to the
+        #      right of column 1 in the SVG.
+        #   2. Draw all column 2 panels with move="up" — they start at turtle
+        #      y=0 and stack upward, occupying the LOWER portion of the SVG.
+        #   3. move="left only" by W — step the cursor back to x=0 while
+        #      keeping the accumulated y (= col2 total height).
+        #   4. Draw all column 1 panels with move="up" — they start above
+        #      column 2's top (higher turtle y = UPPER portion of the SVG).
         #
         # Column 1 (width ≈ W = 488 mm at default radius):
-        #   2 × short outer wall  (W−2t × h)
+        #   2 × short outer wall   (W−2t × h)
         #   4 × horizontal divider (W−2t × h−t, bbox h)
         #
-        # Column 2 (width ≈ H+2t = 878 mm at default radius), stacked above
-        #   the end of column 1:
-        #   2 × long outer wall   (H × h)
-        #   2 × vertical divider  (H × h)
-        #   1 × spoke             (H × sw)  [if sw > 0]
-        #   1 × base plate        (H × W−2t)
+        # Column 2 (width ≈ H+2t = 878 mm at default radius):
+        #   2 × long outer wall    (H × h)
+        #   2 × vertical divider   (H × h)
+        #   1 × spoke              (H × sw)  [if sw > 0]
+        #   1 × base plate         (H × W−2t)
         #
-        # With default parameters this yields ≈ 1370 × 1640 mm instead of the
-        # previous ≈ 8179 × 741 mm — roughly 1:1 aspect ratio.
+        # With default parameters this yields ≈ 1377 × 1652 mm (≈ 1:1 aspect).
         # =======================================================================
 
-        # --- Column 1: W-dimension panels stacked vertically --------------------
-
-        # Two short outer walls (W−2t × h).
-        for _ in range(2):
-            self.rectangularWall(W - 2 * t, h, short_wall_edges,
-                                 callback=[short_wall_cb], move="up")
-
-        # Four horizontal dividers (W−2t × h−t body; 'f' top tabs bring bbox to h).
-        # Bottom edge: SlottedEdge 'f' sections connect to base plate.
-        # Top edge: _HorizDivSpokeEdge (with spoke) or SlottedEdge 'e' (without spoke).
-        # Left / right edges ('f'): end-tabs seating into long outer wall fingerHoles.
-        for _ in range(4):
-            self.rectangularWall(W - 2 * t, h - t,
-                                 [e_horiz_bot, 'f', e_horiz_top, 'f'],
-                                 callback=[horiz_div_cb], move="up")
-
-        # Advance x to column 2.  Use W (= W−2t + 2t) as the advance width so that
-        # the 'f' side-tab protrusions of the horizontal dividers (each ±t beyond the
-        # inner W−2t dimension) are cleared before column 2 panels begin.
+        # Step 1 — pre-advance to column 2's x-position.
+        # W (= W−2t + 2t) is the max bbox width of column 1 panels: horizontal
+        # dividers have 'f' on their side edges, adding t on each side beyond the
+        # W−2t inner dimension, so using W ensures no overlap with column 2.
         self.rectangularWall(W, h, "eeee", move="right only")
 
-        # --- Column 2: H-dimension panels stacked vertically --------------------
-        # Column 2 starts above the end of column 1 (the cursor y was accumulated
-        # by the move="up" calls above).  All panels here are H wide.
+        # --- Column 2 (right side): H-dimension panels stacked at low turtle y --
+        # These will appear in the LOWER portion of the SVG.
 
         # Two long outer walls (H × h).
-        # Bottom edge 'f': base plate connection.
-        # Left / right edges 'f': tab into short outer wall 'F' slots.
-        # Top edge 'e': open.
+        # Bottom 'f': base plate connection.  Left/right 'f': into short wall 'F'.
         for _ in range(2):
             self.rectangularWall(H, h, "ffef",
                                  callback=[long_wall_cb], move="up")
 
         # Two vertical dividers (H × h), creating the 3-column grid split.
-        # Bottom edge: SlottedEdge with 5 'f' sections + 4 Slot notches (depth h/2).
-        # Left / right edges ('f'): end-tabs into short outer wall fingerHoles.
-        # Top edge ('e'): open.
+        # Bottom SlottedEdge: 5 'f' sections + 4 Slot notches (depth h/2).
+        # Left/right 'f': end-tabs into short outer wall fingerHoles.
         for _ in range(2):
             self.rectangularWall(H, h,
                                  [e_vert_bot, 'f', 'e', 'f'],
                                  callback=[vert_div_cb], move="up")
 
-        # Centre support spoke — stacked immediately above the vertical dividers.
-        # Flat panel at the open top of the box, running the full long-axis length H.
-        # Short ends ('f'): tab into the central 'F' section of _ShortWallTopEdge.
-        # Face: fingerHoles for 4 horizontal dividers (via spoke_cb).
-        # Long edges ('e'): open.
+        # Centre support spoke (H × sw), stacked above the vertical dividers.
+        # Short ends 'f': tab into _ShortWallTopEdge central 'F' section.
+        # Face fingerHoles receive the 4 horizontal-divider 'f' top strips.
 
         def spoke_cb():
             """Draw fingerHoles for all four horizontal dividers on the spoke face.
@@ -1036,12 +1024,44 @@ class HexmoRectangle(Boxes):
             self.rectangularWall(H, sw, "efef",
                                  callback=[spoke_cb], move="up")
 
-        # Base plate — last panel in column 2, stacked above the spoke (or above
-        # the vertical dividers when sw = 0).
-        #
-        # Inner dimensions (W−2t) × H, drawn as (H × W−2t) so the longer H edge
-        # is horizontal in the SVG (laser cutter left-to-right preference).
-        # All four edges 'F': perimeter tabs accept the outer wall 'f' bottom tabs.
-        # Outer bounding box = (H+2t) × W. ✓
+        # Base plate (H × W−2t) — topmost panel in column 2.
+        # Drawn H-wide so the long axis is horizontal (laser left-to-right).
+        # All four edges 'F': accept the outer-wall 'f' bottom tabs.
         self.rectangularWall(H, W - 2 * t, "FFFF",
-                             callback=[base_cb], move="right")
+                             callback=[base_cb], move="up")
+
+        # Step 3 — step cursor back to x=0, keeping the accumulated y.
+        # After column 2's move="up" calls the cursor sits at
+        # (W+spacing, H2).  Stepping left by W lands at (0, H2).
+        self.rectangularWall(W, h, "eeee", move="left only")
+
+        # Step 4 — step DOWN by H1 so column 1 starts at y = H2-H1.
+        # Both columns then end at the same turtle y = H2, which maps to the
+        # same TOP position in the SVG — i.e. the two columns are top-aligned.
+        #
+        # H1 (column 1 total cursor advance) = 2·(h+s) + 4·(h−t+s) = 6h−4t+6s,
+        # where s = self.spacing.
+        #
+        # move="down only" with y_param P advances the cursor by −(P+s).
+        # To advance by −H1 set P = H1−s = 6h−4t+5s.
+        col1_align_param = 6 * h - 4 * t + 5 * self.spacing
+        if col1_align_param > 0:
+            self.rectangularWall(W, col1_align_param, "eeee", move="down only")
+
+        # --- Column 1 (left side): W-dimension panels top-aligned with column 2 -
+        # Drawn at turtle y = H2-H1 → top of col1 maps to the same SVG y as the
+        # top of col2.
+
+        # Two short outer walls (W−2t × h).
+        for _ in range(2):
+            self.rectangularWall(W - 2 * t, h, short_wall_edges,
+                                 callback=[short_wall_cb], move="up")
+
+        # Four horizontal dividers (W−2t × h−t body; 'f' top tabs → bbox h).
+        # Bottom SlottedEdge 'f': base plate connection.
+        # Top _HorizDivSpokeEdge (or SlottedEdge 'e' without spoke).
+        # Left/right 'f': end-tabs into long outer wall fingerHoles.
+        for _ in range(4):
+            self.rectangularWall(W - 2 * t, h - t,
+                                 [e_horiz_bot, 'f', e_horiz_top, 'f'],
+                                 callback=[horiz_div_cb], move="up")
