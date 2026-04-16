@@ -645,6 +645,15 @@ class HexmoRectangle(Boxes):
 
         # Support spoke geometry.  sw=0 suppresses the spoke and all its cutouts.
         sw  = self.spoke_width
+        # Clamp sw to the middle-column interior width.  The 'f' strip drawn by
+        # _HorizDivSpokeEdge spans exactly sw mm inside the middle section
+        # (between the two crossing slots).  If sw > col_w the edge overdraws
+        # by (sw − col_w) mm, producing an unclosed panel outline on the left
+        # and shifting the second crossing slot into the segment-2 weight-
+        # reduction hole.  Clamping to col_w ensures the total drawn length
+        # equals W − 2t regardless of the user-supplied --spoke_width value.
+        if sw > 0:
+            sw = min(sw, col_w)
         # Extra slot depth added to both crossing-slot sets so panels seat fully
         # despite laser kerf and material-thickness variation.
         tol = self.slot_tolerance
@@ -759,14 +768,17 @@ class HexmoRectangle(Boxes):
         #      we need full control over which segments carry a gap band.
         #
         # Gap band placement: segments 1, 2, and 3 each receive a full gap band
-        # (big + small pair + medium pair) via _drawGapBandFeatures, centred in
-        # the row segment.  Segments 0 and 4 carry only the single big hole at
-        # x_floor / H-x_floor — the gap band's own big hole would overlap the
-        # corner cluster if placed at the segment midpoint (only ~0.2 mm clearance).
+        # (big + small pair + medium pair) via _drawGapBandFeatures when the
+        # segment is wide enough (half_gap ≥ 81 mm, i.e. radius ≳ 482 mm).
+        # When the segment is too narrow for the full band but still fits a single
+        # big hole (half_gap ≥ r4 + MIN_CLEAR = 40 mm), a single centred big hole
+        # is placed via _drawSupportSegmentHole.
+        # Segments 0 and 4 carry only the single big hole at x_floor / H-x_floor
+        # when x_floor + r4 clears the first/last divider slot (row_h guard).
         #
         # Row segment j occupies x ∈ [j·(row_h+t), j·(row_h+t)+row_h].
         # Centering the gap band in that range gives ~8.2 mm clearance to the
-        # adjacent finger-joint slots on both sides.
+        # adjacent finger-joint slots on both sides at default radius.
         def long_wall_cb():
             """Place fingerHoles and alignment holes on a long outer wall panel.
 
@@ -774,13 +786,14 @@ class HexmoRectangle(Boxes):
             once per long wall.  Draws four horizontal-divider fingerHole rows, then:
               1. Corner clusters shifted by ``dx`` to match the short wall edge distance.
               2. Single big holes at ``x_floor`` and ``H − x_floor`` for segments 0
-                 and 4 — positioned to clear the corner clusters.
-              3. Full gap bands (big + small pair + medium pair) at the midpoints of
-                 segments 1, 2, and 3, centred between divider finger slots.
+                 and 4 — only when x_floor + r4 clears the adjacent divider slot.
+              3. Segments 1, 2, and 3: full gap band (big + small pair + medium pair)
+                 via ``_drawGapBandFeatures`` when half_gap ≥ 81 mm (radius ≳ 482 mm);
+                 otherwise a single centred big hole via ``_drawSupportSegmentHole``
+                 when half_gap ≥ r4 + MIN_CLEAR = 40 mm.
 
             Segments 0 and 4 do not receive a full gap band because placing a big
-            hole at their segment midpoints (~84 mm from the panel edge) would leave
-            only ~0.2 mm clearance to the corner cluster medium holes.
+            hole at their segment midpoints would overlap the corner cluster.
 
             The corner shift (``dx = t * (2 − 1/√3)``) matches the origin shift used
             in ``short_wall_cb`` so that corner cluster holes are at the same distance
@@ -802,14 +815,34 @@ class HexmoRectangle(Boxes):
             # Segments 0 and 4: single big hole at x_floor / H-x_floor.
             # The segment midpoints are too close to the corner clusters for a full
             # gap band; x_floor is the minimum safe distance from the corner cluster.
+            # Guard: the right edge of the hole (x_floor + r4) must also clear the
+            # left edge of the first horizontal-divider finger slot at x = row_h,
+            # otherwise the big circle punches into the interlock joint.  When
+            # row_h is small (small --radius) there is simply no room and the hole
+            # is suppressed rather than overlapping the joint.
             l_eff = self.h - 2 * t
             y_big = l_eff / 2
-            self.hole(x_floor,     y_big, self._R4)
-            self.hole(H - x_floor, y_big, self._R4)
-            # Segments 1, 2, 3: full gap band centred in each segment.
+            if x_floor + self._R4 + self._MIN_CLEAR <= row_h:
+                self.hole(x_floor,     y_big, self._R4)
+                self.hole(H - x_floor, y_big, self._R4)
+            # Segments 1, 2, 3: full gap band when the segment is wide enough,
+            # otherwise a single centred big hole.
+            # The _drawGapBandFeatures threshold duplicates the guard inside that
+            # method (half_gap >= md_off + r2 + mc) so we can choose the fallback
+            # without modifying the method's signature.
+            sm_off = self._R4 + self._MIN_CLEAR + self._R3
+            md_off = sm_off + self._R3 + self._MIN_CLEAR + self._R2
+            half_gap = row_h / 2
             for j in (1, 2, 3):
                 x_lo = j * (row_h + t)
-                self._drawGapBandFeatures(x_lo, x_lo + row_h)
+                x_hi = x_lo + row_h
+                if half_gap >= md_off + self._R2 + self._MIN_CLEAR:
+                    # Wide enough for the full band pattern.
+                    self._drawGapBandFeatures(x_lo, x_hi)
+                else:
+                    # Too narrow for the full band; place one centred big hole.
+                    # _drawSupportSegmentHole self-guards if r4 doesn't fit.
+                    self._drawSupportSegmentHole(x_lo, x_hi)
 
         # Segment-hole helper used by both divider types.
         # n: number of segments; step: inner length of each segment (row_h or col_w).
