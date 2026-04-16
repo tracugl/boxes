@@ -937,62 +937,77 @@ class HexmoRectangle(Boxes):
             short_wall_edges = ['f', 'F', e_short_top, 'F']
         else:
             short_wall_edges = "fFeF"
-        # --- Row 1: outer walls + vertical dividers (all height ≈ h) ---------------
-        # Grouping these together reduces the SVG to 3 rows instead of 5, nearly
-        # halving the total sheet height without changing any panel orientation.
+        # =======================================================================
+        # SVG layout — two-column vertical stack
+        #
+        # The boxes framework places panels sequentially: move="up" stacks panels
+        # vertically (y advances, x stays fixed) within a column, and
+        # move="right only" advances x to start the next column at whatever y the
+        # cursor is currently at.  This produces a compact near-square bounding
+        # box instead of a long horizontal strip.
+        #
+        # Column 1 (width ≈ W = 488 mm at default radius):
+        #   2 × short outer wall  (W−2t × h)
+        #   4 × horizontal divider (W−2t × h−t, bbox h)
+        #
+        # Column 2 (width ≈ H+2t = 878 mm at default radius), stacked above
+        #   the end of column 1:
+        #   2 × long outer wall   (H × h)
+        #   2 × vertical divider  (H × h)
+        #   1 × spoke             (H × sw)  [if sw > 0]
+        #   1 × base plate        (H × W−2t)
+        #
+        # With default parameters this yields ≈ 1370 × 1640 mm instead of the
+        # previous ≈ 8179 × 741 mm — roughly 1:1 aspect ratio.
+        # =======================================================================
 
-        # Two short outer walls spanning the W (radius) axis.
+        # --- Column 1: W-dimension panels stacked vertically --------------------
+
+        # Two short outer walls (W−2t × h).
         for _ in range(2):
             self.rectangularWall(W - 2 * t, h, short_wall_edges,
-                                 callback=[short_wall_cb], move="right")
+                                 callback=[short_wall_cb], move="up")
 
-        # Two long outer walls spanning the H (radius × √3) axis.
-        for _ in range(2):
-            self.rectangularWall(H, h, "ffef",
-                                 callback=[long_wall_cb], move="right")
-
-        # --- Vertical dividers (placed in same row as outer walls) ---------------
-        # Two panels spanning H (the long axis), creating the 3-column split.
-        # Bottom edge: SlottedEdge with 5 'f' sections for base plate connection,
-        # separated by 4 Slot notches (depth h/2) at the horizontal crossing points.
-        # Left / right edges ('f'): end-tabs that seat into fingerHoles on the
-        # two short outer walls.
-        # Top edge ('e'): open — flush with the outer wall tops.
-        for _ in range(2):
-            self.rectangularWall(H, h,
-                                 [e_vert_bot, 'f', 'e', 'f'],
-                                 callback=[vert_div_cb], move="right")
-
-        # Advance the layout cursor past row 1 (all panels are height h).
-        self.rectangularWall(1, h, "eeee", move="up only")
-
-        # --- Row 2: horizontal dividers + spoke (heights h and sw) ---------------
-        # Horizontal dividers span the inner short cavity (W−2t) between the two
-        # long outer walls, with 'f' end-tabs on left and right seating into the
-        # fingerHoles on those long walls.  Inner dimension = W−2t; bbox = W.
-        # Panel height h−t (body only); 'f' top tabs project t upward → total bbox = h.
+        # Four horizontal dividers (W−2t × h−t body; 'f' top tabs bring bbox to h).
+        # Bottom edge: SlottedEdge 'f' sections connect to base plate.
+        # Top edge: _HorizDivSpokeEdge (with spoke) or SlottedEdge 'e' (without spoke).
+        # Left / right edges ('f'): end-tabs seating into long outer wall fingerHoles.
         for _ in range(4):
             self.rectangularWall(W - 2 * t, h - t,
                                  [e_horiz_bot, 'f', e_horiz_top, 'f'],
-                                 callback=[horiz_div_cb], move="right")
+                                 callback=[horiz_div_cb], move="up")
 
-        # Centre support spoke — placed in row 2 alongside the horizontal dividers.
-        # Flat panel at the open top of the box, running the full long-axis length H
-        # and centred in the short (W) direction.  Width = sw (spoke_width parameter).
-        #
-        #   Short ends (edges[1]=right, edges[3]=left): 'f' finger tabs, sw long.
-        #     These project into the central 'F' section of _ShortWallTopEdge on
-        #     each short outer wall's top — notches cut INTO the wall's top edge,
-        #     open at the edge, spanning exactly sw mm.  Tab and slot lengths match.
-        #
-        #   Face (bottom): fingerHoles at each of the 4 horizontal-divider H
-        #     positions.  Each divider has an sw-long 'f' strip on its top edge
-        #     (from _HorizDivSpokeEdge) that projects upward into these slots.
-        #
-        #   Long edges (edges[0]=bottom, edges[2]=top): plain 'e'.
-        #
-        # rectangularWall(H, sw, "efef"):
-        #   edges[0]=bottom='e', edges[1]=right='f', edges[2]=top='e', edges[3]=left='f'
+        # Advance x to column 2.  Use W (= W−2t + 2t) as the advance width so that
+        # the 'f' side-tab protrusions of the horizontal dividers (each ±t beyond the
+        # inner W−2t dimension) are cleared before column 2 panels begin.
+        self.rectangularWall(W, h, "eeee", move="right only")
+
+        # --- Column 2: H-dimension panels stacked vertically --------------------
+        # Column 2 starts above the end of column 1 (the cursor y was accumulated
+        # by the move="up" calls above).  All panels here are H wide.
+
+        # Two long outer walls (H × h).
+        # Bottom edge 'f': base plate connection.
+        # Left / right edges 'f': tab into short outer wall 'F' slots.
+        # Top edge 'e': open.
+        for _ in range(2):
+            self.rectangularWall(H, h, "ffef",
+                                 callback=[long_wall_cb], move="up")
+
+        # Two vertical dividers (H × h), creating the 3-column grid split.
+        # Bottom edge: SlottedEdge with 5 'f' sections + 4 Slot notches (depth h/2).
+        # Left / right edges ('f'): end-tabs into short outer wall fingerHoles.
+        # Top edge ('e'): open.
+        for _ in range(2):
+            self.rectangularWall(H, h,
+                                 [e_vert_bot, 'f', 'e', 'f'],
+                                 callback=[vert_div_cb], move="up")
+
+        # Centre support spoke — stacked immediately above the vertical dividers.
+        # Flat panel at the open top of the box, running the full long-axis length H.
+        # Short ends ('f'): tab into the central 'F' section of _ShortWallTopEdge.
+        # Face: fingerHoles for 4 horizontal dividers (via spoke_cb).
+        # Long edges ('e'): open.
 
         def spoke_cb():
             """Draw fingerHoles for all four horizontal dividers on the spoke face.
@@ -1019,20 +1034,14 @@ class HexmoRectangle(Boxes):
 
         if sw > 0:
             self.rectangularWall(H, sw, "efef",
-                                 callback=[spoke_cb], move="right")
+                                 callback=[spoke_cb], move="up")
 
-        # Advance past row 2.  Row height = max(h for dividers, sw for spoke).
-        self.rectangularWall(1, max(h, sw), "eeee", move="up only")
-
-        # --- Row 3: base plate --------------------------------------------------
-        # The base plate 'F' slots must span the same length as the wall 'f' tabs:
-        #   short wall 'f' bottom tab span: W − 2t  (inner x of "fFeF" wall)
-        #   long  wall 'f' bottom tab span: H        (inner x of "ffef" wall)
-        # So the base plate inner dimensions are (W−2t) × H.
+        # Base plate — last panel in column 2, stacked above the spoke (or above
+        # the vertical dividers when sw = 0).
         #
-        # Drawn as (H × W−2t) so the longer H edge is horizontal in the SVG,
-        # matching the laser cutter's left-to-right preferred direction.
-        # All four edges are 'F' so perimeter tabs accept the outer wall 'f' bottom
-        # tabs regardless of orientation.  Outer bounding box = (H+2t) × W. ✓
+        # Inner dimensions (W−2t) × H, drawn as (H × W−2t) so the longer H edge
+        # is horizontal in the SVG (laser cutter left-to-right preference).
+        # All four edges 'F': perimeter tabs accept the outer wall 'f' bottom tabs.
+        # Outer bounding box = (H+2t) × W. ✓
         self.rectangularWall(H, W - 2 * t, "FFFF",
                              callback=[base_cb], move="right")
