@@ -84,6 +84,17 @@ class _HorizDivSpokeEdge(edges.BaseEdge):
         """Return 0; the edge ends flush with the panel boundary."""
         return 0.0
 
+    def margin(self) -> float:
+        """Return the tab protrusion height so move='up' allocates correct space.
+
+        The central 'f' section draws finger tabs that protrude ``thickness`` mm
+        above the panel face.  Returning ``thickness`` here lets ``spacing()``
+        (= startWidth + margin = 0 + t = t) correctly account for this protrusion
+        in the ``overallheight`` calculation inside ``rectangularWall``, preventing
+        column-1 panels from overlapping in the SVG layout.
+        """
+        return self.boxes.thickness
+
     def __call__(self, length, **kw):
         """Draw the composite edge for ``length`` mm.
 
@@ -1019,12 +1030,13 @@ class HexmoRectangle(Boxes):
         # Both columns then end at the same turtle y = H2, which maps to the
         # same TOP position in the SVG — i.e. the two columns are top-aligned.
         #
-        # H1 (column 1 total cursor advance) = 2·(h+s) + 4·(h−t+s) = 6h−4t+6s,
-        # where s = self.spacing.
+        # After the _HorizDivSpokeEdge.margin() fix, every col1 panel has
+        # overallHeight = h + t (2 short walls + 4 horiz dividers).
+        # H1 = 6·(h+t) + 6·s  (6 panels × [oH + s], where s = self.spacing).
         #
         # move="down only" with y_param P advances the cursor by −(P+s).
-        # To advance by −H1 set P = H1−s = 6h−4t+5s.
-        col1_align_param = 6 * h - 4 * t + 5 * self.spacing
+        # To advance by −H1 set P = H1−s = 6·(h+t) + 5·s.
+        col1_align_param = 6 * (h + t) + 5 * self.spacing
         if col1_align_param > 0:
             self.rectangularWall(W, col1_align_param, "eeee", move="down only")
 
