@@ -101,69 +101,43 @@ class HexmoRectangle(Boxes):
         )
 
     def _drawCornerGroup8Rect(self, s):
-        """Draw the four corner L-clusters for a rectangularWall panel.
+        """Draw the end-column alignment cluster for a rectangularWall panel.
 
-        Exact transposed counterpart of HexmoHexagon._drawCornerGroup8: every
-        ``hole(x, y, r)`` call has its x and y arguments swapped so the 18-hole
-        pattern fits the ``rectangularWall`` callback coordinate frame, where
-        x runs along the wall length (s) and y runs along the panel height.
+        Places a 3-hole vertical column at each end of the wall: one small hole
+        near the top edge, one medium hole at the vertical centre, and one small
+        hole near the bottom edge.  Both columns sit at x = 3·_SPACER from their
+        respective inner edges.
 
-        The visual layout is identical to the hexagon variant; only the axis
-        assignment changes.  Calling this from a ``rectangularWall`` callback
-        therefore produces alignment holes that are pin-compatible with holes on
-        adjacent HexmoHexagon panels.
+        The medium hole x-position (3·sp) sets the ``corner_inner`` boundary used
+        by ``drawAlignmentHolesRect`` and ``long_wall_cb`` when computing the safe
+        zone for big through-holes, so that value must not change.
 
-        All height-direction (y) positions are derived from self.h via l_eff so
-        they are invariant with respect to outside mode — no panel height argument
-        is needed.
+        All y-positions are derived from ``l_eff = self.h − 2·t`` so they are
+        invariant with respect to outside mode.
 
         @param s - Panel length along the wall (x-axis of the rectangularWall callback).
         """
         sp = self._SPACER
         t  = self.thickness
-        # l_eff: the effective inner height used by HexmoHexagon for all hole
-        # y-positions.  The hex callback does `moveTo(0, -t)` before drawing holes,
-        # which effectively reduces the usable height by t at both ends.  The result
-        # is l_eff = self.h − 2·t regardless of outside mode, and all hole y-positions
-        # must use l_eff as the reference so that physical hole positions match.
         l_eff    = self.h - 2 * t
-        # sp_y: y-margin for bottom-edge holes from inner bottom face (y=0 in callback).
         sp_y     = sp
-        # y_center: vertical midpoint of the corner-strip medium holes.  Equals
-        # l_eff / 2, matching HexmoHexagon._drawCornerGroup8's hole(l/2, ...) placement.
         y_center = l_eff / 2
         r2 = self._R2
         r3 = self._R3
 
-        # Right-end top corner L-cluster.  Top positions are measured from l_eff
-        # (the effective usable height) rather than from the raw callback height l,
-        # so that the physical hole locations match the hex panel's top-cluster holes.
-        self.hole(s - sp,         l_eff - sp,           r3)
-        self.hole(s - 2 * sp,     l_eff - sp,           r3)
-        self.hole(s - sp,         l_eff - 2 * sp,       r3)
+        # Right-end cluster: small pair at 2·sp, then small/medium/small at 3·sp.
+        self.hole(s - 2 * sp, l_eff - sp,  r3)   # near top, 2nd column
+        self.hole(s - 2 * sp, sp_y,        r3)   # near bottom, 2nd column
+        self.hole(s - 3 * sp, l_eff - sp,  r3)   # near top, 3rd column
+        self.hole(s - 3 * sp, y_center,    r2)   # centre medium, 3rd column
+        self.hole(s - 3 * sp, sp_y,        r3)   # near bottom, 3rd column
 
-        # Centre-strip registration pins at 3·sp from both ends of the wall.
-        self.hole(s - 3 * sp, l_eff - sp,  r3)   # right end, near top
-        self.hole(s - 3 * sp, y_center,    r2)   # right-end centre medium
-        self.hole(3 * sp,     l_eff - sp,  r3)   # left end, near top
-        self.hole(3 * sp,     y_center,    r2)   # left-end centre medium
-        self.hole(s - 3 * sp, sp_y,        r3)   # right end, near bottom
-        self.hole(3 * sp,     sp_y,        r3)   # left end, near bottom
-
-        # Right-end bottom corner L-cluster.
-        self.hole(s - sp,         sp_y,         r3)
-        self.hole(s - 2 * sp,     sp_y,         r3)
-        self.hole(s - sp,         sp_y + sp,    r3)
-
-        # Left-end top corner L-cluster.
-        self.hole(sp,         l_eff - sp,           r3)
-        self.hole(2 * sp,     l_eff - sp,           r3)
-        self.hole(sp,         l_eff - 2 * sp,       r3)
-
-        # Left-end bottom corner L-cluster.
-        self.hole(sp,         sp_y,         r3)
-        self.hole(2 * sp,     sp_y,         r3)
-        self.hole(sp,         sp_y + sp,    r3)
+        # Left-end cluster: small pair at 2·sp, then small/medium/small at 3·sp.
+        self.hole(2 * sp,     l_eff - sp,  r3)   # near top, 2nd column
+        self.hole(2 * sp,     sp_y,        r3)   # near bottom, 2nd column
+        self.hole(3 * sp,     l_eff - sp,  r3)   # near top, 3rd column
+        self.hole(3 * sp,     y_center,    r2)   # centre medium, 3rd column
+        self.hole(3 * sp,     sp_y,        r3)   # near bottom, 3rd column
 
     def _drawSupportGapFeatures(self, x_lo, x_hi):
         """Fill the x-axis gap between two features with a symmetric hole sub-group.
