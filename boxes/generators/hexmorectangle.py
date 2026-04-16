@@ -22,9 +22,12 @@ wall equals the hexagon flat-to-flat distance (``radius × √3``).
 #   You should have received a copy of the GNU General Public License
 #   along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
+import argparse
+import datetime
 import math
 
 from boxes import Boxes, edges
+from boxes.Color import Color
 
 
 class _HorizDivSpokeEdge(edges.BaseEdge):
@@ -563,6 +566,77 @@ class HexmoRectangle(Boxes):
         if draw_corners:
             self._drawCornerGroup8Rect(s)
 
+    def drawReferencePanel(self, move="right") -> None:
+        """Render a flat reference panel listing all generator parameters.
+
+        The panel is sized to contain the full parameter list as engraved text
+        and uses ``Color.ETCHING`` so that laser software routes it as an
+        engrave pass rather than a cut pass.  A ``Color.OUTER_CUT`` rectangle
+        provides the border so the panel can be cut from stock.
+
+        The panel is positioned using the standard boxes ``move`` convention:
+        call with ``move="right"`` (default) to advance the layout cursor to
+        the right of the panel, or ``move="up only"`` to reserve space only.
+
+        @param move - Direction string passed to ``self.move()`` for layout
+                      control.  Defaults to ``"right"``.
+        """
+        fontsize    = 6                      # mm — small but legible on most laser systems
+        margin      = 5                      # mm — clearance between border and text
+        line_height = 1.4 * fontsize         # matches boxes text() inter-line spacing
+        panel_width = 150                    # mm — wide enough for longest expected param lines
+
+        # Gather current parameter values by walking all argparser actions and
+        # reading the corresponding attribute off self.  Edge-setting args
+        # (e.g. FingerJoint_finger) are also stored on self via setattr after
+        # parse_args, so getattr covers them without special-casing.
+        # Actions whose dest is SUPPRESS (e.g. --help) have no corresponding
+        # attribute and are skipped by the getattr guard.
+        params = []
+        seen_dests: set[str] = set()
+        for action in self.argparser._actions:
+            dest = action.dest
+            if dest in seen_dests or dest == argparse.SUPPRESS:
+                continue
+            seen_dests.add(dest)
+            val = getattr(self, dest, None)
+            if val is None:
+                continue
+            params.append((dest, val))
+        params.sort(key=lambda p: p[0])
+
+        # Build text: generator name + ISO timestamp header, then one param per line.
+        timestamp   = datetime.datetime.now().strftime("%Y-%m-%dT%H:%M:%S")
+        header_lines = [f"{self.__class__.__name__}  {timestamp}", ""]
+        param_lines  = [f"{dest}: {val}" for dest, val in params]
+        lines        = header_lines + param_lines
+
+        panel_height = 2 * margin + len(lines) * line_height
+
+        # First call with before=True: reserve layout space; return early if
+        # the caller only wants space reservation (e.g. move="up only").
+        if self.move(panel_width, panel_height, move, True):
+            return
+
+        # Outer cut border so the panel can be laser-separated from stock.
+        self.set_source_color(Color.OUTER_CUT)
+        self.ctx.rectangle(0, 0, panel_width, panel_height)
+        self.ctx.stroke()
+
+        # Render the parameter list as a single multi-line etching block.
+        # boxes' text() iterates lines in reverse and moves upward per line,
+        # so lines[0] ends up at the top and lines[-1] sits at y=margin.
+        self.text(
+            "\n".join(lines),
+            x=margin,
+            y=margin,
+            fontsize=fontsize,
+            color=Color.ETCHING,
+        )
+
+        # Second call: advance the layout cursor past the rendered panel.
+        self.move(panel_width, panel_height, move)
+
     def render(self) -> None:
         """Generate all panels for the HexmoRectangle box (Phase 2: outer shell + 3×5 grid).
 
@@ -1090,3 +1164,5 @@ class HexmoRectangle(Boxes):
             self.rectangularWall(W - 2 * t, h - t,
                                  [e_horiz_bot, 'f', e_horiz_top, 'f'],
                                  callback=[horiz_div_cb], move="up")
+
+        self.drawReferencePanel(move="right")
