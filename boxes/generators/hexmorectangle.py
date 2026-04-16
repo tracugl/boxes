@@ -99,6 +99,14 @@ class HexmoRectangle(Boxes):
                  "mate flush.  Short wall W = radius − 2×thickness; "
                  "long wall H = radius × √3.",
         )
+        self.argparser.add_argument(
+            "--spoke_width", action="store", type=float, default=120.0,
+            help="Height of the centre support spoke on the underside of the base plate "
+                 "(mm).  The spoke runs the full long-axis length (H = radius × √3), "
+                 "centred in the short axis, providing bending resistance under train "
+                 "load.  Set to 0 to omit the spoke.  The base plate receives matching "
+                 "fingerHoles along its centre line.",
+        )
 
     def _drawCornerGroup8Rect(self, s):
         """Draw the end-column alignment cluster for a rectangularWall panel.
@@ -467,6 +475,9 @@ class HexmoRectangle(Boxes):
         col_w = (W - 4 * t) / 3   # inner width of each of the 3 columns
         row_h = (H - 4 * t) / 5   # inner height of each of the 5 rows
 
+        # Support spoke geometry.  sw=0 suppresses the spoke and all its cutouts.
+        sw = self.spoke_width
+
         # --- Crossing slot edges ------------------------------------------------
         # Vertical dividers span H and use 'f' sections (connecting to base plate)
         # separated by Slot notches of depth h/2 at the 4 horizontal crossing
@@ -531,6 +542,22 @@ class HexmoRectangle(Boxes):
             # after the hex moveTo(0, -t) has been applied.  Derived empirically:
             # dx = t*(2 - 1/√3).
             dx = t * (2 - 1 / math.sqrt(3))
+            if sw > 0:
+                # Rectangular slot at the open-top edge of this short wall for the
+                # flat support spoke.  The spoke (plain rectangle, no finger tabs)
+                # slides into this slot from the side and is glued flush.  The slot
+                # is placed BEFORE moveTo(-dx, 0) so its coordinates are in the
+                # un-shifted absolute frame of the inner face.
+                #   x: centred in the inner width (W−2t)
+                #   y: top of the inner face (l_eff = h−2t), open at that edge
+                #   width: sw (spoke panel width, W direction)
+                #   height: t (one material thickness, Z direction)
+                x_c      = (W - 2 * t) / 2
+                # y-centre = h - t/2 → slot spans y = h-t to y = h, opening at the
+                # outer panel edge ('e' top in boxes.py = open bottom in assembly).
+                # This is the "slotting flush" geometry: spoke face is coplanar with
+                # the panel's open edge, not recessed into the panel body.
+                self.rectangularHole(x_c, h - t / 2, sw, t)
             self.moveTo(-dx, 0)
             # gap_features=False: the gap-fill medium holes at x_mid of the two
             # inter-big-hole gaps land directly on the vertical-divider finger
@@ -648,6 +675,19 @@ class HexmoRectangle(Boxes):
                 # One large hole per column segment — matches the outer-wall big-hole
                 # pattern and is simpler to cut than the multi-hole G6 cluster.
                 self._drawSupportSegmentHole(x_lo, x_lo + col_w)
+            if sw > 0:
+                # Open-ended notch at the top centre of this horizontal divider
+                # for the flat support spoke to rest in.  The notch is sw wide
+                # (spanning the spoke's full W footprint) and t deep (one material
+                # thickness), so the spoke sits flush with the divider's top edge.
+                # y-centre set so the notch's top coincides with the inner face's
+                # top boundary (l_eff), making the slot open at the panel edge.
+                x_c      = (W - 2 * t) / 2
+                # y-centre = h - t/2 → slot spans y = h-t to y = h, opening at the
+                # outer panel edge ('e' top in boxes.py = open bottom in assembly).
+                # This is the "slotting flush" geometry: spoke face is coplanar with
+                # the panel's open edge, not recessed into the panel body.
+                self.rectangularHole(x_c, h - t / 2, sw, t)
 
         # Base plate ((W−2t) × H inner, W × (H+2t) outer): fingerHoles for all
         # six dividers.  At callback-0 the turtle sits at the inner-bottom-left
@@ -770,3 +810,19 @@ class HexmoRectangle(Boxes):
             self.rectangularWall(W - 2 * t, h,
                                  [e_horiz_bot, 'f', e_horiz_top, 'f'],
                                  callback=[horiz_div_cb], move="right")
+
+        # Advance cursor past the horizontal divider row.
+        self.rectangularWall(1, h, "eeee", move="up only")
+
+        # --- Centre support spoke -----------------------------------------------
+        # Flat horizontal panel at the open top of the box (opposite to the base
+        # plate), running the full long-axis length H, centred in the short (W)
+        # direction.  Like a narrow partial lid, it braces the open end against
+        # racking.
+        #
+        # The spoke itself is a plain rectangle — no finger tabs on any edge.  It
+        # slides into the aligned slots in the short walls and horizontal dividers
+        # from the side and is glued in place.  Edge string "eeee": all four edges
+        # are plain ('e'), no joints cut into the spoke panel itself.
+        if sw > 0:
+            self.rectangularWall(H, sw, "eeee", move="right")
