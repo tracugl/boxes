@@ -603,28 +603,33 @@ class HexmoHexagon(Boxes):
         If the frame or spokes would degenerate (non-positive dimensions), the
         method falls back to a plain closed polygon with no cutouts.
 
-        **Kite geometry** — the master kite has four vertices on the spoke axis
-        (P1 top, P3 bottom) and two symmetric side vertices (P2 right, P4 left).
-        P1 is pinned to the inner-hex corner at (0, R_inner) with a 120°
-        interior angle (so the apex edges run along the inner hex boundary),
-        and P2/P4 are pinned to the inner-hex edge at the same (x, y) as the
-        original full-hex kite — this keeps the perpendicular clearance to the
-        central spoke invariant across all widening angles.
+        **Kite geometry** — in full-hex and trapezoid-with-side-supports modes
+        the master kite has four vertices symmetric about the spoke axis:
+        P1 (top, 120° pinned to the inner hex corner), P2 (right 90°, pinned
+        to the inner hex edge), P3 (inner tip, 60° interior), and P4 (left
+        90°, mirror of P2).  The six per-kite rotations of this master reproduce
+        the original full-hex layout byte-for-byte.
 
-        The parameter θ is the interior angle at P3.  Widening θ pulls P3
-        toward the centre (shortening the kite's axial diagonal) while P1/P2/P4
-        stay put:
+        In **trapezoid mode with trapezoid_side_supports=False**, kites 2 and 3
+        are redrawn as an L-shaped "right-angle" kite anchored at the inner
+        tip rather than the outer apex.  The L-shape has:
 
-          θ = 60°  — the default full-hex layout (P1=120°, P2=P4=90°, P3=60°);
-                     each kite tip fits cleanly between two adjacent spokes.
-          θ = 90°  — the wider trapezoid-no-side-supports layout
-                     (P1=120°, P2=P4=75°, P3=90°); the apex remains a
-                     visible point but the base is more open.
+          - P3 as the 90° corner (inner tip), anchored at the same centre-frame
+            (x, y) used by the full-hex kite's inner tip — so central-spoke
+            clearance is preserved (|P3.x| = spoke_width/2).
+          - One edge from P3 running parallel to the long top wall (horizontal).
+          - Other edge from P3 running perpendicular to the long top wall
+            (vertical).  Together these two edges form the 90° corner at P3.
+          - P2 (end of horizontal edge) lying on the slanted inner hex edge
+            that runs from P1 toward the 180°/0° inner corner (the one that
+            sits on the long top wall).
+          - P4 (end of vertical edge) lying on the horizontal inner hex edge
+            between P1 and the adjacent 300°/240° corner.
+          - P1 remains at the inner hex corner (240° for kite 2, 300° for
+            kite 3), closing the quadrilateral P1-P2-P3-P4.
 
-        For chosen θ with P2 fixed at the original hex-edge position:
-            2s = (R_inner − spoke_width) · (√3·cot(θ/2) + 1) / 4
-        which simplifies to 2s = R_inner − spoke_width at θ = 60°, matching
-        the original geometry byte-for-byte.
+        The L-shaped kite is no longer axially symmetric, so kite 3 is drawn
+        as the x-axis mirror of kite 2 rather than a rotation.
 
         @param r           - Inner corner radius of the hexagon bottom panel.
         @param joint_type  - Two-character edge string (e.g. 'yY') passed
@@ -632,7 +637,7 @@ class HexmoHexagon(Boxes):
         @param isTrapezoid - When True, only the two kites in the flat half
                              are drawn (half-hexagon / trapezoid mode).  In
                              trapezoid mode with trapezoid_side_supports=False,
-                             the kites are widened to θ = 90°.
+                             the L-shape kites replace the rotated masters.
         """
         n = self.n
         edge_width = self.edge_width
@@ -648,42 +653,70 @@ class HexmoHexagon(Boxes):
             return
         R_inner = A_inner / cos30                   # inner corner radius after frame
 
-        # Pick the kite inner-vertex angle (θ at P3) based on mode.  In
-        # trapezoid mode with no side supports, the ±60° spokes are absent
-        # and the kite can widen from the full-hex 60° to 90° at P3.
         widen_kites = isTrapezoid and not self.trapezoid_side_supports
-        theta_deg = 90.0 if widen_kites else 60.0
-        theta = math.radians(theta_deg)
 
-        # Base s sizes the kite's horizontal extent.  Using the original
-        # formula keeps P2/P4 on the inner-hex edge at the same position as
-        # the full-hex layout, so perpendicular clearance to the central
-        # spoke is independent of θ.
-        s_base = (A_inner / sqrt3) - (spoke_width / 2.0)
-        if s_base <= 0:
+        # Original full-hex s (half the chord length of the kite base).
+        s = (A_inner / sqrt3) - (spoke_width / 2.0)
+        if s <= 0:
             # Spokes are too wide to fit — fall back to solid hex.
             self.regularPolygonWall(corners=n, r=r, edges=joint_type[1], move="right")
             return
 
-        # Side-vertex position (on inner hex edge) — independent of θ.
-        X = s_base * sqrt3 / 2.0
-        Y_side = R_inner - s_base / 2.0
+        if widen_kites:
+            # L-shaped kites for trapezoid mode with the side supports removed.
+            # The shape is defined directly in the centre frame rather than via
+            # a rotated master, because the shape is no longer axially symmetric
+            # about the spoke axis — P2-end edges run along world-frame axes
+            # (horizontal/vertical) rather than along local kite-frame axes.
 
-        # Axial distance from P1 to P3, derived from the P3 interior angle θ.
-        # tan(θ/2) = X / (Y_side − P3.y)  ⇒  P3.y = Y_side − X/tan(θ/2).
-        # For θ = 60° this collapses to P3.y = R_inner − 2·s_base (original).
-        tan_half = math.tan(theta / 2.0)
-        axial = (Y_side - (R_inner - 2.0 * s_base)) if tan_half == 0 else X / tan_half
-        P3_y = Y_side - axial
+            # Kite 2's P3 lies where the original full-hex kite 2's inner tip
+            # sat — at centre-frame (−spoke_width/2, −R_inner·√3/2 + s·√3).
+            # Rewrite using the original master→world rotation: master P3 at
+            # (0, R_inner − 2s); after 150° rotation:
+            #     P3 = (−(R_inner − 2s)/2, −(R_inner − 2s)·√3/2)
+            #        = (−(R_inner − 2s)/2, −A_inner + s·√3)
+            # so P3.x equals −spoke_width/2 exactly (because s = A_inner/√3 −
+            # spoke_width/2 makes R_inner − 2s = spoke_width).
+            inner_y_master = R_inner - 2.0 * s
+            p3_x = -inner_y_master / 2.0          # = -spoke_width/2
+            p3_y = -inner_y_master * sqrt3 / 2.0  # = -A_inner + s·√3
 
+            # Horizontal edge from P3 runs left to meet the slanted inner hex
+            # edge from corner 240° (-R_inner/2, -A_inner) to corner 180°
+            # (-R_inner, 0).  Line equation: y = -√3·(x + R_inner).  Solving
+            # for x at y = p3_y gives the endpoint P2.
+            p2_x = -p3_y / sqrt3 - R_inner
+            p2_y = p3_y
+
+            # Vertical edge from P3 runs down to meet the horizontal inner hex
+            # edge from 240° to 300° corner at y = -A_inner.
+            p4_x = p3_x
+            p4_y = -A_inner
+
+            # P1 at the 240° inner hex corner.
+            p1_x = -R_inner / 2.0
+            p1_y = -A_inner
+
+            kite_2 = [(p1_x, p1_y), (p2_x, p2_y),
+                      (p3_x, p3_y), (p4_x, p4_y)]
+            # Kite 3 is the y-axis mirror of kite 2 (flip x sign).
+            kite_3 = [(-p1_x, p1_y), (-p2_x, p2_y),
+                      (-p3_x, p3_y), (-p4_x, p4_y)]
+
+            for kite in (kite_2, kite_3):
+                self.ctx.move_to(kite[0][0], kite[0][1])
+                for x_, y_ in kite[1:]:
+                    self.ctx.line_to(x_, y_)
+                self.ctx.line_to(kite[0][0], kite[0][1])
+                self.ctx.stroke()
+            return
+
+        # ── Original rotation-based kite (full hex + trapezoid with sides) ──
         # Define the master kite with its apex pointing upward (+y direction).
-        # P1 sits at the inner hex corner.  P2/P4 lie on the adjacent inner
-        # hex edges at fixed positions.  P3 moves axially to realise the
-        # chosen θ — opening θ pulls P3 closer to P1 (shorter kite).
-        P1 = (0.0, R_inner)         # top vertex (120° interior, pinned to corner)
-        P2 = (X, Y_side)            # right vertex on inner hex edge
-        P3 = (0.0, P3_y)            # inner θ° vertex on the spoke axis
-        P4 = (-X, Y_side)           # left vertex on inner hex edge
+        P1 = (0.0, R_inner)                          # top vertex (120° angle)
+        P2 = (s * sqrt3 / 2.0, R_inner - s / 2.0)   # right 90° vertex
+        P3 = (0.0, R_inner - 2.0 * s)               # inner 60° vertex
+        P4 = (-s * sqrt3 / 2.0, R_inner - s / 2.0)  # left 90° vertex
 
         def rotate_points(pts, angle_deg):
             """Rotate a list of (x, y) points around the origin by angle_deg."""
