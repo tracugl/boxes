@@ -78,6 +78,13 @@ class HexmoHexagon(Boxes):
         self.argparser.add_argument(
             "--trapezoid", action="store", type=boolarg, default=False,
             help="If true, only draw a half-hexagon.")
+        self.argparser.add_argument(
+            "--trapezoid_side_supports", action="store", type=boolarg, default=False,
+            help="Trapezoid mode only: if true, draw all 3 supports (inherited "
+                 "from the full hexagon).  If false (default), draw only the "
+                 "single support perpendicular to the long edge — the ±60° "
+                 "side supports are omitted and the two kite cutouts are "
+                 "widened to take advantage of the extra clearance.")
 
         self.n = 6
 
@@ -88,6 +95,9 @@ class HexmoHexagon(Boxes):
         six half-spokes radiating from the centre (two halves per axis across
         the three 60° axes).  In trapezoid mode only the three downward
         half-spokes are present, so only three support walls are needed.
+        When `self.trapezoid_side_supports` is False (the default in trapezoid
+        mode), the ±60° side spokes are omitted and a single support wall is
+        drawn — the one perpendicular to the long top edge.
 
         All walls are identical rectangles of size support_length × box_height,
         finger-jointed on both long edges ('fefe' pattern), so they can be
@@ -119,8 +129,14 @@ class HexmoHexagon(Boxes):
 
         MIN_CLEAR = 5.0
 
-        # Number of support walls: 6 for a full hexagon, 3 for a trapezoid.
-        n_supports = 3 if isTrapezoid else 6
+        # Number of support walls:
+        #   full hexagon                            → 6  (3 axes × 2 half-spokes)
+        #   trapezoid, side supports enabled        → 3  (3 downward half-spokes)
+        #   trapezoid, side supports disabled       → 1  (only 0° axis spoke)
+        if isTrapezoid:
+            n_supports = 3 if self.trapezoid_side_supports else 1
+        else:
+            n_supports = 6
 
         def draw_holes():
             """Place through-holes on one support panel.
@@ -217,18 +233,33 @@ class HexmoHexagon(Boxes):
         The coordinate formula for the centre (r/2, H) is unchanged because V0
         (callback origin) is the same bottom-left vertex in both modes.
 
+        When `self.trapezoid_side_supports` is False (the default in trapezoid
+        mode), the ±60° spoke slots are also omitted — only the 0° spoke (the
+        axis perpendicular to the long top edge) is cut.  This matches the
+        single support wall rendered by drawSupports in the same configuration.
+
         @param r          - Inner corner radius of the hexagon bottom panel.
         @param isTrapezoid - When True, only cut the three lower (inward) slots
-                             instead of all six.
+                             instead of all six.  Combined with
+                             trapezoid_side_supports=False, only the 0° slot
+                             is cut.
         """
         sl = self.support_length
 
         H = r * math.sqrt(3) / 2.0  # apothem — also the y-distance from origin to centre
 
-        # The three spoke axes are 60° apart.  For each one, shift the coordinate
-        # origin to the hex centre and rotate to align with the spoke, then draw
-        # the slot(s).  saved_context() keeps the transform local so the next
-        # spoke starts from the original origin.
+        # Choose which spoke axes receive slots.  The three axes are 60° apart.
+        # In trapezoid mode without side supports, the ±60° axes are skipped
+        # so the bottom panel matches the single-wall drawSupports layout.
+        if isTrapezoid and not self.trapezoid_side_supports:
+            spoke_angles = (0,)
+        else:
+            spoke_angles = (0, 60, -60)
+
+        # For each spoke axis, shift the coordinate origin to the hex centre
+        # and rotate to align with the spoke, then draw the slot(s).
+        # saved_context() keeps the transform local so the next spoke starts
+        # from the original origin.
         #
         # Both regularPolygonWall (hex) and drawTrapezoidWall (trap) fire the
         # support-holes callback (callback[1]) at y = edges[0].startWidth() + burn
@@ -236,7 +267,7 @@ class HexmoHexagon(Boxes):
         # places the centre at y = H + thickness + burn from V0 — identical in both
         # modes.  No special trapezoid correction is needed here.
 
-        for spoke_angle in (0, 60, -60):
+        for spoke_angle in spoke_angles:
             with self.saved_context():
                 # Translate to the hex centre then rotate to the spoke axis.
                 self.moveTo(r / 2, H, spoke_angle)
@@ -572,11 +603,36 @@ class HexmoHexagon(Boxes):
         If the frame or spokes would degenerate (non-positive dimensions), the
         method falls back to a plain closed polygon with no cutouts.
 
+        **Kite geometry** — the master kite has four vertices on the spoke axis
+        (P1 top, P3 bottom) and two symmetric side vertices (P2 right, P4 left).
+        P1 is pinned to the inner-hex corner at (0, R_inner) with a 120°
+        interior angle (so the apex edges run along the inner hex boundary),
+        and P2/P4 are pinned to the inner-hex edge at the same (x, y) as the
+        original full-hex kite — this keeps the perpendicular clearance to the
+        central spoke invariant across all widening angles.
+
+        The parameter θ is the interior angle at P3.  Widening θ pulls P3
+        toward the centre (shortening the kite's axial diagonal) while P1/P2/P4
+        stay put:
+
+          θ = 60°  — the default full-hex layout (P1=120°, P2=P4=90°, P3=60°);
+                     each kite tip fits cleanly between two adjacent spokes.
+          θ = 90°  — the wider trapezoid-no-side-supports layout
+                     (P1=120°, P2=P4=75°, P3=90°); the apex remains a
+                     visible point but the base is more open.
+
+        For chosen θ with P2 fixed at the original hex-edge position:
+            2s = (R_inner − spoke_width) · (√3·cot(θ/2) + 1) / 4
+        which simplifies to 2s = R_inner − spoke_width at θ = 60°, matching
+        the original geometry byte-for-byte.
+
         @param r           - Inner corner radius of the hexagon bottom panel.
         @param joint_type  - Two-character edge string (e.g. 'yY') passed
                              through to regularPolygonWall on fallback.
         @param isTrapezoid - When True, only the two kites in the flat half
-                             are drawn (half-hexagon / trapezoid mode).
+                             are drawn (half-hexagon / trapezoid mode).  In
+                             trapezoid mode with trapezoid_side_supports=False,
+                             the kites are widened to θ = 90°.
         """
         n = self.n
         edge_width = self.edge_width
@@ -591,18 +647,43 @@ class HexmoHexagon(Boxes):
             self.regularPolygonWall(corners=n, r=r, edges=joint_type[1], move="right")
             return
         R_inner = A_inner / cos30                   # inner corner radius after frame
-        # Half the chord length of the kite base (derived from spoke geometry).
-        s = (A_inner / sqrt3) - (spoke_width / 2.0)
-        if s <= 0:
+
+        # Pick the kite inner-vertex angle (θ at P3) based on mode.  In
+        # trapezoid mode with no side supports, the ±60° spokes are absent
+        # and the kite can widen from the full-hex 60° to 90° at P3.
+        widen_kites = isTrapezoid and not self.trapezoid_side_supports
+        theta_deg = 90.0 if widen_kites else 60.0
+        theta = math.radians(theta_deg)
+
+        # Base s sizes the kite's horizontal extent.  Using the original
+        # formula keeps P2/P4 on the inner-hex edge at the same position as
+        # the full-hex layout, so perpendicular clearance to the central
+        # spoke is independent of θ.
+        s_base = (A_inner / sqrt3) - (spoke_width / 2.0)
+        if s_base <= 0:
             # Spokes are too wide to fit — fall back to solid hex.
             self.regularPolygonWall(corners=n, r=r, edges=joint_type[1], move="right")
             return
 
+        # Side-vertex position (on inner hex edge) — independent of θ.
+        X = s_base * sqrt3 / 2.0
+        Y_side = R_inner - s_base / 2.0
+
+        # Axial distance from P1 to P3, derived from the P3 interior angle θ.
+        # tan(θ/2) = X / (Y_side − P3.y)  ⇒  P3.y = Y_side − X/tan(θ/2).
+        # For θ = 60° this collapses to P3.y = R_inner − 2·s_base (original).
+        tan_half = math.tan(theta / 2.0)
+        axial = (Y_side - (R_inner - 2.0 * s_base)) if tan_half == 0 else X / tan_half
+        P3_y = Y_side - axial
+
         # Define the master kite with its apex pointing upward (+y direction).
-        P1 = (0.0, R_inner)                          # top vertex (120° angle)
-        P2 = (s * sqrt3 / 2.0, R_inner - s / 2.0)   # right 90° vertex
-        P3 = (0.0, R_inner - 2.0 * s)               # inner 60° vertex
-        P4 = (-s * sqrt3 / 2.0, R_inner - s / 2.0)  # left 90° vertex
+        # P1 sits at the inner hex corner.  P2/P4 lie on the adjacent inner
+        # hex edges at fixed positions.  P3 moves axially to realise the
+        # chosen θ — opening θ pulls P3 closer to P1 (shorter kite).
+        P1 = (0.0, R_inner)         # top vertex (120° interior, pinned to corner)
+        P2 = (X, Y_side)            # right vertex on inner hex edge
+        P3 = (0.0, P3_y)            # inner θ° vertex on the spoke axis
+        P4 = (-X, Y_side)           # left vertex on inner hex edge
 
         def rotate_points(pts, angle_deg):
             """Rotate a list of (x, y) points around the origin by angle_deg."""
