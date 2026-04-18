@@ -614,19 +614,15 @@ class HexmoHexagon(Boxes):
         are redrawn as an L-shaped "right-angle" kite anchored at the inner
         tip rather than the outer apex.  The L-shape has:
 
-          - P3 as the 90° corner (inner tip), anchored at the same centre-frame
-            (x, y) used by the full-hex kite's inner tip — so central-spoke
-            clearance is preserved (|P3.x| = spoke_width/2).
-          - One edge from P3 running parallel to the long top wall (horizontal).
-          - Other edge from P3 running perpendicular to the long top wall
-            (vertical).  Together these two edges form the 90° corner at P3.
-          - P2 (end of horizontal edge) lying on the slanted inner hex edge
-            that runs from P1 toward the 180°/0° inner corner (the one that
-            sits on the long top wall).
-          - P4 (end of vertical edge) lying on the horizontal inner hex edge
-            between P1 and the adjacent 300°/240° corner.
-          - P1 remains at the inner hex corner (240° for kite 2, 300° for
-            kite 3), closing the quadrilateral P1-P2-P3-P4.
+          - P3 as the 90° corner at (∓spoke_width/2, −edge_width): the
+            intersection of the central-spoke wall and the long-wall inner
+            frame.  Both edge clearances are explicit — the long top wall
+            carries the same edge_width frame as the natural hex sides.
+          - Horizontal edge from P3 running toward the slanted side of the
+            trapezoid.  P2 lies on the slanted inner-hex edge at y=−edge_width.
+          - Vertical edge from P3 running down.  P4 lies on the bottom
+            inner-hex edge at y=−A_inner.
+          - P1 at the 240°/300° inner-hex corner, closing P1-P2-P3-P4.
 
         The L-shaped kite is no longer axially symmetric, so kite 3 is drawn
         as the x-axis mirror of kite 2 rather than a rotation.
@@ -666,34 +662,49 @@ class HexmoHexagon(Boxes):
             # L-shaped kites for trapezoid mode with the side supports removed.
             # The shape is defined directly in the centre frame rather than via
             # a rotated master, because the shape is no longer axially symmetric
-            # about the spoke axis — P2-end edges run along world-frame axes
-            # (horizontal/vertical) rather than along local kite-frame axes.
+            # about the spoke axis.
+            #
+            # The "inner trapezoid" available for kite cutouts is bounded by:
+            #   - central-spoke left/right walls at x = ∓spoke_width/2
+            #   - long-wall inner frame at y = -edge_width  (new in this pass —
+            #     the long top wall is an edge of the trapezoid panel and must
+            #     carry the same edge_width frame as the natural hex sides)
+            #   - slanted inner-hex edges from 240°/300° corners toward 180°/0°
+            #   - bottom inner-hex edge at y = -A_inner
 
-            # Kite 2's P3 lies where the original full-hex kite 2's inner tip
-            # sat — at centre-frame (−spoke_width/2, −R_inner·√3/2 + s·√3).
-            # Rewrite using the original master→world rotation: master P3 at
-            # (0, R_inner − 2s); after 150° rotation:
-            #     P3 = (−(R_inner − 2s)/2, −(R_inner − 2s)·√3/2)
-            #        = (−(R_inner − 2s)/2, −A_inner + s·√3)
-            # so P3.x equals −spoke_width/2 exactly (because s = A_inner/√3 −
-            # spoke_width/2 makes R_inner − 2s = spoke_width).
-            inner_y_master = R_inner - 2.0 * s
-            p3_x = -inner_y_master / 2.0          # = -spoke_width/2
-            p3_y = -inner_y_master * sqrt3 / 2.0  # = -A_inner + s·√3
+            # Degenerate guard: frame widths would overlap and leave nothing
+            # for the kite cutout.
+            if edge_width >= A_inner or spoke_width >= R_inner:
+                self.regularPolygonWall(corners=n, r=r, edges=joint_type[1], move="right")
+                return
 
-            # Horizontal edge from P3 runs left to meet the slanted inner hex
-            # edge from corner 240° (-R_inner/2, -A_inner) to corner 180°
-            # (-R_inner, 0).  Line equation: y = -√3·(x + R_inner).  Solving
-            # for x at y = p3_y gives the endpoint P2.
+            # P3 at the 90° corner where the central-spoke wall meets the
+            # long-wall frame.
+            #
+            # The long top cut line does not pass through the callback origin
+            # (near the hex centre): the V2/V5 miter fixes in drawTrapezoidWall
+            # shift the drawn long-top path up by exactly `thickness` in the
+            # callback frame (see drawTrapezoidWall: the two forward steps at
+            # V1 and V2 in the slant direction each contribute t/2 in y, for
+            # a total of thickness).  Measuring the frame from the physical
+            # cut therefore places the kite's horizontal edge at
+            #     p3_y = thickness − edge_width
+            # so the gap between cut line and kite equals edge_width exactly.
+            p3_x = -spoke_width / 2.0
+            p3_y = self.thickness - edge_width
+
+            # P2: horizontal edge from P3 runs left until it meets the slanted
+            # inner-hex edge from the 240° corner toward the 180° corner.
+            # Slanted line equation: y = -√3 · (x + R_inner).
             p2_x = -p3_y / sqrt3 - R_inner
             p2_y = p3_y
 
-            # Vertical edge from P3 runs down to meet the horizontal inner hex
-            # edge from 240° to 300° corner at y = -A_inner.
+            # P4: vertical edge from P3 runs down to the bottom inner-hex
+            # edge at y = -A_inner.
             p4_x = p3_x
             p4_y = -A_inner
 
-            # P1 at the 240° inner hex corner.
+            # P1 at the 240° inner-hex corner, closing the quadrilateral.
             p1_x = -R_inner / 2.0
             p1_y = -A_inner
 
