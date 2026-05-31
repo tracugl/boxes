@@ -232,11 +232,15 @@ than the default 70 mm row height — the closed-book cavity must satisfy
             "--row_height", action="store", type=float, default=70.0,
             help="Shared interior height (mm) of every mech-tray row")
         self.argparser.add_argument(
-            "--row_target_outer_width", action="store", type=float, default=261.0,
+            "--row_target_outer_width", action="store", type=float, default=0.0,
             help="Target outer width (mm) for ALL mech-tray rows. Each row "
                  "with cells totalling LESS than this gets a filler strip "
                  "of empty floor at one end so all rows are the same "
-                 "external size. Set to 0 to use each row's natural width.")
+                 "external size. The default (0) auto-computes this as the "
+                 "widest enabled row's natural outer width — that way the "
+                 "padding rescales automatically when you change thickness "
+                 "or cell sizes. Set to a negative value to disable padding "
+                 "entirely and let each row use its natural width.")
         for i in range(1, 4):
             self.argparser.add_argument(
                 f"--row{i}_depth", action="store", type=float, default=80.0,
@@ -502,12 +506,16 @@ than the default 70 mm row height — the closed-book cavity must satisfy
         # holes. The position uses the same inset convention as the
         # standard h-edge — burn + edge_width + thickness/2 inward from
         # the wood edge — so the joint geometry matches the cover's other
-        # finger-hole edges exactly. Length y matches the wall's long edge.
-        # We do this BEFORE moveTo because the cursor is still at the
-        # panel's natural origin (0, 0); fingerHolesAt is wrapped in
-        # saved_context so it won't disturb the cursor for the subsequent
-        # path drawing.
-        recess_wall_inset = self.burn + 1.0 + t / 2
+        # finger-hole edges exactly. We read ``edge_width`` from the live
+        # FingerJoint settings instead of hardcoding the library default
+        # (1.0 mm) so users who customise --FingerJoint_edge_width get
+        # correctly-positioned holes too. Length y matches the wall's
+        # long edge. We do this BEFORE moveTo because the cursor is still
+        # at the panel's natural origin (0, 0); fingerHolesAt is wrapped
+        # in saved_context so it won't disturb the cursor for the
+        # subsequent path drawing.
+        edge_width = self.edges["f"].settings.edge_width
+        recess_wall_inset = self.burn + edge_width + t / 2
         back_cover_spine_x = 2 * t + (x + t)  # right edge of the back cover area
         self.fingerHolesAt(back_cover_spine_x - recess_wall_inset, 2 * t, y, 90)
 
@@ -782,9 +790,12 @@ than the default 70 mm row height — the closed-book cavity must satisfy
         # If a target outer width is set and the row's natural outer width
         # is narrower, extend the floor with an empty filler strip at the
         # trailing edge so all rows share the same external dimensions.
-        # A target of 0 disables this behaviour and falls back to natural
-        # widths per row. If the row is wider than the target, we keep the
-        # natural width and warn — clipping cells would be surprising.
+        # A target of <= 0 disables this behaviour and falls back to natural
+        # widths per row (render() resolves the default 0 to the widest
+        # row's natural outer before reaching here, so by this point the
+        # value is either positive or explicitly negative). If the row is
+        # wider than the target, we keep the natural width and warn —
+        # clipping cells would be surprising.
         target_outer_w = getattr(self, "row_target_outer_width", 0.0) or 0.0
         if target_outer_w > 0 and target_outer_w >= natural_outer_w:
             floor_w = target_outer_w - 2 * t
@@ -939,12 +950,29 @@ than the default 70 mm row height — the closed-book cavity must satisfy
         # if the cells list is non-empty. This lets users disable rows by
         # clearing the cells field instead of needing a separate boolean
         # per row.
+        #
+        # Pre-pass: when row_target_outer_width == 0 (the default), compute
+        # the target as the widest enabled row's natural outer width. This
+        # keeps the uniform-width padding working when the user changes
+        # thickness (which makes dividers wider and therefore changes the
+        # natural outer widths) without needing to retune the target by
+        # hand. A negative value leaves padding disabled.
+        parsed_rows = []
         for i in range(1, 4):
             cells_str = getattr(self, f"row{i}_cells")
             depth = getattr(self, f"row{i}_depth")
             cells = _parse_cells(cells_str)
             if cells:
-                self._emit_mech_row(cells, depth)
+                parsed_rows.append((cells, depth))
+
+        if self.row_target_outer_width == 0 and parsed_rows:
+            self.row_target_outer_width = max(
+                sum(cells) + (len(cells) + 1) * t
+                for cells, _depth in parsed_rows
+            )
+
+        for cells, depth in parsed_rows:
+            self._emit_mech_row(cells, depth)
 
         # ---- 5. Utility tray ------------------------------------------
         if self.include_utility_tray:
