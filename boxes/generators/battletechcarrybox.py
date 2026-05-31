@@ -34,6 +34,7 @@ re-rendered for different mini sizes, paper sizes, or row counts.
 """
 
 from boxes import *  # noqa: F401, F403 — boxes idiom: imports Boxes, edges, boolarg, math, etc.
+from boxes.Color import Color
 from boxes.generators.flexbook import FlexBook
 
 
@@ -111,11 +112,12 @@ miniatures (each row gets its own cell layout), and a small removable utility
 tray rides along for dice and pens.
 
 **Closure:** FlexBook's 7-piece sliding-pin latch hardware is suppressed. Apply
-two pairs of self-adhesive magnetic tape (or 4× 8 mm × 3 mm neodymium disc
-magnets glued in place) when assembling — one pair near the top of the latch
-wall and one pair on the inner face of the front cover at the corresponding
-position. The cover and latch wall are emitted as clean panels with no
-latch-related cuts.
+4× 8 mm × 3 mm neodymium disc magnets when assembling: glue one pair onto the
+inside face of the front cover and one matching pair onto the inside face of
+the latch wall. The generator etches alignment circles (faint blue ETCHING
+strokes that the laser cutter engraves rather than cuts) on both panels at
+the correct positions — centre a magnet on each etched circle, glue with
+epoxy or CA, and the four magnets will line up across the closing seam.
 
 Override `inner depth in mm` (the `y` parameter) if your tallest mech is taller
 than the default 70 mm row height — the closed-book cavity must satisfy
@@ -182,6 +184,28 @@ than the default 70 mm row height — the closed-book cavity must satisfy
                 default=DEFAULT_ROW_CELLS[i - 1],
                 help=f"Cell widths for row {i}, e.g. '60+40+40+40' or '60*1 40*3'. "
                      f"Leave empty to skip this row.")
+
+        # ---- Magnet placement guides -----------------------------------
+        # FlexBook's sliding-pin latch is suppressed (see the panel overrides
+        # below). In its place we etch alignment marks for user-supplied disc
+        # magnets: two pairs near the latch end of the book — one pair on the
+        # inside of the front cover, one pair on the inside of the latch wall.
+        # The marks are drawn in Color.ETCHING (a non-cutting blue stroke that
+        # laser-cutter software interprets as engrave-only), so they appear as
+        # surface engravings rather than holes through the wood.
+        self.argparser.add_argument(
+            "--magnet_diameter", action="store", type=float, default=8.0,
+            help="Diameter (mm) of the disc magnets the user will glue at "
+                 "assembly time — etched alignment circles are sized to match")
+        self.argparser.add_argument(
+            "--magnet_pair_spacing", action="store", type=float, default=120.0,
+            help="Distance (mm) between the two magnet pairs along the latch "
+                 "edge of the cover — larger = more grip across a heavier book")
+        self.argparser.add_argument(
+            "--magnet_edge_inset", action="store", type=float, default=10.0,
+            help="Distance (mm) from the panel's outer edge to the magnet "
+                 "centre. Should be at least magnet_diameter/2 + 2 mm so the "
+                 "magnet body sits clear of the edge")
 
         # ---- Utility tray -----------------------------------------------
         # A separate open-top finger-jointed box for dice/pens/tokens.
@@ -252,11 +276,23 @@ than the default 70 mm row height — the closed-book cavity must satisfy
         self.edges["e"](x + t)
         self.corner(90, 2 * t)
         self.edges["e"](y / 2)
-        # FlexBook drills three rectangular holes here for the latch hardware:
-        #     self.rectangularHole(0, 1.5*t, latchSize+.1*t, 1.15*t)       # pin slot
-        #     self.rectangularHole((latchSize+7*t)/2, 3.5*t, t, t)         # anchor
-        #     self.rectangularHole(-(latchSize+7*t)/2, 3.5*t, t, t)        # anchor
-        # We deliberately omit all three; magnets do the closing job instead.
+        # FlexBook drills three rectangular holes here for the latch hardware
+        # (pin slot + 2 anchor holes). We omit those and instead etch two
+        # alignment circles where the user glues disc magnets at assembly time.
+        #
+        # The cursor here sits at the midpoint of the latch-end edge, facing
+        # along the edge (local +x = along edge, local +y = into the panel
+        # away from the edge). One marker goes magnet_pair_spacing/2 above
+        # the midpoint, the other the same distance below — symmetric pair.
+        # Both are inset from the edge by magnet_edge_inset so the magnet
+        # body sits clear of the wood's outer boundary.
+        half_span = self.magnet_pair_spacing / 2
+        self.regularPolygonHole(
+            +half_span, self.magnet_edge_inset,
+            d=self.magnet_diameter, n=24, color=Color.ETCHING)
+        self.regularPolygonHole(
+            -half_span, self.magnet_edge_inset,
+            d=self.magnet_diameter, n=24, color=Color.ETCHING)
         self.edges["e"](y / 2)
         self.corner(90, 2 * t)
         self.edges["e"](x + t + 2 * c4 + t)
@@ -305,6 +341,21 @@ than the default 70 mm row height — the closed-book cavity must satisfy
         self.edges["f"](h)
         self.corner(90)
         self.edges["f"](y)
+        # Cursor is now at the top-right corner of the wall, facing right
+        # (along the top edge's direction). Local -x walks back along the
+        # top edge toward its midpoint; local +y points down into the panel.
+        # We etch two magnet alignment circles below the top edge: one pair
+        # to mate with the cover markers above when the book is closed.
+        # The same spacing/inset parameters apply on both panels so the pairs
+        # align perfectly across the closing seam.
+        half_span = self.magnet_pair_spacing / 2
+        midpoint_offset = -y / 2  # local -x distance back from top-right to midpoint
+        self.regularPolygonHole(
+            midpoint_offset + half_span, self.magnet_edge_inset,
+            d=self.magnet_diameter, n=24, color=Color.ETCHING)
+        self.regularPolygonHole(
+            midpoint_offset - half_span, self.magnet_edge_inset,
+            d=self.magnet_diameter, n=24, color=Color.ETCHING)
         self.corner(90)
         self.edges["f"](h)
         self.corner(90)
