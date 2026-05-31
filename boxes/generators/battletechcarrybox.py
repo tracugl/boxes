@@ -207,6 +207,35 @@ than the default 70 mm row height — the closed-book cavity must satisfy
                  "centre. Should be at least magnet_diameter/2 + 2 mm so the "
                  "magnet body sits clear of the edge")
 
+        # ---- Latch tabs / slots -----------------------------------------
+        # Magnets alone resist vertical separation when the book is closed,
+        # but they don't stop the cover from sliding laterally (e.g. in a
+        # bag). Adding small mechanical tabs on the latch wall's top edge
+        # that poke through matching slots in the cover locks the cover in
+        # place: lift straight up to open, drop straight down (with magnetic
+        # snap) to close. Tab height = thickness so each tab sits flush
+        # with the cover's outer face — magnets still do all the holding.
+        self.argparser.add_argument(
+            "--latch_tab_count", action="store", type=int, default=2,
+            help="Number of mechanical latch tabs along the lid-side edge "
+                 "of the latch wall. 2 is enough to prevent rotation; 1 "
+                 "allows the cover to pivot. 0 disables tabs entirely.")
+        self.argparser.add_argument(
+            "--latch_tab_width", action="store", type=float, default=10.0,
+            help="Width (mm) of each latch tab along the closing seam. "
+                 "Wider tabs are easier to align but more visible from "
+                 "outside the cover.")
+        self.argparser.add_argument(
+            "--latch_tab_spacing", action="store", type=float, default=60.0,
+            help="Distance (mm) between adjacent latch tab centres. "
+                 "Pick a value smaller than magnet_pair_spacing so the tab "
+                 "slots and magnet etchings don't collide on the cover.")
+        self.argparser.add_argument(
+            "--latch_tab_clearance", action="store", type=float, default=0.3,
+            help="Per-side clearance (mm) between the latch tab and the "
+                 "matching cover slot — accounts for laser kerf and "
+                 "assembly tolerance. Total slot oversize is 2× this.")
+
         # ---- Utility tray -----------------------------------------------
         # A separate open-top finger-jointed box for dice/pens/tokens.
         # Default size is sized to sit at one end of the cavity floor
@@ -251,6 +280,76 @@ than the default 70 mm row height — the closed-book cavity must satisfy
     # is unchanged. We just remove subtractive cuts that no longer
     # correspond to any hardware in the new design.
 
+    def _build_tabbed_edge_polyline(self, edge_length):
+        """Return polyline args for an edge with outward tab protrusions.
+
+        The polyline replaces a single :meth:`edges["e"]` call along the
+        lid-side edge of the latch wall. It draws plain edge segments
+        interspersed with rectangular tab extensions that stick OUT of the
+        panel by ``thickness`` mm (so each tab sits flush with the cover's
+        outer face when threaded through a matching slot in the cover at
+        closing time).
+
+        The caller is responsible for positioning the cursor at one end of
+        the edge with its heading along the edge direction. The returned
+        polyline list ends with a ``90`` corner that closes the panel
+        outline, matching the convention used by the original FlexBook
+        polyline replacement (see :mod:`boxes.generators.flexbook`).
+
+        Args:
+            edge_length: Total length of the lid-side edge in mm. Tabs are
+                spaced evenly and centred on this edge.
+
+        Returns:
+            A flat list of alternating length/angle arguments suitable for
+            passing to :meth:`polyline` via ``self.polyline(*args)``.
+        """
+        n = self.latch_tab_count
+        tab_w = self.latch_tab_width
+        tab_spacing = self.latch_tab_spacing
+        t = self.thickness
+
+        # Degenerate cases — draw a plain edge with no tabs.
+        if n <= 0 or tab_w <= 0:
+            return [edge_length, 90]
+
+        # Compute tab centre positions along the edge, evenly spaced and
+        # symmetric around the midpoint. With n=2 and spacing=60, this gives
+        # centres at (length/2 - 30) and (length/2 + 30).
+        tab_centres = [
+            edge_length / 2 + (k - (n - 1) / 2) * tab_spacing
+            for k in range(n)
+        ]
+
+        # Between-tab segments: leading segment, gaps between consecutive
+        # tabs, and the trailing segment. Each tab consumes `tab_w` of edge
+        # length itself (drawn during the tab's outer-edge segment).
+        segments = []
+        cursor_pos = 0
+        for tc in tab_centres:
+            tab_start = tc - tab_w / 2
+            segments.append(tab_start - cursor_pos)
+            cursor_pos = tc + tab_w / 2
+        segments.append(edge_length - cursor_pos)
+
+        # Tab excursion sequence — turn out of the panel, walk along the
+        # tab's outer edge, turn back in. For a cursor walking along the
+        # edge in its forward direction with the panel interior on its
+        # LEFT, this sequence is: -90 (right turn out), t (out), +90 (turn
+        # parallel to edge), tab_w (along tab top), +90 (turn back toward
+        # panel), t (in), -90 (back to original heading).
+        tab_excursion = [-90, t, 90, tab_w, 90, t, -90]
+
+        # Build the full polyline: leading segment, then for each tab the
+        # excursion followed by the next segment. Finish with the closing
+        # 90° corner to bring the path back to its starting heading.
+        args = [segments[0]]
+        for i in range(n):
+            args.extend(tab_excursion)
+            args.append(segments[i + 1])
+        args.append(90)
+        return args
+
     def flexBookCover(self, move=None):
         """Emit the cover panel without FlexBook's latch slot or anchor holes.
 
@@ -277,22 +376,44 @@ than the default 70 mm row height — the closed-book cavity must satisfy
         self.corner(90, 2 * t)
         self.edges["e"](y / 2)
         # FlexBook drills three rectangular holes here for the latch hardware
-        # (pin slot + 2 anchor holes). We omit those and instead etch two
-        # alignment circles where the user glues disc magnets at assembly time.
+        # (pin slot + 2 anchor holes). We replace them with:
+        #   * Etched alignment circles for user-applied disc magnets, and
+        #   * Through-cut rectangular slots that receive the latch tabs on
+        #     the latch wall's lid-side edge.
         #
-        # The cursor here sits at the midpoint of the latch-end edge, facing
-        # along the edge (local +x = along edge, local +y = into the panel
-        # away from the edge). One marker goes magnet_pair_spacing/2 above
-        # the midpoint, the other the same distance below — symmetric pair.
-        # Both are inset from the edge by magnet_edge_inset so the magnet
-        # body sits clear of the wood's outer boundary.
+        # Coordinate frame: the cursor is at the midpoint of the cover's
+        # latch-end edge, facing along the edge (heading is +y world UP).
+        # Local +x is the cursor's heading; local +y is 90° CCW from
+        # heading (boxes convention — the arc-centre of a +90 corner lies
+        # in local +y direction, which is LEFT of motion). For this cursor
+        # that puts local +y at -x world — i.e. INTO the cover panel,
+        # away from the latch edge. So positive LY values move INTO the
+        # panel; that's where we want both the magnet etchings and the
+        # through-slots that receive the latch wall's tabs.
         half_span = self.magnet_pair_spacing / 2
+        # Magnets: ±magnet_pair_spacing/2 along the edge, magnet_edge_inset
+        # INTO the panel.
         self.regularPolygonHole(
             +half_span, self.magnet_edge_inset,
             d=self.magnet_diameter, n=24, color=Color.ETCHING)
         self.regularPolygonHole(
             -half_span, self.magnet_edge_inset,
             d=self.magnet_diameter, n=24, color=Color.ETCHING)
+        # Latch slots: ±latch_tab_spacing/2 along the edge, centred 1.5×t
+        # INTO the panel so each slot sits over the centre of the latch
+        # wall's thickness when closed (the wall is t mm thick; its outer
+        # face aligns with the cover's latch-end edge, so its mid-thickness
+        # is at +1.5×t INTO the cover). Slot dimensions match the tab plus
+        # `latch_tab_clearance` per side for kerf and assembly tolerance.
+        # Tab offsets here match the offsets computed inside
+        # :meth:`_build_tabbed_edge_polyline` so the slots and tabs always
+        # align exactly when the book closes.
+        if self.latch_tab_count > 0:
+            slot_dx = self.latch_tab_width + 2 * self.latch_tab_clearance
+            slot_dy = t + 2 * self.latch_tab_clearance
+            for k in range(self.latch_tab_count):
+                offset = (k - (self.latch_tab_count - 1) / 2) * self.latch_tab_spacing
+                self.rectangularHole(offset, 1.5 * t, slot_dx, slot_dy)
         self.edges["e"](y / 2)
         self.corner(90, 2 * t)
         self.edges["e"](x + t + 2 * c4 + t)
@@ -304,67 +425,88 @@ than the default 70 mm row height — the closed-book cavity must satisfy
         self.move(tw, th, move)
 
     def flexBookLatchWall(self, h, y, latchSize, callback=None, move=None):
-        """Emit the latch-end wall without the pin slot or bottom U-notch.
+        """Emit the latch-end wall with magnet markers and tab protrusions.
 
         FlexBook's version of this method drew a horizontal pin slot in the
-        wall's surface and a U-shaped notch in the bottom edge (where the
-        cover-mounted brackets dropped into the wall). Neither is needed
-        with the magnet closure, so this override:
+        wall's surface and a U-shaped notch in the bottom edge — the
+        sliding-bolt closure mechanism. We replace both with:
 
-        * Skips the ``rectangularHole`` for the pin slot.
-        * Replaces the polyline-notched bottom edge with a plain ``f``
-          finger-jointed edge — symmetric with the top, simpler to cut, and
-          structurally identical to the other end (:meth:`flexBookRecessedWall`
-          with recess off).
+        * A FLAT plain-edge lid-side long edge so the closed cover lies
+          flush against the wall's top (the wall is positioned with its
+          lid-side edge facing up at assembly; the cover sits down on top).
+        * Two (configurable) rectangular tab extensions protruding ``t``
+          mm out of the panel on the lid-side edge. Each tab pokes through
+          a matching slot in the cover, locking the cover laterally so it
+          can't slide off in transit. Tab height == cover thickness so
+          each tab sits flush with the cover's outer face when latched.
+        * Two etched alignment circles inside the panel near the lid-side
+          edge, indicating where the user glues disc magnets at assembly.
 
-        The signature still accepts ``latchSize`` for compatibility with
-        FlexBook's render contract, but it is unused here.
+        Magnets handle the vertical hold-down; the tabs handle lateral
+        location. ``latchSize`` is accepted for FlexBook signature parity
+        but is unused.
         """
         del latchSize  # accepted for signature compatibility but unused
         t = self.thickness
 
         # FlexBook adjusts the panel's left margin by 3t when the opposite
-        # wall isn't recessed, so the latch-side and recess-side line up
-        # when the book is closed. We preserve that geometry verbatim.
+        # wall isn't recessed (so the latch- and recess-side panels line
+        # up in the SVG). The tab protrusions on the lid-side edge stick
+        # OUT of the panel rectangle by ``t`` mm, so we widen the move
+        # envelope by ``t`` to reserve space for them.
+        tab_extent = t if self.latch_tab_count > 0 else 0
         if self.recess_wall:
             x_adjust = 0
         else:
             x_adjust = 3 * t
 
-        tw, th = h + t + x_adjust, y + 2 * t
+        tw, th = h + t + x_adjust + tab_extent, y + 2 * t
 
         if self.move(tw, th, move, True):
             return
 
-        self.moveTo(x_adjust, t)
+        # Shift the panel's local origin right by ``tab_extent`` so tabs
+        # extending leftward (in -x_world) still fall within the reserved
+        # move envelope rather than overlapping the previous SVG panel.
+        self.moveTo(x_adjust + tab_extent, t)
 
+        # The four edges of the wall in the order they're drawn:
+        #   1. bottom edge (length h):  short, mates with one side wall
+        #   2. right edge  (length y):  long, the FLOOR-side of the wall
+        #                               (`f` kept for parity with FlexBook;
+        #                               vestigial under the magnet design)
+        #   3. top edge    (length h):  short, mates with the other side wall
+        #   4. left edge   (length y):  long, the LID-side of the wall
+        #                               — drawn as a polyline with two tab
+        #                               extensions sticking out (-x world)
         self.edges["f"](h)
         self.corner(90)
         self.edges["f"](y)
-        # Cursor is now at the top-right corner of the wall, facing right
-        # (along the top edge's direction). Local -x walks back along the
-        # top edge toward its midpoint; local +y points down into the panel.
-        # We etch two magnet alignment circles below the top edge: one pair
-        # to mate with the cover markers above when the book is closed.
-        # The same spacing/inset parameters apply on both panels so the pairs
-        # align perfectly across the closing seam.
+        self.corner(90)
+        self.edges["f"](h)
+        self.corner(90)
+        # Magnet alignment circles, placed on the lid-side face just inside
+        # the panel from the lid-side edge (the 4th edge, drawn next).
+        # Cursor is at (x_adjust + tab_extent, t + y), heading -y world
+        # (about to draw the left edge going DOWN). Local +x = heading
+        # (-y world); local +y is 90° CCW from heading (boxes convention,
+        # = +x world from this cursor), which points INTO the wall panel
+        # from the lid-side edge. Positive LY therefore moves the marker
+        # INTO the panel. The midpoint of the lid-side edge sits at +y/2
+        # along the cursor's heading direction, so markers go at
+        # local (y/2 ± half_span, +inset).
         half_span = self.magnet_pair_spacing / 2
-        midpoint_offset = -y / 2  # local -x distance back from top-right to midpoint
         self.regularPolygonHole(
-            midpoint_offset + half_span, self.magnet_edge_inset,
+            y / 2 - half_span, self.magnet_edge_inset,
             d=self.magnet_diameter, n=24, color=Color.ETCHING)
         self.regularPolygonHole(
-            midpoint_offset - half_span, self.magnet_edge_inset,
+            y / 2 + half_span, self.magnet_edge_inset,
             d=self.magnet_diameter, n=24, color=Color.ETCHING)
-        self.corner(90)
-        self.edges["f"](h)
-        self.corner(90)
-        # FlexBook here drew the pin slot + U-notch:
-        #     self.rectangularHole(y/2, -1.5*t, latchSize - 1.9*t, t*1.1)
-        #     self.polyline(... U-notch shape ...)
-        # We replace both with a plain finger-jointed bottom edge.
-        self.edges["f"](y)
-        self.corner(90)
+        # Lid-side edge: a polyline with tab protrusions (or a plain edge
+        # if `latch_tab_count == 0`). The polyline INCLUDES the final 90°
+        # corner that closes the panel outline, so we don't add another
+        # `self.corner(90)` after it.
+        self.polyline(*self._build_tabbed_edge_polyline(y))
 
         self.move(tw, th, move)
 
