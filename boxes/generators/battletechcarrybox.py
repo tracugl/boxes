@@ -38,28 +38,67 @@ from boxes.Color import Color
 from boxes.generators.flexbook import FlexBook
 
 
-# Default BattleTech-themed cell layout for the three mech-tray rows.
-# Row 1 holds four assault mechs (60 mm cells; King Crab fits at 60 mm).
-# Row 2 holds four mediums plus one heavy (mixed 40/60 mm cells).
-# Row 3 holds six lights (uniform 40 mm cells).
+# Named cell-width aliases matching standard BattleTech miniature base sizes.
+# Heavy/Assault mechs (King Crab, Atlas) typically sit on 60 mm bases; Medium
+# and most Light mechs use 40 mm bases. Users can mix names with numeric
+# widths in any row's cells string, e.g. ``"Heavy+Heavy+Medium+45"``.
+NAMED_CELL_WIDTHS = {
+    "heavy": 60.0,
+    "assault": 60.0,   # alias — assault mechs share the heavy 60 mm base
+    "medium": 40.0,
+    "light": 30.0,
+}
+
+
+# Default BattleTech-themed cell layout for the three mech-tray rows. All
+# three rows are padded out to a uniform outer width by the row's filler
+# strip (see :meth:`_emit_mech_row` and the ``row_target_outer_width``
+# parameter), so the assembled trays look matched inside the box even
+# though each row holds a different mix of mech sizes.
 DEFAULT_ROW_CELLS = (
-    "60+60+60+60",
-    "40+40+40+60+60",
-    "40+40+40+40+40+40",
+    "Heavy+Heavy+Heavy+Heavy",                          # 4 heavies — a heavy lance
+    "Heavy+Medium+Medium+Medium+Medium",                # 1 heavy + 4 mediums
+    "Medium+Medium+Medium+Medium+Medium+Medium",        # 6 mediums
 )
+
+
+def _parse_cell_value(token):
+    """Resolve a single token to a cell width in mm.
+
+    Named aliases (``"Heavy"``, ``"Medium"``, ``"Light"``, ``"Assault"``)
+    are matched case-insensitively against :data:`NAMED_CELL_WIDTHS`.
+    Anything else is parsed as a float in millimetres, which lets users
+    drop in non-standard widths (e.g. for custom-base minis) by writing
+    a literal number.
+
+    Args:
+        token: Single cell specifier — a name or a numeric string.
+
+    Returns:
+        Cell width in mm.
+
+    Raises:
+        ValueError: If the token is neither a known name nor a float.
+    """
+    lower = token.lower()
+    if lower in NAMED_CELL_WIDTHS:
+        return NAMED_CELL_WIDTHS[lower]
+    return float(token)
 
 
 def _parse_cells(s):
     """Parse a row's cell-width string into a list of floats.
 
-    The input string is a human-friendly list of cell widths in mm.
-    Three separator conventions are accepted so users can write whichever
+    The input string is a human-friendly list of cell widths. Both
+    numeric values (in mm) and named mech-class aliases (``Heavy``,
+    ``Medium``, ``Light``, ``Assault``) are accepted, and can be mixed.
+    Four separator conventions are accepted so users can write whichever
     feels natural:
 
-    * ``"60+40+40+40"`` — plus-separated (BattleTech card convention)
-    * ``"60 40 40 40"`` — whitespace-separated (boxes-native sx convention)
-    * ``"60:40:40:40"`` — colon-separated (also boxes-native)
-    * ``"60*4"``         — repeat shorthand (boxes-native), expands to ``[60,60,60,60]``
+    * ``"Heavy+Medium+Medium"`` — plus-separated (BattleTech card convention)
+    * ``"Heavy Medium Medium"`` — whitespace-separated (boxes-native sx convention)
+    * ``"Heavy:Medium:Medium"`` — colon-separated (also boxes-native)
+    * ``"Heavy*4"`` / ``"60*4"`` — repeat shorthand, expands to four copies
 
     An empty string (or any all-whitespace input) returns ``None``, which
     signals the caller that the row should be skipped at render time —
@@ -67,13 +106,13 @@ def _parse_cells(s):
     boolean toggle per row.
 
     Args:
-        s: User-supplied cells string (e.g. ``"60+40+40+40"``).
+        s: User-supplied cells string (e.g. ``"Heavy+Medium+Medium+40"``).
 
     Returns:
         A list of cell widths in mm, or ``None`` if the row is disabled.
 
     Raises:
-        ValueError: If a token cannot be parsed as a float.
+        ValueError: If a token cannot be resolved to a width.
     """
     if s is None:
         return None
@@ -89,14 +128,14 @@ def _parse_cells(s):
 
     cells = []
     for token in normalised.split():
-        # Repeat shorthand: "60*4" → four 60mm cells. Parse the multiplier
-        # explicitly so we can reject malformed inputs (e.g. "60*x") with a
-        # clear error rather than producing nonsense floats.
+        # Repeat shorthand: "Heavy*4" or "60*4" → four copies of the value.
+        # Parse the multiplier explicitly so we can reject malformed inputs
+        # (e.g. "Heavy*x") with a clear error rather than nonsense output.
         if "*" in token:
             value_str, count_str = token.split("*", 1)
-            cells.extend([float(value_str)] * int(count_str))
+            cells.extend([_parse_cell_value(value_str)] * int(count_str))
         else:
-            cells.append(float(token))
+            cells.append(_parse_cell_value(token))
     return cells
 
 
@@ -135,10 +174,20 @@ than the default 70 mm row height — the closed-book cavity must satisfy
         self.addSettingsArgs(edges.FingerJointSettings)
         self.addSettingsArgs(edges.FlexSettings)
 
-        # Cover face = 245 × 295 mm (fits a 230×280 mm map sleeve with bezel).
+        # Cover face = 270 × 320 mm. The dimensions are sized so the full
+        # default tray layout fits in the cavity floor with a few mm of
+        # clearance on every side:
+        #   * Cavity width (along the cell-width axis) ≈ x + 0.8 mm =
+        #     270.8 mm, which holds the widest default row (row 3 outer =
+        #     261 mm) with ~10 mm clearance.
+        #   * Cavity length (along the cell-depth axis) ≈ h + 3.8 mm =
+        #     323.8 mm, which holds three 86 mm tray rows + the 51 mm
+        #     utility tray (309 mm total) with ~15 mm clearance.
+        # The map sleeve (230 × 280 mm internal) gets a generous 20 mm
+        # bezel on each side at this size.
         # Spine depth = 90 mm so the closed cavity (84 mm interior) holds a
         # 70 mm mech row + 10 mm map sleeve + ~4 mm clearance.
-        self.buildArgParser(x=245.0, y=90.0, h=295.0)
+        self.buildArgParser(x=270.0, y=90.0, h=320.0)
 
         # FlexBook's own per-instance args — duplicated here because we
         # bypassed its __init__. Keep the help strings identical so the UI
@@ -168,12 +217,26 @@ than the default 70 mm row height — the closed-book cavity must satisfy
             help="Internal depth of the map sleeve in mm (paper-stack thickness)")
 
         # ---- Mech-tray rows ---------------------------------------------
-        # Three independent rows, each with its own depth + cell-width
-        # layout. Leave a cells string empty to skip that row entirely.
-        # row_height is shared because the cavity has a single depth budget.
+        # Three independent rows, each with its own depth + cell layout.
+        # Leave a cells string empty to skip that row entirely. row_height
+        # is shared because the cavity has a single depth budget.
+        #
+        # Cells can be specified as named mech classes (Heavy=60 mm,
+        # Medium=40 mm, Light=30 mm) or as numeric widths in mm, mixed
+        # in any combination. By default every row is padded out to the
+        # same outer width (``row_target_outer_width`` below) so the
+        # trays look uniform inside the box even when one row holds 4
+        # heavies (240 mm of cells) and another holds 6 mediums (also
+        # 240 mm of cells but with 2 more dividers).
         self.argparser.add_argument(
             "--row_height", action="store", type=float, default=70.0,
             help="Shared interior height (mm) of every mech-tray row")
+        self.argparser.add_argument(
+            "--row_target_outer_width", action="store", type=float, default=261.0,
+            help="Target outer width (mm) for ALL mech-tray rows. Each row "
+                 "with cells totalling LESS than this gets a filler strip "
+                 "of empty floor at one end so all rows are the same "
+                 "external size. Set to 0 to use each row's natural width.")
         for i in range(1, 4):
             self.argparser.add_argument(
                 f"--row{i}_depth", action="store", type=float, default=80.0,
@@ -182,8 +245,10 @@ than the default 70 mm row height — the closed-book cavity must satisfy
             self.argparser.add_argument(
                 f"--row{i}_cells", action="store", type=str,
                 default=DEFAULT_ROW_CELLS[i - 1],
-                help=f"Cell widths for row {i}, e.g. '60+40+40+40' or '60*1 40*3'. "
-                     f"Leave empty to skip this row.")
+                help=f"Cell layout for row {i}. Mix named classes "
+                     f"(Heavy=60mm, Medium=40mm, Light=30mm, Assault=60mm) "
+                     f"with numeric widths, e.g. 'Heavy+Medium+Medium+40' "
+                     f"or 'Heavy*4'. Leave empty to skip this row.")
 
         # ---- Magnet placement guides -----------------------------------
         # FlexBook's sliding-pin latch is suppressed (see the panel overrides
@@ -252,6 +317,68 @@ than the default 70 mm row height — the closed-book cavity must satisfy
         self.argparser.add_argument(
             "--utility_tray_h", action="store", type=float, default=30.0,
             help="Internal height of the utility tray in mm")
+
+    # -----------------------------------------------------------------
+    # Recess wall override (add floor-side finger teeth)
+    # -----------------------------------------------------------------
+    #
+    # FlexBook's recess wall has plain `e` edges on both of its long
+    # sides, leaving the wall floating between the side walls — held only
+    # by its short edges into the side-wall surface holes. That's fine
+    # for an empty box but too wobbly under three rows of mech-tray
+    # weight at the spine end. We add finger teeth on the FLOOR-side
+    # long edge so the wall is anchored to the back cover surface as
+    # well (matching the latch wall, which already mates to the back
+    # cover via the cover's left h-edge). The LID-side long edge stays
+    # plain or, when ``--recess_wall`` is enabled, keeps the FlexBook
+    # U-recess feature for easier in-box access.
+
+    def flexBookRecessedWall(self, h, y, include_recess, callback=None, move=None):
+        """Emit the spine-end wall with a finger-jointed floor-side edge.
+
+        The FLOOR-side long edge (edge 2 in the path; the SVG-right side
+        of this portrait panel) is upgraded from ``e`` to ``f`` so the
+        wall's teeth slot into matching finger holes drilled in the back
+        cover by :meth:`flexBookCover`. Everything else is verbatim from
+        :meth:`FlexBook.flexBookRecessedWall`.
+        """
+        t = self.thickness
+        tw, th = h, y + 2 * t
+
+        if self.move(tw, th, move, True):
+            return
+
+        # Recess polyline parameters (preserved verbatim from FlexBook).
+        cutout_radius = min(h / 4, y / 8)
+        cutout_angle = 90
+        cutout_predist = y * 0.2
+        cutout_angle_dist = h / 2 - 2 * cutout_radius
+        cutout_base_dist = y - (y * 0.4) - 4 * cutout_radius
+
+        self.moveTo(0, t)
+
+        self.edges["f"](h)
+        self.corner(90)
+        self.edges["f"](y)  # CHANGED: floor-side, was `e`, now `f` for back-cover mating
+        self.corner(90)
+        self.edges["f"](h)
+        self.corner(90)
+        if include_recess:
+            self.polyline(
+                cutout_predist,
+                (cutout_angle, cutout_radius),
+                cutout_angle_dist,
+                (-cutout_angle, cutout_radius),
+                cutout_base_dist,
+                (-cutout_angle, cutout_radius),
+                cutout_angle_dist,
+                (cutout_angle, cutout_radius),
+                cutout_predist)
+        else:
+            self.edges["e"](y)
+        self.corner(90)
+
+        self.move(tw, th, move)
 
     # -----------------------------------------------------------------
     # FlexBook panel overrides (suppress latch cuts)
@@ -367,6 +494,22 @@ than the default 70 mm row height — the closed-book cavity must satisfy
 
         if self.move(tw, th, move, True):
             return
+
+        # Drill finger holes in the back cover for the recess wall's teeth.
+        # The recess wall stands at the spine end of the back cover (just
+        # before the flex hinge); its newly-finger-jointed FLOOR-side edge
+        # (see :meth:`flexBookRecessedWall` override) slots into these
+        # holes. The position uses the same inset convention as the
+        # standard h-edge — burn + edge_width + thickness/2 inward from
+        # the wood edge — so the joint geometry matches the cover's other
+        # finger-hole edges exactly. Length y matches the wall's long edge.
+        # We do this BEFORE moveTo because the cursor is still at the
+        # panel's natural origin (0, 0); fingerHolesAt is wrapped in
+        # saved_context so it won't disturb the cursor for the subsequent
+        # path drawing.
+        recess_wall_inset = self.burn + 1.0 + t / 2
+        back_cover_spine_x = 2 * t + (x + t)  # right edge of the back cover area
+        self.fingerHolesAt(back_cover_spine_x - recess_wall_inset, 2 * t, y, 90)
 
         self.moveTo(2 * t, 0)
 
@@ -610,6 +753,18 @@ than the default 70 mm row height — the closed-book cavity must satisfy
         the joints align with the rest of the library's geometry — long
         walls use ``F`` on their side edges, short walls use ``f``.
 
+        Uniform width via filler strip
+        ------------------------------
+        If ``row_target_outer_width`` is set (default 261 mm) and the row's
+        natural outer width is LESS than the target, the row's floor is
+        extended at the trailing edge to make the outer dimensions match.
+        The trailing extension is just empty floor — no extra divider —
+        so a 4-heavy row (240 mm of cells + 5 walls = 255 mm natural) gets
+        a 6 mm strip of unused floor at one end, ending up the same outer
+        size as a 6-medium row (240 + 7 walls = 261 mm natural, no filler).
+        This keeps the tray system visually uniform regardless of the cell
+        mix.
+
         Args:
             cells: List of cell widths in mm (from :func:`_parse_cells`).
             depth: Depth of the row in mm (the dimension perpendicular to
@@ -617,14 +772,30 @@ than the default 70 mm row height — the closed-book cavity must satisfy
         """
         t = self.thickness
         h = self.row_height
-        # Total outer width = sum of cell widths + (N+1) wall/divider
-        # thicknesses. There are N-1 internal dividers plus 2 outer side
-        # walls = N+1 thicknesses of material along the width axis. But the
-        # standard finger-joint geometry absorbs the outer walls' thickness
-        # into the floor's mating fingers, so the floor itself is just
-        # sum(cells) + (N-1)*t wide. We use that everywhere here.
+        # Each row's natural floor width = sum of cell widths + (N-1)
+        # divider thicknesses. The outer dimensions add 2*t for the two
+        # short walls flanking the floor along the cell-width axis.
         n = len(cells)
-        floor_w = sum(cells) + (n - 1) * t
+        natural_floor_w = sum(cells) + (n - 1) * t
+        natural_outer_w = natural_floor_w + 2 * t
+
+        # If a target outer width is set and the row's natural outer width
+        # is narrower, extend the floor with an empty filler strip at the
+        # trailing edge so all rows share the same external dimensions.
+        # A target of 0 disables this behaviour and falls back to natural
+        # widths per row. If the row is wider than the target, we keep the
+        # natural width and warn — clipping cells would be surprising.
+        target_outer_w = getattr(self, "row_target_outer_width", 0.0) or 0.0
+        if target_outer_w > 0 and target_outer_w >= natural_outer_w:
+            floor_w = target_outer_w - 2 * t
+        else:
+            if target_outer_w > 0 and target_outer_w < natural_outer_w:
+                print(
+                    f"[BattletechCarryBox] WARNING: row natural outer width "
+                    f"{natural_outer_w:.1f}mm exceeds row_target_outer_width "
+                    f"{target_outer_w:.1f}mm; rendering at natural width."
+                )
+            floor_w = natural_floor_w
 
         holes_cb = self._row_finger_holes_callback(cells)
         cb_list = [holes_cb] if holes_cb is not None else None
