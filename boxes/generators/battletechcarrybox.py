@@ -230,7 +230,21 @@ than the default 70 mm row height — the closed-book cavity must satisfy
         # 240 mm of cells but with 2 more dividers).
         self.argparser.add_argument(
             "--row_height", action="store", type=float, default=70.0,
-            help="Shared interior height (mm) of every mech-tray row")
+            help="Shared interior height (mm) of every mech-tray row — the "
+                 "vertical space inside each cell for the mech itself. "
+                 "Internal dividers stop at this height.")
+        self.argparser.add_argument(
+            "--label_strip_height", action="store", type=float, default=12.0,
+            help="Top portion (mm) of each row reserved as a label area. "
+                 "The row's overall height stays at row_height; internal "
+                 "dividers stop this many mm below the wall tops so a "
+                 "continuous band is left across all cells. The user "
+                 "writes mech names directly on the wall surface in this "
+                 "band, or glues on printed labels. Set to 0 to disable. "
+                 "NOTE: this REDUCES the effective cell height to "
+                 "(row_height - label_strip_height). If you want both tall "
+                 "mechs (e.g. 70 mm King Crab) AND a label strip, bump "
+                 "row_height so the cells are still tall enough.")
         self.argparser.add_argument(
             "--row_target_outer_width", action="store", type=float, default=0.0,
             help="Target outer width (mm) for ALL mech-tray rows. Each row "
@@ -701,7 +715,7 @@ than the default 70 mm row height — the closed-book cavity must satisfy
         # One short strip on the spine side — the opposite short side is left open.
         self.rectangularWall(d, w, "eeee", move="up", label="map sleeve strip (short)")
 
-    def _row_finger_holes_callback(self, cells):
+    def _row_finger_holes_callback(self, cells, height):
         """Build a callback that drills finger holes for slot-in dividers.
 
         For a row of N cells we need N-1 internal dividers. Each divider
@@ -718,6 +732,10 @@ than the default 70 mm row height — the closed-book cavity must satisfy
 
         Args:
             cells: List of cell widths in mm for this row.
+            height: Length of each finger-hole row in mm. Pass the divider
+                height (NOT the wall height) so the holes stop short of
+                the wall top when label_strip_height > 0, leaving the
+                label strip band unbroken.
 
         Returns:
             A callable suitable for the ``callback=[...]`` parameter of
@@ -728,7 +746,6 @@ than the default 70 mm row height — the closed-book cavity must satisfy
             return None
 
         t = self.thickness
-        height = self.row_height
 
         def cb():
             pos = -0.5 * t
@@ -779,7 +796,20 @@ than the default 70 mm row height — the closed-book cavity must satisfy
                 the cells, i.e. how far back a miniature can stand).
         """
         t = self.thickness
-        h = self.row_height
+        # The row has two heights:
+        #   * wall_h: the full row height, used for both long and short
+        #     outer walls. Equal to row_height — the row's overall
+        #     vertical extent stays exactly as the user specified.
+        #   * divider_h: shorter than wall_h by `label_strip_height` mm.
+        #     Internal dividers stop here so the top label_strip_height
+        #     mm of the row is one continuous open band across all
+        #     cells — the user writes mech names on the wall surface in
+        #     that band, or glues on printed labels.
+        # The effective MECH HEIGHT (depth available for the miniature)
+        # is therefore divider_h, NOT wall_h — if you want both tall
+        # mechs and a label strip, bump row_height accordingly.
+        wall_h = self.row_height
+        divider_h = self.row_height - max(0.0, self.label_strip_height)
         # Each row's natural floor width = sum of cell widths + (N-1)
         # divider thicknesses. The outer dimensions add 2*t for the two
         # short walls flanking the floor along the cell-width axis.
@@ -808,17 +838,23 @@ than the default 70 mm row height — the closed-book cavity must satisfy
                 )
             floor_w = natural_floor_w
 
-        holes_cb = self._row_finger_holes_callback(cells)
+        # Finger hole callback drills divider mating holes in the long
+        # walls. The holes only span the divider's height — when
+        # label_strip_height > 0, holes stop short of the wall top so
+        # the label strip is unbroken across all cells.
+        holes_cb = self._row_finger_holes_callback(cells, divider_h)
         cb_list = [holes_cb] if holes_cb is not None else None
 
         with self.saved_context():
             # Long walls (front + back of the row). Both get the divider
-            # hole callback so dividers can slot into either side.
+            # hole callback so dividers can slot into either side. Full
+            # wall_h tall so the row's overall height matches the user's
+            # row_height parameter.
             self.rectangularWall(
-                floor_w, h, "FFeF", callback=cb_list,
+                floor_w, wall_h, "FFeF", callback=cb_list,
                 ignore_widths=[1, 6], move="up", label="row long wall")
             self.rectangularWall(
-                floor_w, h, "FFeF", callback=cb_list,
+                floor_w, wall_h, "FFeF", callback=cb_list,
                 ignore_widths=[1, 6], move="up", label="row long wall")
 
             # Floor — mates with all four walls.
@@ -826,19 +862,22 @@ than the default 70 mm row height — the closed-book cavity must satisfy
 
         # Park the cursor to the right of the long-wall column so the next
         # parts don't overlap.
-        self.rectangularWall(floor_w, h, "FFeF", move="right only")
+        self.rectangularWall(floor_w, wall_h, "FFeF", move="right only")
 
-        # Short walls (left + right of the row).
+        # Short walls (left + right of the row). Also full wall_h.
         self.rectangularWall(
-            depth, h, "FfeF", ignore_widths=[1, 6], move="up", label="row short wall")
+            depth, wall_h, "FfeF", ignore_widths=[1, 6], move="up", label="row short wall")
         self.rectangularWall(
-            depth, h, "FfeF", ignore_widths=[1, 6], move="up", label="row short wall")
+            depth, wall_h, "FfeF", ignore_widths=[1, 6], move="up", label="row short wall")
 
         # Internal dividers. Each has finger tabs on its left/right edges
         # that key into the long-wall holes drilled by the callback above.
+        # Dividers are divider_h tall (shorter than the walls by
+        # label_strip_height), leaving the top label_strip_height mm of
+        # the row as a continuous open label band.
         for _ in range(n - 1):
             self.rectangularWall(
-                depth, h, "efef", move="up", label="row divider")
+                depth, divider_h, "efef", move="up", label="row divider")
 
     def _emit_utility_tray(self):
         """Emit a simple open-top finger-jointed box for dice/pens/tokens.
