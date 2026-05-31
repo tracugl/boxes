@@ -234,17 +234,18 @@ than the default 70 mm row height — the closed-book cavity must satisfy
                  "vertical space inside each cell for the mech itself. "
                  "Internal dividers stop at this height.")
         self.argparser.add_argument(
-            "--label_strip_height", action="store", type=float, default=12.0,
-            help="Top portion (mm) of each row reserved as a label area. "
-                 "The row's overall height stays at row_height; internal "
-                 "dividers stop this many mm below the wall tops so a "
-                 "continuous band is left across all cells. The user "
-                 "writes mech names directly on the wall surface in this "
-                 "band, or glues on printed labels. Set to 0 to disable. "
-                 "NOTE: this REDUCES the effective cell height to "
-                 "(row_height - label_strip_height). If you want both tall "
-                 "mechs (e.g. 70 mm King Crab) AND a label strip, bump "
-                 "row_height so the cells are still tall enough.")
+            "--label_strip_depth", action="store", type=float, default=12.0,
+            help="Depth (mm) of a separate name-plate strip emitted per row. "
+                 "The strip is a flat piece sized floor_w x this depth x "
+                 "thickness; the user glues it on top of the row's front "
+                 "wall and short walls, partly covering the open top of the "
+                 "front cells. Mechs are inserted through the open BACK "
+                 "portion of each cell's top (rowN_depth - label_strip_depth "
+                 "remains open). The strip's top face is the writing/labeling "
+                 "surface. Set to 0 to disable (no strip emitted). NOTE: "
+                 "this adds `thickness` mm to the row's TOTAL height when "
+                 "assembled, so the closed-book cavity must accommodate "
+                 "row_height + thickness + map_sleeve_depth.")
         self.argparser.add_argument(
             "--row_target_outer_width", action="store", type=float, default=0.0,
             help="Target outer width (mm) for ALL mech-tray rows. Each row "
@@ -734,7 +735,7 @@ than the default 70 mm row height — the closed-book cavity must satisfy
             cells: List of cell widths in mm for this row.
             height: Length of each finger-hole row in mm. Pass the divider
                 height (NOT the wall height) so the holes stop short of
-                the wall top when label_strip_height > 0, leaving the
+                the wall top when called with a shorter height, leaving the
                 label strip band unbroken.
 
         Returns:
@@ -796,20 +797,11 @@ than the default 70 mm row height — the closed-book cavity must satisfy
                 the cells, i.e. how far back a miniature can stand).
         """
         t = self.thickness
-        # The row has two heights:
-        #   * wall_h: the full row height, used for both long and short
-        #     outer walls. Equal to row_height — the row's overall
-        #     vertical extent stays exactly as the user specified.
-        #   * divider_h: shorter than wall_h by `label_strip_height` mm.
-        #     Internal dividers stop here so the top label_strip_height
-        #     mm of the row is one continuous open band across all
-        #     cells — the user writes mech names on the wall surface in
-        #     that band, or glues on printed labels.
-        # The effective MECH HEIGHT (depth available for the miniature)
-        # is therefore divider_h, NOT wall_h — if you want both tall
-        # mechs and a label strip, bump row_height accordingly.
-        wall_h = self.row_height
-        divider_h = self.row_height - max(0.0, self.label_strip_height)
+        # Wall and divider heights are both row_height. The label strip
+        # (if any) is emitted as a SEPARATE flat piece below — it sits
+        # on top of the assembled row's walls, not inside the cells,
+        # so the cell interior keeps the user's full row_height.
+        h = self.row_height
         # Each row's natural floor width = sum of cell widths + (N-1)
         # divider thicknesses. The outer dimensions add 2*t for the two
         # short walls flanking the floor along the cell-width axis.
@@ -839,22 +831,18 @@ than the default 70 mm row height — the closed-book cavity must satisfy
             floor_w = natural_floor_w
 
         # Finger hole callback drills divider mating holes in the long
-        # walls. The holes only span the divider's height — when
-        # label_strip_height > 0, holes stop short of the wall top so
-        # the label strip is unbroken across all cells.
-        holes_cb = self._row_finger_holes_callback(cells, divider_h)
+        # walls, spanning the divider's full height.
+        holes_cb = self._row_finger_holes_callback(cells, h)
         cb_list = [holes_cb] if holes_cb is not None else None
 
         with self.saved_context():
             # Long walls (front + back of the row). Both get the divider
-            # hole callback so dividers can slot into either side. Full
-            # wall_h tall so the row's overall height matches the user's
-            # row_height parameter.
+            # hole callback so dividers can slot into either side.
             self.rectangularWall(
-                floor_w, wall_h, "FFeF", callback=cb_list,
+                floor_w, h, "FFeF", callback=cb_list,
                 ignore_widths=[1, 6], move="up", label="row long wall")
             self.rectangularWall(
-                floor_w, wall_h, "FFeF", callback=cb_list,
+                floor_w, h, "FFeF", callback=cb_list,
                 ignore_widths=[1, 6], move="up", label="row long wall")
 
             # Floor — mates with all four walls.
@@ -862,22 +850,30 @@ than the default 70 mm row height — the closed-book cavity must satisfy
 
         # Park the cursor to the right of the long-wall column so the next
         # parts don't overlap.
-        self.rectangularWall(floor_w, wall_h, "FFeF", move="right only")
+        self.rectangularWall(floor_w, h, "FFeF", move="right only")
 
-        # Short walls (left + right of the row). Also full wall_h.
+        # Short walls (left + right of the row).
         self.rectangularWall(
-            depth, wall_h, "FfeF", ignore_widths=[1, 6], move="up", label="row short wall")
+            depth, h, "FfeF", ignore_widths=[1, 6], move="up", label="row short wall")
         self.rectangularWall(
-            depth, wall_h, "FfeF", ignore_widths=[1, 6], move="up", label="row short wall")
+            depth, h, "FfeF", ignore_widths=[1, 6], move="up", label="row short wall")
 
-        # Internal dividers. Each has finger tabs on its left/right edges
-        # that key into the long-wall holes drilled by the callback above.
-        # Dividers are divider_h tall (shorter than the walls by
-        # label_strip_height), leaving the top label_strip_height mm of
-        # the row as a continuous open label band.
+        # Internal dividers — full row_height tall, slot into the long-wall
+        # finger holes drilled by the callback above.
         for _ in range(n - 1):
             self.rectangularWall(
-                depth, divider_h, "efef", move="up", label="row divider")
+                depth, h, "efef", move="up", label="row divider")
+
+        # Optional label strip — a separate flat piece the user glues on
+        # top of the assembled row's front + short walls, partly covering
+        # the row's open top. The strip occupies the front
+        # `label_strip_depth` mm of the row's top; the back portion stays
+        # open for inserting/removing mechs. The strip's TOP face is the
+        # writing surface (or where printed labels get glued).
+        if self.label_strip_depth > 0:
+            self.rectangularWall(
+                floor_w, self.label_strip_depth, "eeee",
+                move="up", label="row label strip")
 
     def _emit_utility_tray(self):
         """Emit a simple open-top finger-jointed box for dice/pens/tokens.
@@ -931,18 +927,22 @@ than the default 70 mm row height — the closed-book cavity must satisfy
         t = self.thickness
 
         # Closed-book cavity depth = spine_depth - 2*thickness. The map
-        # sleeve eats `map_sleeve_depth` of that, leaving the rest for the
-        # mech rows. Warn (don't fail) if the user's settings can't physically
-        # close the book — they may be deliberately over-stuffing for a
-        # test print or fitting taller mechs in a deeper book.
+        # sleeve eats `map_sleeve_depth` of that; the mech rows + the
+        # label strip glued on top of them take `row_height + thickness`
+        # if a label strip is present. Warn (don't fail) if the user's
+        # settings can't physically close the book — they may be
+        # deliberately over-stuffing for a test print.
         cavity_depth = spine_depth - 2 * t
         sleeve_d = self.map_sleeve_depth if self.include_map_sleeve else 0.0
-        budget = cavity_depth - sleeve_d - self.row_height
+        strip_t = t if self.label_strip_depth > 0 else 0.0
+        row_stack = self.row_height + strip_t
+        budget = cavity_depth - sleeve_d - row_stack
         if budget < 0:
             print(
                 f"[BattletechCarryBox] WARNING: closed-book cavity is "
                 f"{cavity_depth:.1f}mm but row_height ({self.row_height}) + "
-                f"map_sleeve_depth ({sleeve_d}) = {self.row_height + sleeve_d:.1f}mm. "
+                f"label strip ({strip_t}) + map_sleeve_depth ({sleeve_d}) = "
+                f"{row_stack + sleeve_d:.1f}mm. "
                 f"Book will not close cleanly (over budget by {-budget:.1f}mm)."
             )
 
