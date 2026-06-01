@@ -33,6 +33,8 @@ Every dimension is exposed as an argparser argument so the box can be
 re-rendered for different mini sizes, paper sizes, or row counts.
 """
 
+import logging
+
 from boxes import *  # noqa: F401, F403 — boxes idiom: imports Boxes, edges, boolarg, math, etc.
 from boxes.Color import Color
 from boxes.generators.flexbook import FlexBook
@@ -403,9 +405,15 @@ than the default 70 mm row height — the closed-book cavity must satisfy
             help="Internal depth of the utility tray in mm — also the "
                  "width of the drawer-style opening on one long side.")
         self.argparser.add_argument(
-            "--utility_tray_h", action="store", type=float, default=30.0,
+            "--utility_tray_h", action="store", type=float, default=70.0,
             help="Internal height (top-to-bottom) of the utility tray "
-                 "in mm. Same axis as row_height for the mech rows.")
+                 "in mm. Same axis as row_height for the mech rows — "
+                 "the default matches row_height so the tray and the "
+                 "mech rows share a flat top profile inside the cavity. "
+                 "Determines the drawer-mouth aperture (utility_tray_w "
+                 "× utility_tray_h), so taller values let bulkier items "
+                 "pass through the open long side. Capped by the spine "
+                 "cavity at roughly y − 4t (78 mm at default y = 90).")
 
         # ---- Dice tower (in the spine) ---------------------------------
         # Turn the otherwise-wasted spine cavity into a small dice tower.
@@ -433,6 +441,18 @@ than the default 70 mm row height — the closed-book cavity must satisfy
                  "align with a small fixed hole. Set to 0 to disable "
                  "just the side-wall holes (ramps still emitted).")
         self.argparser.add_argument(
+            "--dice_hole_clearance_finger", action="store", type=float, default=6.0,
+            help="Minimum clearance (mm) between the dice hole's flat "
+                 "side (diameter) and the side wall's finger-hole row "
+                 "where the recess wall mates. Larger values push the "
+                 "semicircle further into the bulge (toward its outer "
+                 "edge); a value of 0 lets the diameter sit flush against "
+                 "the finger-hole row. If the requested clearance plus "
+                 "the dice hole radius exceeds the available bulge "
+                 "depth, the position is clamped so the curve still "
+                 "leaves a minimum gap below the bulge's outer edge "
+                 "(a warning is logged).")
+        self.argparser.add_argument(
             "--dice_tower_ramp_count", action="store", type=int, default=2,
             help="Number of deflector ramps slotting through the recess "
                  "wall into the spine cavity. Each ramp angles inward off "
@@ -456,6 +476,27 @@ than the default 70 mm row height — the closed-book cavity must satisfy
                  "the recess wall. Should be less than spine radius "
                  "(y_spine / 2 = 45 mm by default) so the ramp doesn't "
                  "touch the flex.")
+        self.argparser.add_argument(
+            "--dice_tower_ramp_offset", action="store", type=float, default=15.0,
+            help="Alternating offset (mm) of each ramp's centre from the "
+                 "midline of the recess wall's short axis (spine depth "
+                 "direction). The first ramp shifts by +offset toward "
+                 "one cover, the second by -offset toward the other, "
+                 "and so on. A non-zero value creates a 3D zig-zag fall "
+                 "path: dice deflect both in height (from the alternating "
+                 "ramp angle) and in depth (from this offset). Set to 0 "
+                 "to centre every ramp on the spine midline.")
+        self.argparser.add_argument(
+            "--dice_tower_ramp_end_clearance", action="store", type=float, default=50.0,
+            help="Minimum distance (mm) from the recess wall's short "
+                 "edges within which NO ramp finger-hole may sit. The "
+                 "constraint is enforced on the FULL extent of the "
+                 "angled finger-hole row (not just its midpoint), so a "
+                 "ramp tilted at 30 deg with length 50 mm extends "
+                 "±12.5 mm in y and the row's far end must stay outside "
+                 "the clearance zone. Use this to leave room at the top "
+                 "of the spine for dice to enter cleanly and at the "
+                 "bottom for them to exit without snagging a ramp.")
 
     # -----------------------------------------------------------------
     # Recess wall override (add floor-side finger teeth)
@@ -546,27 +587,74 @@ than the default 70 mm row height — the closed-book cavity must satisfy
         n = self.dice_tower_ramp_count
         ramp_len = self.dice_tower_ramp_length
         angle = self.dice_tower_ramp_angle
+        end_clearance = self.dice_tower_ramp_end_clearance
 
-        # Evenly space the ramps along the wall's long axis, leaving a
-        # ~10 mm clearance at each end of the wall so dice can enter and
-        # exit the spine cavity without immediately hitting a ramp.
-        end_clearance = 10.0
-        usable = wall_y - 2 * end_clearance
-        if n == 1:
-            positions_y = [t + end_clearance + usable / 2]
+        # The ramp's finger-hole row is angled at ±`angle` degrees and
+        # is `ramp_len` long. Centred on its midpoint, the row's y-axis
+        # half-extent is (ramp_len / 2) * |sin(angle)|. To keep NO hole
+        # within `end_clearance` of either short edge of the wall, the
+        # midpoint y must sit at least (end_clearance + row_half_y_span)
+        # inside from each edge.
+        row_half_y_span = (ramp_len / 2.0) * abs(math.sin(math.radians(angle)))
+        edge_offset = end_clearance + row_half_y_span
+
+        py_min = t + edge_offset
+        py_max = t + wall_y - edge_offset
+        usable = py_max - py_min
+
+        if usable < 0:
+            # The clearance is so large that no ramp midpoint can satisfy
+            # the constraint on this wall. Log a warning and fall back to
+            # placing the (single) ramp at the wall's centre; the user
+            # will see geometry that violates the requested clearance,
+            # but at least the part still renders. They can reduce
+            # end_clearance, ramp_len, the ramp angle, or grow the wall.
+            logging.warning(
+                "BattletechCarryBox: dice_tower_ramp_end_clearance=%.1f mm "
+                "leaves no room for %d ramp(s) of length %.1f mm at %.1f deg "
+                "on a wall of long-axis length %.1f mm. Falling back to "
+                "centred placement — reduce end_clearance, ramp_length, "
+                "ramp_angle, or grow y (spine depth) / h (cover height).",
+                end_clearance, n, ramp_len, angle, wall_y,
+            )
+            positions_y = [t + wall_y / 2.0] * n
+        elif n == 1:
+            positions_y = [py_min + usable / 2.0]
         else:
             step = usable / (n - 1)
-            positions_y = [t + end_clearance + i * step for i in range(n)]
+            positions_y = [py_min + i * step for i in range(n)]
 
-        # X position: centre the ramp's tab line on the wall's short
-        # axis. Each ramp is `ramp_len` long along its angle; the tab
-        # line spans roughly the wall's middle so the ramp sticks out
-        # toward the flex roughly perpendicular to the wall surface.
-        centre_x = wall_h / 2.0
+        # X position: centre each ramp's tab line on the wall's short
+        # axis, then offset alternately by ``dice_tower_ramp_offset`` so
+        # consecutive ramps zig-zag in spine depth as well as angle. A
+        # die falling through the dice hole therefore deflects in TWO
+        # dimensions on each bounce, slowing the descent and randomising
+        # the orientation more thoroughly than a pure angle-only zig-zag.
+        midline_x = wall_h / 2.0
+        offset = self.dice_tower_ramp_offset
+        # Clamp the offset so the tab line stays within the wall after
+        # accounting for the ramp's own x-projection. The row spans
+        # ±(ramp_len/2)*cos(tilt) in x; the row's far edge must stay
+        # inside [t_margin, wall_h - t_margin]. We use the wall's edge
+        # as the constraint (t_margin = 0); a hole touching the very
+        # edge would still cut, just without surrounding wood.
+        row_half_x_span = (ramp_len / 2.0) * abs(math.cos(math.radians(angle)))
+        max_offset = max(0.0, midline_x - row_half_x_span)
+        if offset > max_offset:
+            logging.warning(
+                "BattletechCarryBox: dice_tower_ramp_offset=%.1f mm exceeds "
+                "the %.1f mm room available on a wall of short-axis length "
+                "%.1f mm with ramp_length=%.1f mm at %.1f deg. Clamping to "
+                "%.1f mm.",
+                offset, max_offset, wall_h, ramp_len, angle, max_offset,
+            )
+            offset = max_offset
 
         for i, py in enumerate(positions_y):
-            # Alternate angle sign so ramps zig-zag.
+            # Alternate angle sign so ramps zig-zag in y.
             tilt = angle if i % 2 == 0 else -angle
+            # Alternate x-offset so ramps zig-zag in spine depth too.
+            centre_x = midline_x + (offset if i % 2 == 0 else -offset)
             # The fingerHolesAt start position is the LEFT end of the tab
             # row. Walk back by half the projected x/y to centre the row
             # on (centre_x, py).
@@ -608,12 +696,49 @@ than the default 70 mm row height — the closed-book cavity must satisfy
         if self.include_dice_tower and self.dice_hole_radius > 0:
             cx_mid = h / 2.0
             hr = self.dice_hole_radius
-            # Leave ~4 mm of bulge wood between the semicircle's apex
-            # and the bulge's outer curve so the curved edge stays
-            # structurally sound. The bulge apex is at panel-y =
-            # (x + 2t) + r; the semicircle apex is `flat_y + hr` so:
-            apex_clearance = 4.0
-            flat_y = (x + 2 * t) + r - apex_clearance - hr
+            # Geometry constraints. The bulge occupies panel-y in
+            # [x + 2t, x + 2t + r]; the finger-hole row mating the
+            # recess wall sits at panel-y = x + 1.5t. The semicircle
+            # must fit between these, with a small wood margin at each
+            # end so neither the diameter cut nor the curved apex
+            # weakens the surrounding structure.
+            #
+            # apex_min_clearance is the minimum wood thickness between
+            # the semicircle's curved apex and the bulge's outer edge,
+            # kept as a small fixed value so the curve never crashes
+            # through the bulge regardless of user input.
+            apex_min_clearance = 1.0
+            finger_holes_y = x + 1.5 * t
+            bulge_apex_y = (x + 2 * t) + r
+            # User-requested clearance: how far the diameter sits above
+            # the finger-hole row. The maximum legal flat_y is set by
+            # the apex constraint (semicircle's top must clear the
+            # bulge edge).
+            flat_y_requested = finger_holes_y + self.dice_hole_clearance_finger
+            flat_y_max = bulge_apex_y - apex_min_clearance - hr
+            if flat_y_requested > flat_y_max:
+                # User asked for more finger-side clearance than the
+                # bulge can give while keeping the apex inside it.
+                # Clamp to the maximum legal position so the curve
+                # still has apex_min_clearance below the bulge edge.
+                # The resulting finger-side gap will be < requested;
+                # log so the user can see why and either reduce
+                # dice_hole_radius or grow the spine (y).
+                flat_y = flat_y_max
+                actual_finger_gap = flat_y - finger_holes_y
+                logging.warning(
+                    "BattletechCarryBox: dice_hole_clearance_finger=%.1f mm "
+                    "requested but only %.1f mm fits with "
+                    "dice_hole_radius=%.1f mm in a bulge of radius %.1f mm. "
+                    "Position clamped — reduce dice_hole_radius or grow y "
+                    "(spine depth) to recover the requested clearance.",
+                    self.dice_hole_clearance_finger,
+                    actual_finger_gap,
+                    hr,
+                    r,
+                )
+            else:
+                flat_y = flat_y_requested
             self._semicircle_hole(cx_mid, flat_y, hr)
 
         self.edges["F"](h)
@@ -915,34 +1040,115 @@ than the default 70 mm row height — the closed-book cavity must satisfy
         by ``r`` mm — apex at ``(x, y + r)``, endpoints of the flat
         side at ``(x - r, y)`` and ``(x + r, y)``.
 
-        Implementation uses cairo's arc primitive directly (the same
-        approach :meth:`boxes.Boxes.hole` takes for full circles).
-        boxes' ``polyline`` with a ``(180, r)`` corner-with-radius does
-        NOT close back to the diameter's start — corner arcs are
-        centred perpendicular to the heading, so a 180° turn lands the
-        cursor offset by 2r in both directions rather than returning to
-        the start. Using ``ctx.arc`` lets us put the arc centre at the
-        midpoint of the diameter, which is what closes the half-disc.
+        Implementation note: boxes' :class:`Context._arc` approximates
+        each arc with a single cubic Bezier whose control-point formula
+        divides by ``ax*by - ay*bx``. For a 180° arc that denominator
+        is zero, yielding NaN control points and a degenerate straight
+        line in the output SVG. Boxes' own :meth:`Boxes.circle` works
+        around this by emitting ten 36° arcs in sequence; we mirror
+        that pattern with six 30° arcs (small enough that each Bezier
+        is a faithful approximation), then close the diameter with an
+        explicit ``line_to`` since boxes' Context exposes no
+        ``close_path``.
         """
         # Finish any open path so this hole starts a fresh subpath.
         self.ctx.stroke()
         with self.saved_context():
             self.set_source_color(Color.INNER_CUT)
             # Translate the local frame so the centre of the diameter
-            # is at the local origin. No rotation — boxes' internal
-            # math convention (y-up) means a CCW arc from angle 0 to π
-            # traces the UPPER half of the unit circle, which is the
-            # half we want above the flat side.
+            # is at the local origin. boxes' Context applies a y-flip
+            # at output time; sweeping cairo's ``arc`` (CCW in cairo's
+            # native y-down frame) from angle 0 to π traces the
+            # +y side of the origin in cairo-local coords, which after
+            # the output y-flip lands UP relative to the panel — i.e.
+            # toward the bulge's apex, which is what we want.
             self.moveTo(x, y)
-            # Right end of the diameter at (r, 0); arc CCW from there
-            # through (0, r) up top to (-r, 0); then a straight
-            # line_to back to (r, 0) forms the flat side of the
-            # semicircle. boxes' Context wrapper has no close_path,
-            # so we explicitly draw the closing segment.
+            # Start the path at the right end of the diameter (r, 0).
             self.ctx.move_to(r, 0)
-            self.ctx.arc(0, 0, r, 0, math.pi)
+            # Emit the half-circle as six 30° sub-arcs (avoids the
+            # single-Bezier degeneracy at 180°).
+            n_segments = 6
+            for i in range(n_segments):
+                a1 = i * math.pi / n_segments
+                a2 = (i + 1) * math.pi / n_segments
+                self.ctx.arc(0, 0, r, a1, a2)
+            # Cursor is now at (-r, 0). Close the diameter back to the
+            # starting point (r, 0).
             self.ctx.line_to(r, 0)
             self.ctx.stroke()
+
+    def _emit_half_ellipse_ramp(self, length, width, move=None, label="dice tower ramp"):
+        """Emit one half-elliptical dice-tower ramp panel.
+
+        The panel's tab side (the straight ``length`` mm edge) is a
+        finger-jointed ``"f"`` edge that slots into the angled finger
+        holes drilled on the recess wall by
+        :meth:`_drill_recess_ramp_holes`. The opposite side is a
+        half-ellipse with semi-major axis ``length / 2`` (along the tab)
+        and semi-minor axis ``width`` (perpendicular protrusion away
+        from the recess wall).
+
+        Visually, the half-ellipse outline echoes the semicircular
+        dice-hole cut in the side-wall bulge so the tower's interior
+        and exterior cutouts share a family resemblance. Functionally,
+        the deflection surface for a falling die is still the flat
+        face of the panel — the outline shape only affects silhouette,
+        not bounce mechanics.
+
+        Implementation: the half-ellipse is approximated by 32 short
+        straight segments, each emitted via :meth:`corner` +
+        :meth:`edge`. boxes' burn-correction handles the small
+        per-segment turns correctly; 32 segments make the polygonal
+        approximation indistinguishable from a smooth curve at laser
+        kerf widths.
+        """
+        f_edge = self.edges["f"]
+        # Overall bounding box. The tab edge's finger joints extend
+        # outward by ``spacing()`` on the tab side; the curved side
+        # is flush with the panel boundary on the other.
+        overallwidth = length + 2 * f_edge.spacing()
+        overallheight = width + f_edge.spacing()
+
+        if self.move(overallwidth, overallheight, move, True):
+            return
+
+        # Move so the tab edge starts at panel-local (0, 0) with the
+        # tab tabs extending into negative y. The curve then walks
+        # through positive y.
+        self.moveTo(f_edge.spacing(), f_edge.margin())
+
+        # 1. Tab edge — finger joints that mate with the recess wall.
+        f_edge(length)
+        # Cursor: (length, 0), heading +x.
+
+        # 2. Half-ellipse curve back to (0, 0).
+        # Parametric form: x(t) = a + a*cos(t), y(t) = b*sin(t),
+        # for t in [0, π]. At t=0: (2a, 0) = (length, 0). At t=π:
+        # (0, 0). At t=π/2: (a, b) = (length/2, width) — the apex.
+        a = length / 2.0
+        b = width
+        n_segments = 32
+        prev_heading_deg = 0.0
+        for i in range(1, n_segments + 1):
+            t_prev = (i - 1) * math.pi / n_segments
+            t_cur = i * math.pi / n_segments
+            pxp = a + a * math.cos(t_prev)
+            pyp = b * math.sin(t_prev)
+            px = a + a * math.cos(t_cur)
+            py = b * math.sin(t_cur)
+            seg_len = math.hypot(px - pxp, py - pyp)
+            seg_heading_deg = math.degrees(math.atan2(py - pyp, px - pxp))
+            # Turn is the heading delta, normalised to (-180, 180].
+            turn = seg_heading_deg - prev_heading_deg
+            while turn > 180:
+                turn -= 360
+            while turn <= -180:
+                turn += 360
+            self.corner(turn)
+            self.edge(seg_len)
+            prev_heading_deg = seg_heading_deg
+
+        self.move(overallwidth, overallheight, move, label=label)
 
     def _emit_map_sleeve(self):
         """Emit the four flat pieces that glue into the map sleeve.
@@ -961,8 +1167,14 @@ than the default 70 mm row height — the closed-book cavity must satisfy
         * Inner face: ``(map_sleeve_w + 2t)`` × ``(map_sleeve_h + 2t)`` —
           the +2t accounts for the surrounding strip walls so the maps
           fit the *internal* width/height the user specified.
-        * Long strips (top, bottom): ``map_sleeve_depth`` × ``map_sleeve_h``
+        * Long strips (left + right, parallel to the cover height):
+          ``map_sleeve_depth`` × ``(map_sleeve_h + 2t)`` — same length
+          as the inner face's height so the strips fully back the face's
+          left/right edges.
         * Short strip (spine-side end): ``map_sleeve_depth`` × ``map_sleeve_w``
+          — fits BETWEEN the two long strips at the spine corner; its
+          ``w`` length equals the inner-face width minus the two long
+          strips' thicknesses (= ``w + 2t − 2t = w``).
         """
         t = self.thickness
         w = self.map_sleeve_w
@@ -973,11 +1185,16 @@ than the default 70 mm row height — the closed-book cavity must satisfy
         self.rectangularWall(w + 2 * t, h + 2 * t, "eeee", move="up",
                              label="map sleeve face")
 
-        # Two long strips (top + bottom of the sleeve, parallel to the cover height).
-        self.rectangularWall(d, h, "eeee", move="up", label="map sleeve strip (long)")
-        self.rectangularWall(d, h, "eeee", move="up", label="map sleeve strip (long)")
+        # Two long strips (left + right of the sleeve, parallel to the
+        # cover height). Length matches the inner face's height
+        # (h + 2t) so the strips fully back the face's long edges
+        # rather than stopping short of the corners.
+        self.rectangularWall(d, h + 2 * t, "eeee", move="up", label="map sleeve strip (long)")
+        self.rectangularWall(d, h + 2 * t, "eeee", move="up", label="map sleeve strip (long)")
 
         # One short strip on the spine side — the opposite short side is left open.
+        # Length is w (not w + 2t) so the strip fits BETWEEN the two long
+        # strips at the spine end of the sleeve.
         self.rectangularWall(d, w, "eeee", move="up", label="map sleeve strip (short)")
 
     def _row_finger_holes_callback(self, cells, height):
@@ -1158,12 +1375,23 @@ than the default 70 mm row height — the closed-book cavity must satisfy
         # Optional label strip — a flat piece that drops INTO the notches
         # in the short walls + dividers. Sits flush with the wall tops
         # on its top face; supported by the notch bottoms underneath.
-        # Length = floor_w (across the row from short wall to short
-        # wall); width = label_strip_depth (the notch width); thickness
-        # = the row's material thickness (= notch depth, so it fits).
+        #
+        # Length = floor_w + 2t: the strip extends from one short wall's
+        # OUTER face to the other's, so its ends pass THROUGH the
+        # short-wall notches (which are cut across the full panel
+        # thickness) and are captured by them rather than just butting
+        # against the inner faces. This also matches the floor panel's
+        # outer dimensions in the SVG: with "ffff" edges the floor's
+        # finger tabs extend t past nominal on each side, giving the
+        # floor a bounding box of floor_w + 2t × depth + 2t — the strip
+        # therefore lines up visually with the floor for an at-a-glance
+        # check that both pieces span the same row width.
+        #
+        # Width = label_strip_depth (the notch width); thickness = the
+        # row's material thickness (= notch depth, so it fits flush).
         if self.label_strip_depth > 0:
             self.rectangularWall(
-                floor_w, self.label_strip_depth, "eeee",
+                floor_w + 2 * t, self.label_strip_depth, "eeee",
                 move="up", label="row label strip")
 
     def _emit_utility_tray(self):
@@ -1354,8 +1582,7 @@ than the default 70 mm row height — the closed-book cavity must satisfy
                 and self.dice_tower_ramp_length > 0
                 and self.dice_tower_ramp_width > 0):
             for _ in range(self.dice_tower_ramp_count):
-                self.rectangularWall(
+                self._emit_half_ellipse_ramp(
                     self.dice_tower_ramp_length,
                     self.dice_tower_ramp_width,
-                    "feee",
                     move="up", label="dice tower ramp")
