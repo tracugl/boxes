@@ -149,40 +149,51 @@ class _NotchedTopEdge(edges.BaseEdge):
     flush with the wall tops on its top face.
 
     The notch is at the START of the edge (= the corner where this
-    edge begins, drawn in the rectangularWall path order). For
-    rectangularWall's TOP edge, that corner is the panel's top-right
-    when viewed in panel-local coords — the user installs all panels
-    with this corner at the FRONT of the row so the notches align.
+    edge begins, drawn in the rectangularWall path order), but
+    OFFSET inward by ``notch_inset`` mm so there's a strip of wood
+    between the notch's outer wall and the panel's adjacent edge.
+    Without the inset, the notch's right wall would land exactly on
+    the panel's right edge — two cut lines on top of each other,
+    which doesn't laser-cut cleanly.
+
+    For rectangularWall's TOP edge, the start corner is the panel's
+    top-right when viewed in panel-local coords — the user installs
+    all panels with this corner at the FRONT of the row so the
+    notches align.
     """
 
     char = "_"
     description = "Top edge with rectangular notch for label-strip"
 
-    def __init__(self, boxes_, settings, notch_width, notch_depth):
+    def __init__(self, boxes_, settings, notch_width, notch_depth,
+                 notch_inset=0.0):
         # `settings` is unused for this edge type (no finger geometry to
         # configure) but BaseEdge expects an argument so callers can pass
         # None and it just becomes a no-op slot.
         super().__init__(boxes_, settings)
         self.notch_width = notch_width
         self.notch_depth = notch_depth
+        self.notch_inset = notch_inset
 
     def __call__(self, length, **kw):
         w = self.notch_width
         n = self.notch_depth
-        if w <= 0 or n <= 0 or length < w:
+        d = self.notch_inset
+        if w <= 0 or n <= 0 or length < d + w:
             # Degenerate inputs — fall back to a plain straight edge so the
             # panel still closes cleanly.
             self.edge(length)
             return
         # Polyline trace from the edge's start corner, heading along the
         # edge (in rectangularWall's TOP edge that's local -x world).
-        # Sequence: turn into panel (+90 CCW = down for top edge), walk
-        # `n` mm INTO the panel, turn back along the edge direction
-        # (-90 CW), walk `w` mm along the notch bottom, turn back UP
-        # OUT of the panel (-90 CW), walk `n` mm back to edge level,
-        # turn to resume along the edge (+90 CCW), walk the remaining
-        # `length - w` mm to the other corner.
-        self.polyline(0, 90, n, -90, w, -90, n, 90, length - w)
+        # Sequence: walk `d` mm along the edge (the protective lip),
+        # turn into panel (+90 CCW = down for top edge), walk `n` mm
+        # INTO the panel, turn back along the edge direction (-90 CW),
+        # walk `w` mm along the notch bottom, turn back UP OUT of the
+        # panel (-90 CW), walk `n` mm back to edge level, turn to
+        # resume along the edge (+90 CCW), walk the remaining
+        # `length - d - w` mm to the other corner.
+        self.polyline(d, 90, n, -90, w, -90, n, 90, length - d - w)
 
 
 class BattletechCarryBox(FlexBook):
@@ -885,12 +896,17 @@ than the default 70 mm row height — the closed-book cavity must satisfy
         # If a label strip is enabled, the short walls and the dividers
         # need a rectangular NOTCH cut into their top edges so the strip
         # drops in flush with the wall tops. The notch is the strip's
-        # width (label_strip_depth) by `thickness` deep. We build one
-        # NotchedTopEdge instance and pass it as the TOP edge for each
-        # affected panel; the strip itself is emitted further below.
+        # width (label_strip_depth) by `thickness` deep, offset by one
+        # `thickness` inward from the panel's front-top corner — that
+        # `thickness` lip of wood keeps the notch's outer wall from
+        # landing on the panel's outer edge (which would create
+        # double-cut artifacts at the corner). The strip itself
+        # therefore sits `thickness` mm inset from the row's front face;
+        # in exchange the cut path is clean.
         if self.label_strip_depth > 0:
             notched_top = _NotchedTopEdge(
-                self, None, self.label_strip_depth, t)
+                self, None, self.label_strip_depth, t,
+                notch_inset=t)
             short_wall_edges = ["F", "f", notched_top, "F"]
             divider_edges = ["e", "f", notched_top, "f"]
         else:
