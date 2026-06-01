@@ -231,22 +231,24 @@ than the default 70 mm row height — the closed-book cavity must satisfy
         self.addSettingsArgs(edges.FingerJointSettings)
         self.addSettingsArgs(edges.FlexSettings)
 
-        # Cover face = 263 × 308 mm. The dimensions are sized for a snug
-        # (~1.5-2 mm clearance on every side) fit of the full default tray
-        # layout in the cavity floor — neither so tight that assembly play
-        # is impossible, nor so loose that the trays rattle around.
-        #   * Cavity width (along the cell-width axis) ≈ x + 0.8 mm =
-        #     263.8 mm, vs the row + utility outer width of 261 mm
-        #     (utility_tray_w = 255 matches the row floor_w). Play ~2.8 mm
-        #     total → ~1.4 mm per side when centered.
-        #   * Cavity length (along the cell-depth axis) ≈ h + 3.8 mm =
-        #     311.8 mm, vs 3 × 86 + 51 = 309 mm of tray stack. Play ~2.8 mm
-        #     total → ~1.4 mm per end.
-        # The map sleeve (230 × 280 mm internal) gets ~16 mm of bezel on
-        # the cover-width axis and ~14 mm on the cover-height axis.
+        # Cover face = 266 × 311 mm. Sized so the default tray layout
+        # fits in the back cover's usable rectangular area (= the area
+        # inside the corner curves of the cover panel, where the trays
+        # actually rest) with ~2 mm of total play in each direction.
+        # The empirically-correct "available tray space" formula is
+        # approximately:
+        #     available_width  ≈ x − thickness     = 263 mm at default
+        #     available_length ≈ h                 = 308 mm at default
+        # — which is what a user sees when measuring the cover SVG with
+        # the wall positions and corner radii subtracted, not the
+        # cavity-between-wall-inner-faces I had been computing earlier.
+        # With x=266 and h=311 the available space becomes 263 × 311 mm
+        # vs the 261 × 309 mm tray stack, giving ~2 mm × ~2 mm play.
+        # Map sleeve (230 × 280 mm internal) gets ~18 mm bezel along the
+        # cover-width axis and ~15 mm along the cover-height axis.
         # Spine depth = 90 mm so the closed cavity (84 mm interior) holds a
         # 70 mm mech row + 10 mm map sleeve + ~4 mm clearance.
-        self.buildArgParser(x=263.0, y=90.0, h=308.0)
+        self.buildArgParser(x=266.0, y=90.0, h=311.0)
 
         # FlexBook's own per-instance args — duplicated here because we
         # bypassed its __init__. Keep the help strings identical so the UI
