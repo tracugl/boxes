@@ -422,17 +422,16 @@ than the default 70 mm row height — the closed-book cavity must satisfy
                  "Disable to leave the side walls + recess wall as plain "
                  "panels.")
         self.argparser.add_argument(
-            "--dice_hole_diameter", action="store", type=float, default=18.0,
-            help="Diameter (mm) of each dice entry/exit hole drilled in "
-                 "the side-wall bulge. 18 mm fits a standard 16 mm d6 with "
-                 "1 mm clearance per side. Two holes are drilled per side "
-                 "wall (for dropping 2 dice at once); set to 0 to disable "
-                 "just the holes (ramps still emitted).")
-        self.argparser.add_argument(
-            "--dice_hole_spacing", action="store", type=float, default=30.0,
-            help="Centre-to-centre spacing (mm) of the two dice holes on "
-                 "each side wall. Must be > dice_hole_diameter so the "
-                 "holes don't overlap.")
+            "--dice_hole_radius", action="store", type=float, default=20.0,
+            help="Radius (mm) of the semicircular dice entry/exit hole "
+                 "cut into each side-wall bulge. The semicircle's flat "
+                 "side is the DIAMETER (= 2 * this value) and its curve "
+                 "extends toward the bulge's outer edge. Default 20 mm "
+                 "gives a 40 mm flat side — two 16 mm d6 dice exit "
+                 "side by side with plenty of clearance. The wider "
+                 "single opening lets dice fall out without having to "
+                 "align with a small fixed hole. Set to 0 to disable "
+                 "just the side-wall holes (ramps still emitted).")
         self.argparser.add_argument(
             "--dice_tower_ramp_count", action="store", type=int, default=2,
             help="Number of deflector ramps slotting through the recess "
@@ -597,23 +596,25 @@ than the default 70 mm row height — the closed-book cavity must satisfy
         # Inherited finger holes for end-wall mating (recess + latch walls).
         self.fingerHolesAt(0, x + 1.5 * t, h, 0)
 
-        # Dice entry/exit holes in the half-disc bulge area. The bulge is
-        # centred at panel-local (h/2, x + 2t) with radius r — we place
-        # two circles symmetrically about the panel-x midline, both at
-        # the same panel-y position safely inside the bulge curve.
-        if self.include_dice_tower and self.dice_hole_diameter > 0:
-            hole_r = self.dice_hole_diameter / 2.0
-            spacing = self.dice_hole_spacing
-            # Centre the pair on the bulge axis at h/2 along the wall-
-            # width direction.
+        # Dice entry/exit hole — a single SEMICIRCLE cut into the bulge.
+        # The bulge is centred at panel-local (h/2, x + 2t) with radius
+        # r (= spine_radius); the semicircle is placed with its FLAT
+        # side toward the main side-wall body and its CURVE extending
+        # toward the bulge's outer edge. Compared with two separate
+        # circular holes, the wider continuous opening means dice don't
+        # need to align with a fixed centre to fall through — they can
+        # exit anywhere along the flat side, making the bottom-of-spine
+        # exit feel less restrictive.
+        if self.include_dice_tower and self.dice_hole_radius > 0:
             cx_mid = h / 2.0
-            # Y position: a bit further than the bulge's flat side
-            # (x + 2t) so the holes sit inside the curved area but not
-            # so close to the bulge tip (x + 2t + r) that the cut weakens
-            # the curved edge. ~60% of the radius from the flat side.
-            cy = x + 2 * t + 0.6 * r
-            self.hole(cx_mid - spacing / 2.0, cy, r=hole_r)
-            self.hole(cx_mid + spacing / 2.0, cy, r=hole_r)
+            hr = self.dice_hole_radius
+            # Leave ~4 mm of bulge wood between the semicircle's apex
+            # and the bulge's outer curve so the curved edge stays
+            # structurally sound. The bulge apex is at panel-y =
+            # (x + 2t) + r; the semicircle apex is `flat_y + hr` so:
+            apex_clearance = 4.0
+            flat_y = (x + 2 * t) + r - apex_clearance - hr
+            self._semicircle_hole(cx_mid, flat_y, hr)
 
         self.edges["F"](h)
         self.corner(90, 0)
@@ -905,6 +906,32 @@ than the default 70 mm row height — the closed-book cavity must satisfy
     # -----------------------------------------------------------------
     # Part-emission helpers
     # -----------------------------------------------------------------
+
+    def _semicircle_hole(self, x, y, r):
+        """Cut a semicircular hole in the current panel.
+
+        The semicircle's flat side is horizontal, with its midpoint at
+        ``(x, y)`` in panel-local coordinates. The curve extends UPWARD
+        by ``r`` mm — apex at ``(x, y + r)``, endpoints of the flat
+        side at ``(x - r, y)`` and ``(x + r, y)``.
+
+        Drawing is a two-segment closed polyline: forward ``2 * r``
+        along the flat side, then a 180° CCW arc with radius ``r``
+        bringing the cursor back to the start. The path is stroked in
+        the standard inner-cut colour so the laser cutter treats it as
+        a through-cut.
+        """
+        # Snap the path open so the polyline starts a fresh subpath
+        # rather than continuing from wherever the outer path was.
+        self.ctx.stroke()
+        with self.saved_context():
+            self.set_source_color(Color.INNER_CUT)
+            # Start at the left end of the flat side, heading +x.
+            self.moveTo(x - r, y)
+            # Forward along the flat side, then a 180° arc closes the
+            # semicircle back to the start point.
+            self.polyline(2 * r, (180, r))
+            self.ctx.stroke()
 
     def _emit_map_sleeve(self):
         """Emit the four flat pieces that glue into the map sleeve.
