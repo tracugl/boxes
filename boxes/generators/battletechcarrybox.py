@@ -231,20 +231,22 @@ than the default 70 mm row height — the closed-book cavity must satisfy
         self.addSettingsArgs(edges.FingerJointSettings)
         self.addSettingsArgs(edges.FlexSettings)
 
-        # Cover face = 270 × 320 mm. The dimensions are sized so the full
-        # default tray layout fits in the cavity floor with a few mm of
-        # clearance on every side:
+        # Cover face = 263 × 308 mm. The dimensions are sized for a snug
+        # (~1.5-2 mm clearance on every side) fit of the full default tray
+        # layout in the cavity floor — neither so tight that assembly play
+        # is impossible, nor so loose that the trays rattle around.
         #   * Cavity width (along the cell-width axis) ≈ x + 0.8 mm =
-        #     270.8 mm, which holds the widest default row (row 3 outer =
-        #     261 mm) with ~10 mm clearance.
+        #     263.8 mm, vs the row + utility outer width of 261 mm
+        #     (utility_tray_w = 255 matches the row floor_w). Play ~2.8 mm
+        #     total → ~1.4 mm per side when centered.
         #   * Cavity length (along the cell-depth axis) ≈ h + 3.8 mm =
-        #     323.8 mm, which holds three 86 mm tray rows + the 51 mm
-        #     utility tray (309 mm total) with ~15 mm clearance.
-        # The map sleeve (230 × 280 mm internal) gets a generous 20 mm
-        # bezel on each side at this size.
+        #     311.8 mm, vs 3 × 86 + 51 = 309 mm of tray stack. Play ~2.8 mm
+        #     total → ~1.4 mm per end.
+        # The map sleeve (230 × 280 mm internal) gets ~16 mm of bezel on
+        # the cover-width axis and ~14 mm on the cover-height axis.
         # Spine depth = 90 mm so the closed cavity (84 mm interior) holds a
         # 70 mm mech row + 10 mm map sleeve + ~4 mm clearance.
-        self.buildArgParser(x=270.0, y=90.0, h=320.0)
+        self.buildArgParser(x=263.0, y=90.0, h=308.0)
 
         # FlexBook's own per-instance args — duplicated here because we
         # bypassed its __init__. Keep the help strings identical so the UI
@@ -384,16 +386,24 @@ than the default 70 mm row height — the closed-book cavity must satisfy
         # alongside ~3 rows × 80 mm depth (240 + 45 ≤ 295 - 6 = 289).
         self.argparser.add_argument(
             "--include_utility_tray", action="store", type=boolarg, default=True,
-            help="Emit utility-tray parts (floor + 4 finger-jointed walls)")
+            help="Emit utility-tray parts: floor + lid + 1 long wall + "
+                 "2 short walls. The OTHER long side is intentionally "
+                 "open (drawer-style); items are accessed by pulling the "
+                 "tray out and tipping it through the open long side.")
         self.argparser.add_argument(
-            "--utility_tray_w", action="store", type=float, default=240.0,
-            help="Internal width of the utility tray in mm")
+            "--utility_tray_w", action="store", type=float, default=255.0,
+            help="Internal width of the utility tray in mm. Default 255 "
+                 "matches the mech row's interior so utility outer "
+                 "width (= w + 2t) equals the row outer width, giving a "
+                 "uniform side-to-side fit in the cavity.")
         self.argparser.add_argument(
             "--utility_tray_d", action="store", type=float, default=45.0,
-            help="Internal depth of the utility tray in mm")
+            help="Internal depth of the utility tray in mm — also the "
+                 "width of the drawer-style opening on one long side.")
         self.argparser.add_argument(
             "--utility_tray_h", action="store", type=float, default=30.0,
-            help="Internal height of the utility tray in mm")
+            help="Internal height (top-to-bottom) of the utility tray "
+                 "in mm. Same axis as row_height for the mech rows.")
 
     # -----------------------------------------------------------------
     # Recess wall override (add floor-side finger teeth)
@@ -961,32 +971,66 @@ than the default 70 mm row height — the closed-book cavity must satisfy
                 move="up", label="row label strip")
 
     def _emit_utility_tray(self):
-        """Emit a simple open-top finger-jointed box for dice/pens/tokens.
+        """Emit a drawer-style enclosed utility tray.
 
-        Same edge convention as :meth:`_emit_mech_row` but without any
-        dividers. Five pieces total: one floor + two long walls + two
-        short walls. Like a tiny ABox.
+        Unlike the open-top mech rows, the utility tray is CLOSED on its
+        top face (a lid) and has its opening on ONE LONG SIDE. The user
+        installs the tray with the open side facing whichever cavity
+        edge will be "up" when the book is stored on a shelf — dice and
+        small loose items can't spill out when looking down into the
+        cavity (the lid blocks them), and when the book is upright the
+        opening faces UP so gravity pulls items back into the closed
+        bottom of the tray.
+
+        Five pieces total (same count as the original open-top tray):
+
+        * **Floor** (w × d, edges ``ffef``): tabs on three sides
+          mating with the long wall + both short walls; the fourth
+          edge is plain ``e`` because it sits at the open long side.
+        * **Lid** (w × d, edges ``ffef``): mirror of the floor.
+        * **Long wall** (1 piece, w × h, edges ``FFFF``): closed on
+          all four edges (floor below, lid above, short walls on each
+          end). The OTHER long wall is intentionally omitted — that's
+          the drawer opening.
+        * **Short walls** (2 pieces, d × h, edges ``FfFe``): tabs on
+          three sides (floor + long wall + lid); the fourth edge is
+          plain ``e`` because it sits at the open long side. The two
+          short walls are identical pieces; the user installs one
+          mirrored so both have their open edge at the same cavity end.
         """
         w = self.utility_tray_w
         d = self.utility_tray_d
         h = self.utility_tray_h
 
         with self.saved_context():
+            # Floor — open on its top panel edge (= the long side that
+            # will become the drawer opening when assembled).
+            self.rectangularWall(w, d, "ffef", move="up",
+                                 label="utility tray floor")
+            # Lid — same edge spec as the floor; mirrors the floor at
+            # the opposite vertical (lid covers the tray's top in 3D).
+            self.rectangularWall(w, d, "ffef", move="up",
+                                 label="utility tray lid")
+            # Long wall (only ONE — the closed long side of the tray).
+            # All four edges have finger joints since this wall mates
+            # with the floor + lid + both short walls.
             self.rectangularWall(
-                w, h, "FFeF", ignore_widths=[1, 6], move="up",
+                w, h, "FFFF", ignore_widths=[1, 6], move="up",
                 label="utility tray long wall")
-            self.rectangularWall(
-                w, h, "FFeF", ignore_widths=[1, 6], move="up",
-                label="utility tray long wall")
-            self.rectangularWall(w, d, "ffff", move="up", label="utility tray floor")
 
-        self.rectangularWall(w, h, "FFeF", move="right only")
+        # Park the cursor to the right of the column above.
+        self.rectangularWall(w, h, "FFFF", move="right only")
 
+        # Short walls — bottom mates with floor (F), one side mates
+        # with the long wall (f), top mates with the lid (F), and the
+        # other side is open (e). The two walls are mirror images in
+        # the assembled tray; emitting them with the same edge spec
+        # and flipping one during assembly avoids a second edge type.
         self.rectangularWall(
-            d, h, "FfeF", ignore_widths=[1, 6], move="up",
+            d, h, "FfFe", ignore_widths=[1, 6], move="up",
             label="utility tray short wall")
         self.rectangularWall(
-            d, h, "FfeF", ignore_widths=[1, 6], move="up",
+            d, h, "FfFe", ignore_widths=[1, 6], move="up",
             label="utility tray short wall")
 
     # -----------------------------------------------------------------
