@@ -915,22 +915,33 @@ than the default 70 mm row height — the closed-book cavity must satisfy
         by ``r`` mm — apex at ``(x, y + r)``, endpoints of the flat
         side at ``(x - r, y)`` and ``(x + r, y)``.
 
-        Drawing is a two-segment closed polyline: forward ``2 * r``
-        along the flat side, then a 180° CCW arc with radius ``r``
-        bringing the cursor back to the start. The path is stroked in
-        the standard inner-cut colour so the laser cutter treats it as
-        a through-cut.
+        Implementation uses cairo's arc primitive directly (the same
+        approach :meth:`boxes.Boxes.hole` takes for full circles).
+        boxes' ``polyline`` with a ``(180, r)`` corner-with-radius does
+        NOT close back to the diameter's start — corner arcs are
+        centred perpendicular to the heading, so a 180° turn lands the
+        cursor offset by 2r in both directions rather than returning to
+        the start. Using ``ctx.arc`` lets us put the arc centre at the
+        midpoint of the diameter, which is what closes the half-disc.
         """
-        # Snap the path open so the polyline starts a fresh subpath
-        # rather than continuing from wherever the outer path was.
+        # Finish any open path so this hole starts a fresh subpath.
         self.ctx.stroke()
         with self.saved_context():
             self.set_source_color(Color.INNER_CUT)
-            # Start at the left end of the flat side, heading +x.
-            self.moveTo(x - r, y)
-            # Forward along the flat side, then a 180° arc closes the
-            # semicircle back to the start point.
-            self.polyline(2 * r, (180, r))
+            # Translate the local frame so the centre of the diameter
+            # is at the local origin. No rotation — boxes' internal
+            # math convention (y-up) means a CCW arc from angle 0 to π
+            # traces the UPPER half of the unit circle, which is the
+            # half we want above the flat side.
+            self.moveTo(x, y)
+            # Right end of the diameter at (r, 0); arc CCW from there
+            # through (0, r) up top to (-r, 0); then a straight
+            # line_to back to (r, 0) forms the flat side of the
+            # semicircle. boxes' Context wrapper has no close_path,
+            # so we explicitly draw the closing segment.
+            self.ctx.move_to(r, 0)
+            self.ctx.arc(0, 0, r, 0, math.pi)
+            self.ctx.line_to(r, 0)
             self.ctx.stroke()
 
     def _emit_map_sleeve(self):
