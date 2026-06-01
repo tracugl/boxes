@@ -139,6 +139,52 @@ def _parse_cells(s):
     return cells
 
 
+class _NotchedTopEdge(edges.BaseEdge):
+    """A plain straight edge with a rectangular notch cut into one end.
+
+    Used for the TOP edges of mech-row dividers and short walls. The
+    notch is the size of the cross-row label strip (``notch_width`` x
+    ``notch_depth``), and when the row is assembled, the strip drops
+    into the notches of all the dividers + both short walls, sitting
+    flush with the wall tops on its top face.
+
+    The notch is at the START of the edge (= the corner where this
+    edge begins, drawn in the rectangularWall path order). For
+    rectangularWall's TOP edge, that corner is the panel's top-right
+    when viewed in panel-local coords — the user installs all panels
+    with this corner at the FRONT of the row so the notches align.
+    """
+
+    char = "_"
+    description = "Top edge with rectangular notch for label-strip"
+
+    def __init__(self, boxes_, settings, notch_width, notch_depth):
+        # `settings` is unused for this edge type (no finger geometry to
+        # configure) but BaseEdge expects an argument so callers can pass
+        # None and it just becomes a no-op slot.
+        super().__init__(boxes_, settings)
+        self.notch_width = notch_width
+        self.notch_depth = notch_depth
+
+    def __call__(self, length, **kw):
+        w = self.notch_width
+        n = self.notch_depth
+        if w <= 0 or n <= 0 or length < w:
+            # Degenerate inputs — fall back to a plain straight edge so the
+            # panel still closes cleanly.
+            self.edge(length)
+            return
+        # Polyline trace from the edge's start corner, heading along the
+        # edge (in rectangularWall's TOP edge that's local -x world).
+        # Sequence: turn into panel (+90 CCW = down for top edge), walk
+        # `n` mm INTO the panel, turn back along the edge direction
+        # (-90 CW), walk `w` mm along the notch bottom, turn back UP
+        # OUT of the panel (-90 CW), walk `n` mm back to edge level,
+        # turn to resume along the edge (+90 CCW), walk the remaining
+        # `length - w` mm to the other corner.
+        self.polyline(0, 90, n, -90, w, -90, n, 90, length - w)
+
+
 class BattletechCarryBox(FlexBook):
     """BattleTech-themed flex-spine carry book with map sleeve, mech rows, and utility tray."""
 
@@ -235,17 +281,18 @@ than the default 70 mm row height — the closed-book cavity must satisfy
                  "Internal dividers stop at this height.")
         self.argparser.add_argument(
             "--label_strip_depth", action="store", type=float, default=12.0,
-            help="Depth (mm) of a separate name-plate strip emitted per row. "
-                 "The strip is a flat piece sized floor_w x this depth x "
-                 "thickness; the user glues it on top of the row's front "
-                 "wall and short walls, partly covering the open top of the "
-                 "front cells. Mechs are inserted through the open BACK "
-                 "portion of each cell's top (rowN_depth - label_strip_depth "
-                 "remains open). The strip's top face is the writing/labeling "
-                 "surface. Set to 0 to disable (no strip emitted). NOTE: "
-                 "this adds `thickness` mm to the row's TOTAL height when "
-                 "assembled, so the closed-book cavity must accommodate "
-                 "row_height + thickness + map_sleeve_depth.")
+            help="Depth (mm) of a name-plate strip recessed into the row "
+                 "across the short walls and the internal dividers. Both "
+                 "short walls and every divider get a rectangular notch "
+                 "cut into their top edge (`label_strip_depth` wide x "
+                 "`thickness` deep); the strip is a flat piece sized "
+                 "floor_w x this depth x thickness that drops into these "
+                 "notches from above. The strip's TOP face sits flush "
+                 "with the wall tops — assembled row total height is "
+                 "still exactly row_height, no protrusion above. The "
+                 "front portion of each cell's open top is covered by "
+                 "the strip; the BACK portion stays open for mech "
+                 "insertion. Set to 0 to disable (no notches, no strip).")
         self.argparser.add_argument(
             "--row_target_outer_width", action="store", type=float, default=0.0,
             help="Target outer width (mm) for ALL mech-tray rows. Each row "
@@ -835,9 +882,26 @@ than the default 70 mm row height — the closed-book cavity must satisfy
         holes_cb = self._row_finger_holes_callback(cells, h)
         cb_list = [holes_cb] if holes_cb is not None else None
 
+        # If a label strip is enabled, the short walls and the dividers
+        # need a rectangular NOTCH cut into their top edges so the strip
+        # drops in flush with the wall tops. The notch is the strip's
+        # width (label_strip_depth) by `thickness` deep. We build one
+        # NotchedTopEdge instance and pass it as the TOP edge for each
+        # affected panel; the strip itself is emitted further below.
+        if self.label_strip_depth > 0:
+            notched_top = _NotchedTopEdge(
+                self, None, self.label_strip_depth, t)
+            short_wall_edges = ["F", "f", notched_top, "F"]
+            divider_edges = ["e", "f", notched_top, "f"]
+        else:
+            short_wall_edges = "FfeF"
+            divider_edges = "efef"
+
         with self.saved_context():
             # Long walls (front + back of the row). Both get the divider
-            # hole callback so dividers can slot into either side.
+            # hole callback so dividers can slot into either side. NOT
+            # notched — the strip runs perpendicular to these walls, so
+            # its notches are cut into the panels that intersect it.
             self.rectangularWall(
                 floor_w, h, "FFeF", callback=cb_list,
                 ignore_widths=[1, 6], move="up", label="row long wall")
@@ -852,24 +916,29 @@ than the default 70 mm row height — the closed-book cavity must satisfy
         # parts don't overlap.
         self.rectangularWall(floor_w, h, "FFeF", move="right only")
 
-        # Short walls (left + right of the row).
+        # Short walls (left + right of the row). Top edges are notched
+        # when a label strip is enabled so the strip's ends drop in.
         self.rectangularWall(
-            depth, h, "FfeF", ignore_widths=[1, 6], move="up", label="row short wall")
+            depth, h, short_wall_edges, ignore_widths=[1, 6],
+            move="up", label="row short wall")
         self.rectangularWall(
-            depth, h, "FfeF", ignore_widths=[1, 6], move="up", label="row short wall")
+            depth, h, short_wall_edges, ignore_widths=[1, 6],
+            move="up", label="row short wall")
 
         # Internal dividers — full row_height tall, slot into the long-wall
-        # finger holes drilled by the callback above.
+        # finger holes drilled by the callback above. Top edges are
+        # notched when a label strip is enabled so the strip passes
+        # through and rests on each divider's notch bottom.
         for _ in range(n - 1):
             self.rectangularWall(
-                depth, h, "efef", move="up", label="row divider")
+                depth, h, divider_edges, move="up", label="row divider")
 
-        # Optional label strip — a separate flat piece the user glues on
-        # top of the assembled row's front + short walls, partly covering
-        # the row's open top. The strip occupies the front
-        # `label_strip_depth` mm of the row's top; the back portion stays
-        # open for inserting/removing mechs. The strip's TOP face is the
-        # writing surface (or where printed labels get glued).
+        # Optional label strip — a flat piece that drops INTO the notches
+        # in the short walls + dividers. Sits flush with the wall tops
+        # on its top face; supported by the notch bottoms underneath.
+        # Length = floor_w (across the row from short wall to short
+        # wall); width = label_strip_depth (the notch width); thickness
+        # = the row's material thickness (= notch depth, so it fits).
         if self.label_strip_depth > 0:
             self.rectangularWall(
                 floor_w, self.label_strip_depth, "eeee",
@@ -927,22 +996,21 @@ than the default 70 mm row height — the closed-book cavity must satisfy
         t = self.thickness
 
         # Closed-book cavity depth = spine_depth - 2*thickness. The map
-        # sleeve eats `map_sleeve_depth` of that; the mech rows + the
-        # label strip glued on top of them take `row_height + thickness`
-        # if a label strip is present. Warn (don't fail) if the user's
-        # settings can't physically close the book — they may be
-        # deliberately over-stuffing for a test print.
+        # sleeve eats `map_sleeve_depth` of that, leaving the rest for
+        # the mech rows. The label strip (if any) is RECESSED into the
+        # row's top via notches in the short walls + dividers, so it
+        # doesn't add to the row's total height. Warn (don't fail) if
+        # the user's settings can't physically close the book — they
+        # may be deliberately over-stuffing for a test print.
         cavity_depth = spine_depth - 2 * t
         sleeve_d = self.map_sleeve_depth if self.include_map_sleeve else 0.0
-        strip_t = t if self.label_strip_depth > 0 else 0.0
-        row_stack = self.row_height + strip_t
-        budget = cavity_depth - sleeve_d - row_stack
+        budget = cavity_depth - sleeve_d - self.row_height
         if budget < 0:
             print(
                 f"[BattletechCarryBox] WARNING: closed-book cavity is "
                 f"{cavity_depth:.1f}mm but row_height ({self.row_height}) + "
-                f"label strip ({strip_t}) + map_sleeve_depth ({sleeve_d}) = "
-                f"{row_stack + sleeve_d:.1f}mm. "
+                f"map_sleeve_depth ({sleeve_d}) = "
+                f"{self.row_height + sleeve_d:.1f}mm. "
                 f"Book will not close cleanly (over budget by {-budget:.1f}mm)."
             )
 
