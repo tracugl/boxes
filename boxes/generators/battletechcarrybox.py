@@ -407,6 +407,57 @@ than the default 70 mm row height — the closed-book cavity must satisfy
             help="Internal height (top-to-bottom) of the utility tray "
                  "in mm. Same axis as row_height for the mech rows.")
 
+        # ---- Dice tower (in the spine) ---------------------------------
+        # Turn the otherwise-wasted spine cavity into a small dice tower.
+        # The spine forms a half-cylindrical pocket when the cover folds;
+        # dice dropped through a hole in the TOP side-wall bulge fall down
+        # the spine, bounce off finger-jointed ramps that slot through the
+        # recess wall, and exit through a hole in the BOTTOM side-wall
+        # bulge.
+        self.argparser.add_argument(
+            "--include_dice_tower", action="store", type=boolarg, default=True,
+            help="Add dice entry/exit holes in the side walls and "
+                 "finger-jointed deflector ramps that slot through the "
+                 "recess wall, turning the spine into a small dice tower. "
+                 "Disable to leave the side walls + recess wall as plain "
+                 "panels.")
+        self.argparser.add_argument(
+            "--dice_hole_diameter", action="store", type=float, default=18.0,
+            help="Diameter (mm) of each dice entry/exit hole drilled in "
+                 "the side-wall bulge. 18 mm fits a standard 16 mm d6 with "
+                 "1 mm clearance per side. Two holes are drilled per side "
+                 "wall (for dropping 2 dice at once); set to 0 to disable "
+                 "just the holes (ramps still emitted).")
+        self.argparser.add_argument(
+            "--dice_hole_spacing", action="store", type=float, default=30.0,
+            help="Centre-to-centre spacing (mm) of the two dice holes on "
+                 "each side wall. Must be > dice_hole_diameter so the "
+                 "holes don't overlap.")
+        self.argparser.add_argument(
+            "--dice_tower_ramp_count", action="store", type=int, default=2,
+            help="Number of deflector ramps slotting through the recess "
+                 "wall into the spine cavity. Each ramp angles inward off "
+                 "the recess wall; consecutive ramps alternate slope so "
+                 "dice zig-zag down. 0 disables the ramps (and the recess "
+                 "wall stays as plain finger-jointed panel).")
+        self.argparser.add_argument(
+            "--dice_tower_ramp_angle", action="store", type=float, default=30.0,
+            help="Angle (degrees from horizontal) of each ramp when "
+                 "installed. 30 deg matches the default in boxes' built-in "
+                 "DiceTower generator.")
+        self.argparser.add_argument(
+            "--dice_tower_ramp_length", action="store", type=float, default=50.0,
+            help="Length (mm) of each ramp's TAB EDGE — the edge whose "
+                 "finger tabs slot into the recess wall. Determines the "
+                 "ramp's extent along the spine direction.")
+        self.argparser.add_argument(
+            "--dice_tower_ramp_width", action="store", type=float, default=30.0,
+            help="Width (mm) of each ramp perpendicular to the tab edge — "
+                 "how far the ramp protrudes into the spine cavity from "
+                 "the recess wall. Should be less than spine radius "
+                 "(y_spine / 2 = 45 mm by default) so the ramp doesn't "
+                 "touch the flex.")
+
     # -----------------------------------------------------------------
     # Recess wall override (add floor-side finger teeth)
     # -----------------------------------------------------------------
@@ -444,6 +495,15 @@ than the default 70 mm row height — the closed-book cavity must satisfy
         cutout_angle_dist = h / 2 - 2 * cutout_radius
         cutout_base_dist = y - (y * 0.4) - 4 * cutout_radius
 
+        # If a dice tower is enabled, drill angled finger holes in the
+        # recess wall's surface so the deflector ramps can slot through.
+        # Each ramp's tab edge mates with one row of finger holes — the
+        # angle of the row determines the ramp's tilt when installed.
+        # Consecutive ramps alternate angle direction so dice zig-zag
+        # down the spine cavity.
+        if self.include_dice_tower and self.dice_tower_ramp_count > 0:
+            self._drill_recess_ramp_holes(h, y, t)
+
         self.moveTo(0, t)
 
         self.edges["f"](h)
@@ -465,6 +525,102 @@ than the default 70 mm row height — the closed-book cavity must satisfy
                 cutout_predist)
         else:
             self.edges["e"](y)
+        self.corner(90)
+
+        self.move(tw, th, move)
+
+    def _drill_recess_ramp_holes(self, wall_h, wall_y, t):
+        """Drill angled finger-hole rows on the recess wall for dice-tower ramps.
+
+        ``wall_h`` is the recess wall's short dimension (= spine depth,
+        90 mm by default). ``wall_y`` is the wall's long dimension (=
+        cover-height direction, 311 mm by default). Ramps are positioned
+        along the long axis at evenly-spaced intervals; their tab rows are
+        drilled at ``±dice_tower_ramp_angle`` degrees, alternating, so
+        consecutive ramps slope opposite ways for the zig-zag.
+
+        Called from :meth:`flexBookRecessedWall` BEFORE the panel outline
+        is drawn — at that point the cursor is at the panel's natural
+        origin (0, 0), so all hole coordinates are in panel-local frame
+        with the panel rectangle spanning (0, t) to (h, t + y).
+        """
+        n = self.dice_tower_ramp_count
+        ramp_len = self.dice_tower_ramp_length
+        angle = self.dice_tower_ramp_angle
+
+        # Evenly space the ramps along the wall's long axis, leaving a
+        # ~10 mm clearance at each end of the wall so dice can enter and
+        # exit the spine cavity without immediately hitting a ramp.
+        end_clearance = 10.0
+        usable = wall_y - 2 * end_clearance
+        if n == 1:
+            positions_y = [t + end_clearance + usable / 2]
+        else:
+            step = usable / (n - 1)
+            positions_y = [t + end_clearance + i * step for i in range(n)]
+
+        # X position: centre the ramp's tab line on the wall's short
+        # axis. Each ramp is `ramp_len` long along its angle; the tab
+        # line spans roughly the wall's middle so the ramp sticks out
+        # toward the flex roughly perpendicular to the wall surface.
+        centre_x = wall_h / 2.0
+
+        for i, py in enumerate(positions_y):
+            # Alternate angle sign so ramps zig-zag.
+            tilt = angle if i % 2 == 0 else -angle
+            # The fingerHolesAt start position is the LEFT end of the tab
+            # row. Walk back by half the projected x/y to centre the row
+            # on (centre_x, py).
+            start_x = centre_x - (ramp_len / 2.0) * math.cos(math.radians(tilt))
+            start_y = py - (ramp_len / 2.0) * math.sin(math.radians(tilt))
+            self.fingerHolesAt(start_x, start_y, ramp_len, tilt)
+
+    def flexBookSide(self, h, x, r, callback=None, move=None):
+        """Emit the curved side wall, optionally with dice-tower holes.
+
+        Copied verbatim from :meth:`FlexBook.flexBookSide` and extended
+        with two circular through-holes in the half-disc bulge area. The
+        bulge wraps over the spine cavity when the book is assembled; the
+        two holes let the user drop dice into the spine from outside,
+        with each hole sized to a single d6 (default 18 mm, fits a 16 mm
+        die with 1 mm clearance per side). The same drilling runs on
+        BOTH side walls — the user installs one as the top of the book
+        (entry) and the other as the bottom (exit) when storing the
+        book upright on a shelf.
+        """
+        t = self.thickness
+
+        tw, th = h + t, x + 2 * t + r
+        if self.move(tw, th, move, True):
+            return
+
+        # Inherited finger holes for end-wall mating (recess + latch walls).
+        self.fingerHolesAt(0, x + 1.5 * t, h, 0)
+
+        # Dice entry/exit holes in the half-disc bulge area. The bulge is
+        # centred at panel-local (h/2, x + 2t) with radius r — we place
+        # two circles symmetrically about the panel-x midline, both at
+        # the same panel-y position safely inside the bulge curve.
+        if self.include_dice_tower and self.dice_hole_diameter > 0:
+            hole_r = self.dice_hole_diameter / 2.0
+            spacing = self.dice_hole_spacing
+            # Centre the pair on the bulge axis at h/2 along the wall-
+            # width direction.
+            cx_mid = h / 2.0
+            # Y position: a bit further than the bulge's flat side
+            # (x + 2t) so the holes sit inside the curved area but not
+            # so close to the bulge tip (x + 2t + r) that the cut weakens
+            # the curved edge. ~60% of the radius from the flat side.
+            cy = x + 2 * t + 0.6 * r
+            self.hole(cx_mid - spacing / 2.0, cy, r=hole_r)
+            self.hole(cx_mid + spacing / 2.0, cy, r=hole_r)
+
+        self.edges["F"](h)
+        self.corner(90, 0)
+        self.edges["e"](t)
+        self.edges["f"](x + t)
+        self.corner(180, r)
+        self.edges["e"](x + 2 * t)
         self.corner(90)
 
         self.move(tw, th, move)
@@ -1146,3 +1302,22 @@ than the default 70 mm row height — the closed-book cavity must satisfy
         # ---- 5. Utility tray ------------------------------------------
         if self.include_utility_tray:
             self._emit_utility_tray()
+
+        # ---- 6. Dice-tower ramps --------------------------------------
+        # One flat panel per ramp, sized
+        # ramp_length (tab-edge) x ramp_width (projects into the spine).
+        # Tab edge is `f` so it mates with the angled finger holes the
+        # recess wall override drilled; other 3 edges are plain `e` (the
+        # ramp is cantilevered from the recess wall on its tab edge
+        # only). Side-wall dice holes are drilled inside flexBookSide
+        # above; no separate part for those.
+        if (self.include_dice_tower
+                and self.dice_tower_ramp_count > 0
+                and self.dice_tower_ramp_length > 0
+                and self.dice_tower_ramp_width > 0):
+            for _ in range(self.dice_tower_ramp_count):
+                self.rectangularWall(
+                    self.dice_tower_ramp_length,
+                    self.dice_tower_ramp_width,
+                    "feee",
+                    move="up", label="dice tower ramp")
