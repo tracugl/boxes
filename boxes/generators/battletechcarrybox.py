@@ -217,6 +217,26 @@ strokes that the laser cutter engraves rather than cuts) on both panels at
 the correct positions — centre a magnet on each etched circle, glue with
 epoxy or CA, and the four magnets will line up across the closing seam.
 
+**Latch doubler (thin material):** With `latch_doubler` enabled (default), an
+extra plain-edged plate is emitted carrying the same latch-tab profile. Glue
+it flat onto the inner (cavity-facing) face of the latch wall before assembly
+so the tabs become double thickness (6 mm at 3 mm material) and don't snap.
+The cover's tab slots are automatically widened to receive the thicker tabs.
+Because the doubler then sits between the wall and the closing cover, glue the
+latch-side magnets onto the **doubler's** exposed face (its etched circles
+match the wall's). Disable `latch_doubler` to return to a single-thickness
+latch with t-wide slots.
+
+**Cover slot strength:** the tab slots are otherwise close to the cover's free
+edge, leaving a thin bridge of wood that can snap. Two settings (both on by
+default) reinforce it: `latch_cover_lip` extends the front cover into a small
+overhanging lip past the latch wall and moves the slots inboard by the same
+amount, widening that bridge (the lip also serves as a finger-pull); and
+`latch_cover_reinforcement` emits a thin strip to glue onto the inner face of
+the cover along the opening edge, flush with the free edge and just outboard of
+the slots, doubling the bridge thickness. Set the lip to 0 and/or disable the
+reinforcement to go back to edge-adjacent single-thickness slots.
+
 Override `inner depth in mm` (the `y` parameter) if your tallest mech is taller
 than the default 70 mm row height — the closed-book cavity must satisfy
 `y - 2*thickness >= row_height + map_sleeve_depth`.
@@ -230,7 +250,13 @@ than the default 70 mm row height — the closed-book cavity must satisfy
         # same FingerJoint + Flex edge settings, supply BattleTech-sized
         # defaults, and add our own arguments — all in one pass.
         Boxes.__init__(self)
-        self.addSettingsArgs(edges.FingerJointSettings)
+        # Default finger-joint play to 0.15× thickness (= 0.45 mm on 3 mm
+        # stock). The box is intended for 3 mm MDF that gets undercoated and
+        # painted; the extra clearance leaves room for primer + paint film
+        # on both mating faces so joints still slot together without sanding.
+        # Most of this design is glue-assembled anyway, so the looser fit is
+        # filled by glue. Override --FingerJoint_play at render time to tune.
+        self.addSettingsArgs(edges.FingerJointSettings, play=0.15)
         self.addSettingsArgs(edges.FlexSettings)
 
         # Cover face = 266 × 311 mm. Sized so the default tray layout
@@ -383,6 +409,45 @@ than the default 70 mm row height — the closed-book cavity must satisfy
             help="Per-side clearance (mm) between the latch tab and the "
                  "matching cover slot — accounts for laser kerf and "
                  "assembly tolerance. Total slot oversize is 2× this.")
+        self.argparser.add_argument(
+            "--latch_doubler", action="store", type=boolarg, default=True,
+            help="Emit a glue-on doubler plate that laminates onto the inner "
+                 "(cavity-facing) face of the latch wall, carrying the SAME "
+                 "tab profile so the latch tabs become 2× thickness "
+                 "(e.g. 6 mm at 3 mm material) — much stronger against "
+                 "snapping. When enabled, the cover's tab slots are "
+                 "automatically widened and re-centred to receive the "
+                 "doubled-thickness tabs. The doubler is a plain-edged "
+                 "rectangle (no finger joints) sized to the latch wall's "
+                 "footprint; it also stiffens the whole wall against "
+                 "bending. Glue magnets onto the doubler's exposed face "
+                 "(its etched circles match the latch wall's). Because the "
+                 "doubler eats one thickness off the cavity's cell-width "
+                 "axis, the cover (x) is automatically widened by one "
+                 "thickness when this is on, so the trays keep their fit. "
+                 "Disable to return to a single-thickness latch, t-wide "
+                 "cover slots, and the un-widened cover.")
+        self.argparser.add_argument(
+            "--latch_cover_lip", action="store", type=float, default=8.0,
+            help="Length (mm) by which the front cover is extended PAST the "
+                 "latch wall at the opening edge, forming a small overhanging "
+                 "lip. The tab slots and magnet marks are moved inboard by "
+                 "the same amount, so the strip of material between each slot "
+                 "and the cover's free edge (the bit that snaps) grows from "
+                 "~thickness to ~thickness+lip. The lip also doubles as a "
+                 "finger-pull for opening. Set to 0 for no lip (slots sit "
+                 "close to the edge as before). Only applied when latch tabs "
+                 "are enabled.")
+        self.argparser.add_argument(
+            "--latch_cover_reinforcement", action="store", type=boolarg, default=True,
+            help="Emit a glue-on reinforcement strip that laminates onto the "
+                 "INNER face of the front cover along the opening edge, in "
+                 "the lip region OUTBOARD of the tab slots. It makes the "
+                 "slot-to-edge bridge double thickness so it resists snapping "
+                 "when the cover is pried open. The strip carries no slots "
+                 "(the tabs sit just inboard of it) and glues flush with the "
+                 "cover's free edge. Most useful together with a non-zero "
+                 "latch_cover_lip; disable to skip the extra part.")
 
         # ---- Utility tray -----------------------------------------------
         # A separate open-top finger-jointed box for dice/pens/tokens.
@@ -430,7 +495,7 @@ than the default 70 mm row height — the closed-book cavity must satisfy
                  "Disable to leave the side walls + recess wall as plain "
                  "panels.")
         self.argparser.add_argument(
-            "--dice_hole_radius", action="store", type=float, default=20.0,
+            "--dice_hole_radius", action="store", type=float, default=35.0,
             help="Radius (mm) of the semicircular dice entry/exit hole "
                  "cut into each side-wall bulge. The semicircle's flat "
                  "side is the DIAMETER (= 2 * this value) and its curve "
@@ -453,7 +518,7 @@ than the default 70 mm row height — the closed-book cavity must satisfy
                  "leaves a minimum gap below the bulge's outer edge "
                  "(a warning is logged).")
         self.argparser.add_argument(
-            "--dice_tower_ramp_count", action="store", type=int, default=2,
+            "--dice_tower_ramp_count", action="store", type=int, default=3,
             help="Number of deflector ramps slotting through the recess "
                  "wall into the spine cavity. Each ramp angles inward off "
                  "the recess wall; consecutive ramps alternate slope so "
@@ -860,7 +925,13 @@ than the default 70 mm row height — the closed-book cavity must satisfy
         c4 = self.c4
         t = self.thickness
 
-        tw = 2 * x + 6 * t + 2 * c4 + t
+        # Opening-edge lip: extend the FRONT cover past the latch wall by
+        # this amount so the tab slots (and magnet marks) move inboard,
+        # away from the free edge. Only meaningful when tabs exist — with
+        # no tabs there is nothing to move, so the lip collapses to 0.
+        lip = self.latch_cover_lip if self.latch_tab_count > 0 else 0.0
+
+        tw = 2 * x + 6 * t + 2 * c4 + t + lip
         th = y + 4 * t
 
         if self.move(tw, th, move, True):
@@ -890,7 +961,7 @@ than the default 70 mm row height — the closed-book cavity must satisfy
 
         self.edges["h"](x + t)
         self.edges["X"](2 * c4 + t, y + 4 * t)  # flex spine
-        self.edges["e"](x + t)
+        self.edges["e"](x + t + lip)  # front cover, extended by the opening lip
         self.corner(90, 2 * t)
         self.edges["e"](y / 2)
         # FlexBook drills three rectangular holes here for the latch hardware
@@ -910,12 +981,14 @@ than the default 70 mm row height — the closed-book cavity must satisfy
         # through-slots that receive the latch wall's tabs.
         half_span = self.magnet_pair_spacing / 2
         # Magnets: ±magnet_pair_spacing/2 along the edge, magnet_edge_inset
-        # INTO the panel.
+        # INTO the panel — plus the lip, since the latch wall (and therefore
+        # the magnet it carries) stays put while the cover edge moved out by
+        # `lip`; the cover marks must shift inboard to stay aligned.
         self.regularPolygonHole(
-            +half_span, self.magnet_edge_inset,
+            +half_span, self.magnet_edge_inset + lip,
             d=self.magnet_diameter, n=24, color=Color.ETCHING)
         self.regularPolygonHole(
-            -half_span, self.magnet_edge_inset,
+            -half_span, self.magnet_edge_inset + lip,
             d=self.magnet_diameter, n=24, color=Color.ETCHING)
         # Latch slots: ±latch_tab_spacing/2 along the edge, centred 1.5×t
         # INTO the panel so each slot sits over the centre of the latch
@@ -928,13 +1001,29 @@ than the default 70 mm row height — the closed-book cavity must satisfy
         # align exactly when the book closes.
         if self.latch_tab_count > 0:
             slot_dx = self.latch_tab_width + 2 * self.latch_tab_clearance
-            slot_dy = t + 2 * self.latch_tab_clearance
+            # Slot depth (across the wall thickness) and centre depend on
+            # whether a latch doubler is laminated to the wall. A single
+            # wall is t thick and occupies the LY band [t, 2t] (its outer
+            # face flush with the cover's latch-end edge at LY=t, inner face
+            # at LY=2t), so the slot centres at 1.5t with depth t. The
+            # doubler adds a second t of material on the INNER face, growing
+            # the wall toward the cavity to the band [t, 3t] — so the slot
+            # must grow to depth 2t and re-centre at 2t to span both layers.
+            if self.latch_doubler:
+                tab_thickness = 2 * t
+                slot_center_ly = 2 * t
+            else:
+                tab_thickness = t
+                slot_center_ly = 1.5 * t
+            slot_dy = tab_thickness + 2 * self.latch_tab_clearance
+            # Shift every slot inboard by the opening lip so they stay over
+            # the (stationary) latch-wall tabs after the cover edge moved out.
             for k in range(self.latch_tab_count):
                 offset = (k - (self.latch_tab_count - 1) / 2) * self.latch_tab_spacing
-                self.rectangularHole(offset, 1.5 * t, slot_dx, slot_dy)
+                self.rectangularHole(offset, slot_center_ly + lip, slot_dx, slot_dy)
         self.edges["e"](y / 2)
         self.corner(90, 2 * t)
-        self.edges["e"](x + t + 2 * c4 + t)
+        self.edges["e"](x + t + lip + 2 * c4 + t)  # front cover (+lip) + spine
         self.edges["h"](x + t)
         self.corner(90, 2 * t)
         self.edges["h"](y)
@@ -1027,6 +1116,121 @@ than the default 70 mm row height — the closed-book cavity must satisfy
         self.polyline(*self._build_tabbed_edge_polyline(y))
 
         self.move(tw, th, move)
+
+    def flexBookLatchDoubler(self, h, y, move=None):
+        """Emit the glue-on reinforcement plate for the latch wall.
+
+        At thin material (e.g. 3 mm) the latch tabs are fragile fins that
+        snap easily. This part is laminated flat onto the INNER
+        (cavity-facing) face of :meth:`flexBookLatchWall`, carrying the
+        identical tab profile on its lid-side edge so that, once glued, the
+        tabs stack into a 2×-thickness fin (6 mm at t=3 mm). The combined
+        wall also resists bending far better than a single sheet.
+
+        Geometry mirrors :meth:`flexBookLatchWall` exactly so the tabs line
+        up when the two pieces are stacked:
+
+        * The three structural edges (bottom, floor-side, top) are plain
+          ``e`` butt edges — the doubler is glued to the wall's face and
+          carries no load into the side walls or back cover, so it needs no
+          finger joints. Its rectangle therefore matches the latch wall's
+          NOMINAL footprint (``h`` × ``y``), nesting snugly between the two
+          side walls which locate it during glue-up.
+        * The lid-side edge reuses :meth:`_build_tabbed_edge_polyline` with
+          the same ``y`` length, so its tab centres coincide with the latch
+          wall's tabs and the fins stack cleanly.
+        * The same two magnet alignment circles are etched on the doubler's
+          face. Because the doubler sits between the wall and the closing
+          cover, ITS exposed face is the one the cover meets — so the user
+          glues the disc magnets onto the doubler, not the bare wall.
+
+        ``h`` and ``y`` carry the same (post-swap) meaning as in
+        :meth:`flexBookLatchWall`: ``h`` is the short (side-to-side) edge,
+        ``y`` is the long lid-side edge.
+        """
+        t = self.thickness
+
+        # The lid-side tabs protrude ``t`` mm out of the panel rectangle in
+        # the -x direction (same as the latch wall). Reserve that strip in
+        # the move envelope and shift the local origin right by it so the
+        # leftward-poking tabs stay within bounds. Match the latch wall's
+        # ``y + 2t`` envelope height so the two parts read as the same size
+        # in the SVG layout.
+        tab_extent = t if self.latch_tab_count > 0 else 0
+        tw, th = h + tab_extent, y + 2 * t
+
+        if self.move(tw, th, move, True):
+            return
+
+        self.moveTo(tab_extent, t)
+
+        # Three plain glue edges, drawn in the same order as the latch wall
+        # (bottom h, floor-side y, top h) so the cursor finishes at the
+        # top-left corner heading down the lid-side edge.
+        self.edges["e"](h)
+        self.corner(90)
+        self.edges["e"](y)
+        self.corner(90)
+        self.edges["e"](h)
+        self.corner(90)
+
+        # Magnet alignment circles at the same positions as the latch wall
+        # (see :meth:`flexBookLatchWall` for the coordinate-frame derivation).
+        half_span = self.magnet_pair_spacing / 2
+        self.regularPolygonHole(
+            y / 2 - half_span, self.magnet_edge_inset,
+            d=self.magnet_diameter, n=24, color=Color.ETCHING)
+        self.regularPolygonHole(
+            y / 2 + half_span, self.magnet_edge_inset,
+            d=self.magnet_diameter, n=24, color=Color.ETCHING)
+
+        # Lid-side edge with the matching tab protrusions; the polyline
+        # includes the final 90° corner that closes the outline.
+        self.polyline(*self._build_tabbed_edge_polyline(y))
+
+        self.move(tw, th, move)
+
+    def flexBookCoverReinforcement(self, y, move=None):
+        """Emit the glue-on bridge-reinforcement strip for the front cover.
+
+        The tab slots sit a short distance in from the cover's free opening
+        edge; the wood between a slot and that edge (the "bridge") is the
+        part that snaps when the cover is pried. This flat strip laminates
+        onto the INNER face of the front cover, flush with the free edge,
+        filling exactly the bridge band OUTBOARD of the slots so that band
+        becomes double thickness. It deliberately stops just shy of the
+        slots (a 0.5 mm gap) so it never overlaps one — the tabs only
+        protrude one ``thickness`` and so reach the cover's outer face but
+        not this inner strip, leaving them free to lift out when opening.
+
+        ``y`` is the cover's opening-edge length (post-swap ``self.y``); the
+        strip runs the full length of that edge for maximum stiffness.
+
+        The strip width is derived from the same slot geometry used in
+        :meth:`flexBookCover` (centre + half-depth), plus the opening lip,
+        so it always lands exactly against the slots regardless of the
+        doubler / lip settings.
+        """
+        t = self.thickness
+        clr = self.latch_tab_clearance
+        lip = self.latch_cover_lip if self.latch_tab_count > 0 else 0.0
+
+        # Reproduce flexBookCover's slot centre + depth, then take the
+        # outboard slot edge as the inboard limit of the bridge band.
+        if self.latch_doubler:
+            slot_center_ly, slot_dy = 2 * t, 2 * t + 2 * clr
+        else:
+            slot_center_ly, slot_dy = 1.5 * t, t + 2 * clr
+        slot_near_edge = slot_center_ly + lip - slot_dy / 2.0
+        strip_width = slot_near_edge - 0.5  # 0.5 mm shy of the slots
+
+        if strip_width <= 0:
+            # No room to reinforce (e.g. lip=0 with thin material) — skip
+            # rather than emit a degenerate sliver.
+            return
+
+        self.rectangularWall(y, strip_width, "eeee", move=move,
+                             label="cover latch reinforcement")
 
     # -----------------------------------------------------------------
     # Part-emission helpers
@@ -1498,6 +1702,18 @@ than the default 70 mm row height — the closed-book cavity must satisfy
                 f"Book will not close cleanly (over budget by {-budget:.1f}mm)."
             )
 
+        # The latch doubler laminates t mm onto the latch wall's INNER
+        # (cavity-facing) face, stealing that much from the cavity's
+        # cell-width axis — the tight one (only ~2 mm of tray play at the
+        # default sizes). Compensate by widening the cover (x) by the same
+        # t so the tray layout keeps its clearance with the doubler fitted.
+        # The trays are sized from the cell list (independent of x), so they
+        # are unchanged; only the cover/side panels grow. Done here rather
+        # than in the default x so the compensation tracks both the live
+        # thickness AND whether the doubler is actually enabled.
+        if self.latch_doubler:
+            self.x += t
+
         # ---- 1. Replicate FlexBook's pre-render setup ------------------
         # Swap y and h on self so the inherited helpers (flexBookSide,
         # flexBookRecessedWall, our overridden flexBookCover and
@@ -1522,6 +1738,14 @@ than the default 70 mm row height — the closed-book cavity must satisfy
         self.flexBookCover(move="up")
         self.flexBookRecessedWall(self.h, self.y, self.recess_wall, move="mirror right")
         self.flexBookLatchWall(self.h, self.y, self.latchsize, move="right")
+        # Glue-on reinforcement plate for the latch wall (doubles the tab
+        # thickness). The cover's tab slots are widened to match in
+        # flexBookCover when this is enabled.
+        if self.latch_doubler:
+            self.flexBookLatchDoubler(self.h, self.y, move="right")
+        # Glue-on strip that doubles the cover's slot-to-edge bridge.
+        if self.latch_cover_reinforcement and self.latch_tab_count > 0:
+            self.flexBookCoverReinforcement(self.y, move="right")
 
         with self.saved_context():
             self.flexBookSide(self.h, self.x, self.radius, move="right")
