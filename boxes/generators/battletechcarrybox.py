@@ -250,13 +250,16 @@ than the default 70 mm row height — the closed-book cavity must satisfy
         # same FingerJoint + Flex edge settings, supply BattleTech-sized
         # defaults, and add our own arguments — all in one pass.
         Boxes.__init__(self)
-        # Default finger-joint play to 0.15× thickness (= 0.45 mm on 3 mm
-        # stock). The box is intended for 3 mm MDF that gets undercoated and
-        # painted; the extra clearance leaves room for primer + paint film
-        # on both mating faces so joints still slot together without sanding.
-        # Most of this design is glue-assembled anyway, so the looser fit is
-        # filled by glue. Override --FingerJoint_play at render time to tune.
-        self.addSettingsArgs(edges.FingerJointSettings, play=0.15)
+        # Default finger-joint play to 0.3× thickness (= 0.9 mm total slot
+        # clearance on 3 mm stock, ~0.45 mm per side). The box is intended
+        # for 3 mm MDF that gets primed and painted before assembly: `play`
+        # is the TOTAL finger-in-slot gap, so it is split across both sides,
+        # and each side must swallow paint film on BOTH the finger edge and
+        # the slot wall. MDF primer builds up ~0.15-0.2 mm per absorbent cut
+        # edge, so a generous gap avoids having to sand fuzzy fingers back.
+        # The design is glue-assembled, so the residual gap after painting
+        # is exactly what the glue fills. Override --FingerJoint_play to tune.
+        self.addSettingsArgs(edges.FingerJointSettings, play=0.3)
         self.addSettingsArgs(edges.FlexSettings)
 
         # Cover face = 266 × 311 mm. Sized so the default tray layout
