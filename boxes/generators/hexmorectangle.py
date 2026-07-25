@@ -304,7 +304,7 @@ class HexmoRectangle(Boxes):
         # the curve-only ones (no route selection, no radius label — a straight has
         # no finite radius).
         self.argparser.add_argument(
-            "--track_lines", action="store", type=boolarg, default=False,
+            "--track_lines", action="store", type=boolarg, default=True,
             help="Etch a straight track guide down the long axis of the base "
                  "plate (an engrave pass, not a cut).  Master switch for all the "
                  "track_* options below.")
@@ -319,16 +319,16 @@ class HexmoRectangle(Boxes):
             help="Lateral spacing (mm) between adjacent track centrelines when "
                  "--track_line_count > 1.  Defaults to 80 mm.")
         self.argparser.add_argument(
-            "--draw_center", action="store", type=boolarg, default=True,
+            "--draw_center", action="store", type=boolarg, default=False,
             help="Etch the track centreline(s) themselves.  On by default.")
         self.argparser.add_argument(
-            "--draw_track", action="store", type=boolarg, default=False,
+            "--draw_track", action="store", type=boolarg, default=True,
             help="Etch the two track-footprint edges at ± track_width/2 either "
                  "side of each centreline, showing where the laid track sits.")
         self.argparser.add_argument(
-            "--track_width", action="store", type=float, default=40.0,
+            "--track_width", action="store", type=float, default=30.0,
             help="Physical width (mm) of the laid track/roadbed, used by "
-                 "--draw_track for the footprint edges.  ~40 mm HO, ~20 mm N.")
+                 "--draw_track for the footprint edges.  30 mm HO, 17 mm N.")
         self.argparser.add_argument(
             "--track_lead_in", action="store", type=float, default=30.0,
             help="Distance (mm) in from each short-wall end at which the "
@@ -367,11 +367,11 @@ class HexmoRectangle(Boxes):
                  "The small registration and medium holes are never changed by "
                  "this option.  Matches the HexmoHexagon option of the same name.")
         self.argparser.add_argument(
-            "--big_hole_roundness", action="store", type=float, default=0.5,
+            "--big_hole_roundness", action="store", type=float, default=0.3,
             help="Corner rounding for --big_hole_shape=rounded_rect, as a "
                  "fraction of the hole's half-width (0 = square corners, "
-                 "1 = fully round, i.e. back to a circle).  Default 0.5 — on the "
-                 "Ø70 mm big holes that is a 17.5 mm corner radius.  Values are "
+                 "1 = fully round, i.e. back to a circle).  Default 0.3 — on the "
+                 "Ø70 mm big holes that is a 10.5 mm corner radius.  Values are "
                  "clamped by rectangularHole, so out-of-range numbers are safe.")
 
     def _drawBigHole(self, x, y, r):
@@ -439,12 +439,12 @@ class HexmoRectangle(Boxes):
         self.hole(2 * sp,     l_eff - sp,  r3)   # left, near top, 2nd column
         self.hole(2 * sp,     sp_y,        r3)   # left, near bottom, 2nd column
 
-    def _drawSupportGapFeatures(self, x_lo, x_hi):
+    def _drawSupportGapFeatures(self, x_lo, x_hi, pilots=True):
         """Fill the x-axis gap between two features with a symmetric hole sub-group.
 
-        Copied verbatim from HexmoHexagon so that divider panels produced by
-        this generator carry the same sub-hole pattern as HexmoHexagon support
-        panels, keeping all hole types pin-compatible across the system.
+        Copied from HexmoHexagon so that outer-wall panels carry the same
+        sub-hole pattern as HexmoHexagon panels, keeping all hole types
+        pin-compatible across the modular system.
 
         Attempts to place, symmetrically within [x_lo, x_hi]:
           - Full G6 equivalent (left-small + centre-medium + right-small,
@@ -454,6 +454,9 @@ class HexmoRectangle(Boxes):
 
         @param x_lo - Inner left boundary of the gap (outer edge of left neighbour).
         @param x_hi - Inner right boundary of the gap (outer edge of right neighbour).
+        @param pilots - When False, omit the small Ø6 pilot holes and keep only
+            the medium holes.  Used on the internal divider panels, which register
+            to nothing, so their pilots are pure laser overhead.
         """
         r2 = self._R2
         r3 = self._R3
@@ -494,19 +497,21 @@ class HexmoRectangle(Boxes):
             # G2: single centred medium with one pilot toward each edge
             # (1 medium + 2 small), matching the reduced HexmoHexagon pattern.
             if half_gap >= half_for_G2m:
-                self.hole(x_mid, l_eff / 2, r2)  # centred medium
-                self.hole(x_mid, y_bot_r3,  r3)  # pilot near bottom edge
-                self.hole(x_mid, y_top_r3,  r3)  # pilot near top edge
+                self.hole(x_mid, l_eff / 2, r2)      # centred medium
+                if pilots:
+                    self.hole(x_mid, y_bot_r3, r3)   # pilot near bottom edge
+                    self.hole(x_mid, y_top_r3, r3)   # pilot near top edge
             return
 
         if half_gap >= half_for_G6:
-            # Full G4 pattern: three x-positions × two y-positions (top + bottom).
-            self.hole(x_mid - sm_offset, y_bot_r3, r3)
-            self.hole(x_mid - sm_offset, y_top_r3, r3)
-            self.hole(x_mid,             y_bot_r2, r2)
-            self.hole(x_mid,             y_top_r2, r2)
-            self.hole(x_mid + sm_offset, y_bot_r3, r3)
-            self.hole(x_mid + sm_offset, y_top_r3, r3)
+            # Full G4 pattern: two mediums (top + bottom) flanked by small pilots.
+            self.hole(x_mid, y_bot_r2, r2)
+            self.hole(x_mid, y_top_r2, r2)
+            if pilots:
+                self.hole(x_mid - sm_offset, y_bot_r3, r3)
+                self.hole(x_mid - sm_offset, y_top_r3, r3)
+                self.hole(x_mid + sm_offset, y_bot_r3, r3)
+                self.hole(x_mid + sm_offset, y_top_r3, r3)
 
         elif half_gap >= half_for_G2m:
             # Gap too narrow for small flanking holes — medium pair only.
@@ -604,6 +609,88 @@ class HexmoRectangle(Boxes):
         y_mid = l_eff / 2
         self._drawBigHole(x_mid, y_mid, r4)
 
+    # Target centre-to-centre spacing of the packed big weight-reduction holes
+    # along a panel's long axis (mm).  Kept just above the minimum that still
+    # leaves a gap wide enough for one full G4 cluster (2 medium + 4 small), so
+    # big holes are preferred and packed fairly densely.
+    _BIG_PITCH = 140.0
+
+    # Minimum clearance from a big hole's *edge* to a span boundary — a divider
+    # finger slot or a corner cluster.  Deliberately larger than _MIN_CLEAR so
+    # big weight-reduction holes never crowd those structural edge fittings; a
+    # slot-side gap this size holds a small/medium cluster instead.
+    _BIG_EDGE = 30.0
+
+    def _fillWeightSpan(self, x_lo, x_hi, edge_lo=None, edge_hi=None, pilots=True,
+                        clusters=True, y_centre=None):
+        """Weight-reduction fill for one panel span, mirroring HexmoHexagon.
+
+        Big weight-reduction holes come **first**: as many as fit are packed
+        (one per :attr:`_BIG_PITCH`, shaped by ``--big_hole_shape``) along the
+        span centre line, then every leftover gap — including the two end gaps —
+        is filled with **one** small/medium cluster via
+        :meth:`_drawSupportGapFeatures` (copied verbatim from HexmoHexagon:
+        ``--gap_holes=g4`` → 2 medium + 4 small, ``g2`` → 1 medium + 2 small).
+        The big-hole packing is identical for g4 and g2.
+
+        ``edge_lo`` / ``edge_hi`` are the clearances a big-hole *centre* must keep
+        from each boundary.  Default (``None``) is ``_R4 + _BIG_EDGE`` — used for
+        a divider finger slot, where a big must stay well clear.  Pass ``0`` when
+        the boundary is already a safe big-centre position (a corner-cluster
+        ``x_floor``), so a big hole is placed there instead of a cluster.
+
+        @param x_lo - Inner left boundary of the span (mm, callback frame x).
+        @param x_hi - Inner right boundary of the span (mm, callback frame x).
+        """
+        r4, mc = self._R4, self._MIN_CLEAR
+        slot_edge = r4 + self._BIG_EDGE
+        if edge_lo is None:
+            edge_lo = slot_edge
+        if edge_hi is None:
+            edge_hi = slot_edge
+        span = x_hi - x_lo
+        if span <= 0:
+            return
+        # y-centre of the big holes; defaults to the wall's inner mid-height, but
+        # callers on a differently-proportioned panel (e.g. the spoke, which is
+        # sw wide) pass their own centre.  ``clusters=False`` packs big holes only
+        # and draws no small/medium gap features at all.
+        y_big = (self.h - 2 * self.thickness) / 2.0 if y_centre is None else y_centre
+        # Range in which a big-hole *centre* may sit, given the per-side edge
+        # clearances (divider slots inset by _R4+_BIG_EDGE, corner sides by 0).
+        c_lo, c_hi = x_lo + edge_lo, x_hi - edge_hi
+        if c_hi <= c_lo:
+            # The per-side edge clearances can't both be met (a short end cell).
+            # If a single big hole still fits the raw span, centre it so its
+            # clearance is *balanced* between the two boundaries — better than
+            # crowding one — and cluster-fill any room left on each side.
+            # Otherwise the span is genuinely too small: use one cluster.
+            if span >= 2 * r4 + 2 * mc:
+                xc = (x_lo + x_hi) / 2.0
+                self._drawBigHole(xc, y_big, r4)
+                if clusters:
+                    self._drawSupportGapFeatures(x_lo, xc - r4 - mc, pilots=pilots)
+                    self._drawSupportGapFeatures(xc + r4 + mc, x_hi, pilots=pilots)
+            elif clusters:
+                self._drawSupportGapFeatures(x_lo, x_hi, pilots=pilots)
+            return
+        c_span = c_hi - c_lo
+        # Big holes ~_BIG_PITCH apart, spread across the centre range (endpoints
+        # included for n ≥ 2 so the outermost bigs hug the boundaries).
+        n_big = max(1, round(1 + c_span / self._BIG_PITCH))
+        if n_big == 1:
+            centres = [(c_lo + c_hi) / 2.0]
+        else:
+            centres = [c_lo + c_span * i / (n_big - 1) for i in range(n_big)]
+        for xc in centres:
+            self._drawBigHole(xc, y_big, r4)
+        # Gaps: span start → first big, between adjacent bigs, last big → end.
+        los = [x_lo] + [c + r4 + mc for c in centres]
+        his = [c - r4 - mc for c in centres] + [x_hi]
+        if clusters:
+            for g_lo, g_hi in zip(los, his):
+                self._drawSupportGapFeatures(g_lo, g_hi, pilots=pilots)
+
     def drawAlignmentHolesRect(self, s, gap_features=True, draw_corners=True):
         """Cut alignment features into an outer wall drawn by rectangularWall.
 
@@ -649,7 +736,11 @@ class HexmoRectangle(Boxes):
         r4 = self._R4
 
         # Minimum x-distance from either end where a big hole centre can sit
-        # without its edge overlapping the corner cluster's medium hole.
+        # without its edge overlapping the corner cluster's medium hole.  This is
+        # registration-critical: it co-locates the outer-wall big holes with the
+        # HexmoHexagon edge-wall big holes (via s_rect), so it must NOT change.
+        # The tight ~MIN_CLEAR gap to the corner cluster is the alignment, not a
+        # defect — do not "centre" these big holes.
         x_floor = 3 * sp + r2 + r4 + mc
 
         # Available length for the interior big-hole band.
@@ -1046,6 +1137,13 @@ class HexmoRectangle(Boxes):
             # gap_features=False: the gap-fill medium holes at x_mid of the two
             # inter-big-hole gaps land directly on the vertical-divider finger
             # slots (fingerHolesAt above), so they must be suppressed here.
+            #
+            # The big-hole x-positions are NOT adjusted here: on this outer
+            # (short) wall they are a registration surface, placed via s_rect so
+            # they co-locate with the HexmoHexagon edge-wall big holes when the
+            # two box types are assembled side by side.  Moving them (e.g. to
+            # add corner clearance) breaks that alignment, so drawAlignmentHolesRect
+            # keeps its default registration x_floor.
             self.drawAlignmentHolesRect(s_rect, gap_features=False)
 
         # Long outer walls (H × h): four horizontal dividers pass through.
@@ -1118,29 +1216,26 @@ class HexmoRectangle(Boxes):
             # slot at x = row_h, otherwise the big circle punches into the interlock
             # joint.  When row_h is small (small --radius) there is simply no room
             # and the hole is suppressed rather than overlapping the joint.
-            l_eff = self.h - 2 * t
-            y_big = l_eff / 2
-            if x_floor + self._R4 + self._MIN_CLEAR <= row_h:
-                self._drawBigHole(x_floor,     y_big, self._R4)
-                self._drawBigHole(H - x_floor, y_big, self._R4)
-            # Interior segments 1 … n_cols−2: full gap band when the segment is wide
-            # enough, otherwise a single centred big hole.
-            # The _drawGapBandFeatures threshold duplicates the guard inside that
-            # method (half_gap >= md_off + r2 + mc) so we can choose the fallback
-            # without modifying the method's signature.
-            sm_off = self._R4 + self._MIN_CLEAR + self._R3
-            md_off = sm_off + self._R3 + self._MIN_CLEAR + self._R2
-            half_gap = row_h / 2
-            for j in range(1, n_cols - 1):
-                x_lo = j * (row_h + t)
-                x_hi = x_lo + row_h
-                if half_gap >= md_off + self._R2 + self._MIN_CLEAR:
-                    # Wide enough for the full band pattern.
-                    self._drawGapBandFeatures(x_lo, x_hi)
-                else:
-                    # Too narrow for the full band; place one centred big hole.
-                    # _drawSupportSegmentHole self-guards if r4 doesn't fit.
-                    self._drawSupportSegmentHole(x_lo, x_hi)
+            # Weight-reduction fill (see _fillWeightSpan): pack big holes and
+            # fill the gaps between them with small/medium column clusters.  The
+            # wall is divided into n_cols cells by the horizontal-divider slots;
+            # the two end cells are inset by x_floor so the fill clears the
+            # corner clusters, and interior cells span slot-to-slot.
+            # An end cell runs from the corner cluster's outer edge (the medium
+            # hole at 3·SPACER, right edge 3·SPACER + r2) to the first divider
+            # slot.  Passing that true boundary lets _fillWeightSpan give the big
+            # hole proper, balanced clearance from the corner cluster (rather
+            # than pinning it a single MIN_CLEAR away).  Interior cells run
+            # slot-to-slot with the default clearance on both sides.
+            corner_edge = 3 * self._SPACER + self._R2
+            if n_cols == 1:
+                self._fillWeightSpan(corner_edge, H - corner_edge)
+            else:
+                self._fillWeightSpan(corner_edge, row_h)
+                self._fillWeightSpan(H - row_h, H - corner_edge)
+                for j in range(1, n_cols - 1):
+                    x_lo = j * (row_h + t)
+                    self._fillWeightSpan(x_lo, x_lo + row_h)
 
         # Segment-hole helper used by both divider types.
         # n: number of segments; step: inner length of each segment (row_h or col_w).
@@ -1158,9 +1253,10 @@ class HexmoRectangle(Boxes):
             """
             for j in range(n):
                 x_lo = j * (step + t)
-                # One large hole per segment — matches the outer-wall big-hole
-                # pattern and is simpler to cut than the multi-hole G6 cluster.
-                self._drawSupportSegmentHole(x_lo, x_lo + step)
+                # Divider panels: packed big holes with medium gap features, but
+                # pilots=False drops the Ø6 registration pilots — internal support
+                # walls register to nothing, so those pilots are pure overhead.
+                self._fillWeightSpan(x_lo, x_lo + step, pilots=False)
 
         # Vertical dividers (H × h): n_cols row segments, step = row_h.
         vert_div_cb  = lambda: _seg_hole_cb(n_cols, row_h)
@@ -1347,6 +1443,15 @@ class HexmoRectangle(Boxes):
                 # One sw-length fingerHoles run per divider: receives the sw-wide
                 # 'f' strip from _HorizDivSpokeEdge.
                 self.fingerHolesAt(div_pos(i), 0, sw, 90)
+            # Large weight-reduction / access holes in the row gaps between the
+            # divider finger slots.  Big holes only (clusters=False) — the spoke
+            # registers to nothing, so it needs no medium/small holes — centred
+            # across the spoke's sw width and packed clear of the finger slots and
+            # the finger-tabbed ends (_fillWeightSpan keeps _BIG_EDGE clearance).
+            if sw >= 2 * self._R4 + 2 * self._MIN_CLEAR:
+                bounds = [0.0] + [div_pos(i) for i in range(n_div_h)] + [H]
+                for g_lo, g_hi in zip(bounds[:-1], bounds[1:]):
+                    self._fillWeightSpan(g_lo, g_hi, clusters=False, y_centre=sw / 2)
 
         if sw > 0:
             self.rectangularWall(H, sw, "efef",
