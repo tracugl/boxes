@@ -26,7 +26,7 @@ import argparse
 import datetime
 import math
 
-from boxes import Boxes, edges
+from boxes import Boxes, edges, boolarg
 from boxes.Color import Color
 
 
@@ -295,6 +295,49 @@ class HexmoRectangle(Boxes):
                  "radius < 300 → 2 columns (one central divider).  "
                  "Minimum value is 1 (no horizontal dividers); maximum is 5.",
         )
+
+        # --- Track-guide markings (base plate) ---------------------------------
+        # A HexmoRectangle is a straight module: track runs straight down its long
+        # (H = radius × √3) axis, entering/leaving through the two short walls.
+        # These options etch that straight track onto the base plate as a laying
+        # guide.  They mirror the HexmoHexagon track parameters (same names) minus
+        # the curve-only ones (no route selection, no radius label — a straight has
+        # no finite radius).
+        self.argparser.add_argument(
+            "--track_lines", action="store", type=boolarg, default=False,
+            help="Etch a straight track guide down the long axis of the base "
+                 "plate (an engrave pass, not a cut).  Master switch for all the "
+                 "track_* options below.")
+        self.argparser.add_argument(
+            "--track_line_count", action="store", type=int, default=1,
+            help="Number of parallel track centrelines.  1 draws a single "
+                 "centreline; higher counts add parallel tracks offset across the "
+                 "short axis, spaced by --track_spacing (odd counts keep one on "
+                 "the centre, even counts straddle it).")
+        self.argparser.add_argument(
+            "--track_spacing", action="store", type=float, default=80.0,
+            help="Lateral spacing (mm) between adjacent track centrelines when "
+                 "--track_line_count > 1.  Defaults to 80 mm.")
+        self.argparser.add_argument(
+            "--draw_center", action="store", type=boolarg, default=True,
+            help="Etch the track centreline(s) themselves.  On by default.")
+        self.argparser.add_argument(
+            "--draw_track", action="store", type=boolarg, default=False,
+            help="Etch the two track-footprint edges at ± track_width/2 either "
+                 "side of each centreline, showing where the laid track sits.")
+        self.argparser.add_argument(
+            "--track_width", action="store", type=float, default=40.0,
+            help="Physical width (mm) of the laid track/roadbed, used by "
+                 "--draw_track for the footprint edges.  ~40 mm HO, ~20 mm N.")
+        self.argparser.add_argument(
+            "--track_lead_in", action="store", type=float, default=30.0,
+            help="Distance (mm) in from each short-wall end at which the "
+                 "entry/exit crossing tick is drawn (see --track_crossing).")
+        self.argparser.add_argument(
+            "--track_crossing", action="store", type=boolarg, default=True,
+            help="Etch a crossing tick perpendicular to the track at each end "
+                 "(offset inward by --track_lead_in) marking where the track "
+                 "enters/leaves the module.  Only drawn when --track_lead_in > 0.")
 
     def _drawCornerGroup8Rect(self, s):
         """Draw the end-column alignment cluster for a rectangularWall panel.
@@ -653,6 +696,72 @@ class HexmoRectangle(Boxes):
 
         # Second call: advance the layout cursor past the rendered panel.
         self.move(panel_width, panel_height, move)
+
+    def drawRectTrackLines(self, length, width):
+        """Etch the straight track guide onto the base plate.
+
+        The rectangle is a straight module: track runs straight down its long
+        (H) axis and crosses the two short walls, so the guide is a set of
+        straight lines running the full ``length`` (H) at the centre of the
+        short ``width`` (W − 2t) dimension.  This mirrors the HexmoHexagon
+        ``--track_middle`` straight (there is no curve, hence no radius label).
+
+        Called from the base-plate ``rectangularWall`` callback, whose frame has
+        x running 0…length along the long axis and y running 0…width across the
+        short axis.  For each of ``--track_line_count`` parallel tracks (offset
+        laterally by ``--track_spacing``) it optionally draws the centreline
+        (``--draw_center``), the two footprint edges at ± track_width/2
+        (``--draw_track``), and a perpendicular crossing tick at each end
+        (``--track_crossing``), offset inward by ``--track_lead_in`` to mark
+        where the track enters/leaves the module.
+
+        Lines whose lateral position would fall outside the panel are skipped.
+
+        @param length - Long-axis extent of the base plate (H), in mm.
+        @param width  - Short-axis extent of the base plate (W − 2t), in mm.
+        """
+        n_lines = self.track_line_count
+        if n_lines < 1:
+            return
+
+        spacing = self.track_spacing
+        half_width = self.track_width / 2.0
+        lead_in = self.track_lead_in
+        # Tick half-length: spans the track (rail to rail) when the footprint
+        # edges are drawn, plus a small overhang; a bare centreline gets just the
+        # overhang each side.  Matches the HexmoHexagon crossing-tick sizing.
+        cross_half = (half_width if self.draw_track else 0.0) + 6.0
+
+        y_centre = width / 2.0
+        # Lateral offsets, symmetric about the centre: odd counts land a track on
+        # the centre, even counts straddle it.
+        offsets = [(i - (n_lines - 1) / 2.0) * spacing for i in range(n_lines)]
+
+        def hline(y):
+            """Draw one full-length line at lateral position y (skip if off-panel)."""
+            if y < 0.0 or y > width:
+                return
+            self.ctx.move_to(0.0, y)
+            self.ctx.line_to(length, y)
+            self.ctx.stroke()
+
+        with self.saved_context():
+            self.set_source_color(Color.ETCHING)
+            for off in offsets:
+                cy = y_centre + off
+                if self.draw_center:
+                    hline(cy)
+                if self.draw_track:
+                    hline(cy - half_width)
+                    hline(cy + half_width)
+                # End crossing ticks (perpendicular = vertical), offset inward by
+                # lead_in from each short-wall end, spanning the track width.
+                if (self.track_crossing and lead_in > 0
+                        and (self.draw_center or self.draw_track)):
+                    for xt in (lead_in, length - lead_in):
+                        self.ctx.move_to(xt, cy - cross_half)
+                        self.ctx.line_to(xt, cy + cross_half)
+                        self.ctx.stroke()
 
     def render(self) -> None:
         """Generate all panels for the HexmoRectangle box (outer shell + 3×N grid).
@@ -1035,6 +1144,10 @@ class HexmoRectangle(Boxes):
             for i in range(n_div_h):
                 for j in range(3):
                     self.fingerHolesAt(div_pos(i), j * (col_w + t), col_w, 90)
+            # Straight track guide down the long (H) axis, centred across the short
+            # (W − 2t) axis.  The callback frame has x along H and y along W − 2t.
+            if self.track_lines:
+                self.drawRectTrackLines(H, W - 2 * t)
 
         # --- Outer walls --------------------------------------------------------
         # Long walls (left/right, spanning H) provide tabs on their small

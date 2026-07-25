@@ -85,6 +85,85 @@ class HexmoHexagon(Boxes):
                  "single support perpendicular to the long edge — the ±60° "
                  "side supports are omitted and the two kite cutouts are "
                  "widened to take advantage of the extra clearance.")
+        self.argparser.add_argument(
+            "--track_lines", action="store", type=boolarg, default=False,
+            help="Etch the 60° model-railway track curve onto the top (deck) "
+                 "panel as an alignment guide.  The curve is the arc a train "
+                 "follows as it crosses the module: radius = 1.5 × the hexagon "
+                 "radius, entering and leaving at the midpoints of the two "
+                 "edges 120° apart.  Rendered as an engrave (etch) pass, not a "
+                 "cut.  Only drawn in trapezoid (half-hexagon) mode, where both "
+                 "of those edges lie in the same panel.")
+        self.argparser.add_argument(
+            "--track_line_count", action="store", type=int, default=1,
+            help="Number of parallel track guide lines to etch when "
+                 "--track_lines is on.  1 draws a single centreline arc.  An "
+                 "odd count places one line on the centreline with the rest "
+                 "offset symmetrically either side; an even count straddles "
+                 "the centreline (its midpoint stays on the centreline).  "
+                 "Adjacent lines are spaced by --track_spacing.")
+        self.argparser.add_argument(
+            "--track_spacing", action="store", type=float, default=80.0,
+            help="Radial spacing (mm) between adjacent track guide lines when "
+                 "--track_line_count > 1.  Defaults to 80 mm.  Ignored when only "
+                 "one line is drawn.")
+        self.argparser.add_argument(
+            "--track_width", action="store", type=float, default=40.0,
+            help="Physical width (mm) of the actual model-railway track laid on "
+                 "the deck (the roadbed/tie footprint).  Used by --draw_track to "
+                 "place a pair of edge lines at ± track_width/2 either side of "
+                 "each centreline.  Set to your scale's track width (e.g. ~40 mm "
+                 "HO, ~20 mm N).")
+        self.argparser.add_argument(
+            "--track_lead_in", action="store", type=float, default=30.0,
+            help="Length (mm) of a straight lead-in section where each track "
+                 "line meets an edge.  The line runs straight (perpendicular to "
+                 "the edge) for this distance from the edge, then the curve "
+                 "begins at the inner end.  Because the crossing points stay "
+                 "fixed, the arc shortens accordingly (curve radius becomes "
+                 "1.5·R − √3·lead_in).  Set to 0 for a pure edge-to-edge arc.")
+        self.argparser.add_argument(
+            "--track_label", action="store", type=boolarg, default=True,
+            help="Etch the resulting curve radius (mm) as text near the apex of "
+                 "each track centreline.  One label per --track_line_count "
+                 "centreline.  On by default when --track_lines is on.")
+        self.argparser.add_argument(
+            "--track_crossing", action="store", type=boolarg, default=True,
+            help="Etch a short crossing tick (perpendicular to the track) at "
+                 "each point where a straight lead-in meets the curve, marking "
+                 "the transition.  Only drawn when --track_lead_in > 0.")
+        # Full-hexagon route selection.  Edges are numbered as on a flat-top
+        # hexagon: 1 top, 2 upper-right, 3 lower-right, 4 bottom, 5 lower-left,
+        # 6 upper-left.  Each option draws one possible track route across the
+        # module (with lead-ins); any combination may be enabled.  These are
+        # ignored in trapezoid mode, which always draws its single lower curve.
+        self.argparser.add_argument(
+            "--track_left", action="store", type=boolarg, default=False,
+            help="Full hexagon: draw the left curve, from edge 4 (bottom) to "
+                 "edge 6 (upper-left).")
+        self.argparser.add_argument(
+            "--track_middle", action="store", type=boolarg, default=False,
+            help="Full hexagon: draw the middle straight, from edge 4 (bottom) "
+                 "to edge 1 (top) — a diameter through the centre.")
+        self.argparser.add_argument(
+            "--track_right", action="store", type=boolarg, default=False,
+            help="Full hexagon: draw the right curve, from edge 4 (bottom) to "
+                 "edge 2 (upper-right).")
+        self.argparser.add_argument(
+            "--track_top", action="store", type=boolarg, default=False,
+            help="Full hexagon: draw the top curve, from edge 6 (upper-left) to "
+                 "edge 2 (upper-right).")
+        self.argparser.add_argument(
+            "--draw_center", action="store", type=boolarg, default=True,
+            help="When --track_lines is on, etch the track centreline arc(s) "
+                 "themselves (the --track_line_count parallel curves).  This is "
+                 "the original guide behaviour and is on by default.")
+        self.argparser.add_argument(
+            "--draw_track", action="store", type=boolarg, default=False,
+            help="When --track_lines is on, treat each centreline as the middle "
+                 "of the track and etch a pair of edge lines offset by "
+                 "± track_width/2, showing where the actual track footprint sits."
+                 "  Can be combined with --draw_center to show both.")
 
         self.n = 6
 
@@ -761,6 +840,239 @@ class HexmoHexagon(Boxes):
             self.ctx.line_to(kite[0][0], kite[0][1])
             self.ctx.stroke()
 
+    def drawTrackLines(self, r, isTrapezoid=False):
+        """Etch the model-railway track curve onto the deck as an alignment guide.
+
+        Six hexagon modules joined edge-to-edge in a ring form one closed loop
+        of track; each module carries a 60° arc of that loop.  Two independent
+        derivations (see the scale READMEs) give the loop radius as
+
+            track_radius = 1.5 · R
+
+        where R is the hexagon circumradius (the ``--radius`` parameter).  The
+        arc crosses the module between the midpoints of the two edges that are
+        120° apart, meeting each edge perpendicularly so neighbouring modules
+        join smoothly.
+
+        **Geometry (in the callback[0] frame, origin = hexagon centre).**  In
+        trapezoid mode the two 120°-apart edges are the two lower slanted sides
+        (edge-midpoint directions 210° and 330°), whose bisector points straight
+        down (−y, toward the short bottom edge).  Placing the arc centre C on
+        that bisector and requiring the arc to be tangent to the radial (edge
+        normal) direction at each entry point fixes
+
+            C = (0, −√3·R)              (distance √3·R from the hex centre)
+
+        which is exactly the ring centre once six modules are assembled.  From C
+        the two edge midpoints subtend 60°→120°, i.e. a 60° arc whose apex sits
+        at (0, −(√3 − 1.5)·R) ≈ (0, −0.23·R), just below the hex centre.  This
+        matches the ``track curve radius = 1.5 × R`` relationship exactly.
+
+        **Straight lead-in.**  ``--track_lead_in`` (L) inserts a straight section
+        of length L at each edge crossing, running along the edge normal (the
+        perpendicular-crossing direction), with the curve beginning at its inner
+        end.  The crossing points stay pinned to the edge midpoints so
+        neighbouring modules still join, which forces the tangent points inward
+        by L: the arc centre moves to C = (0, −2·(A − L)) and its radius shrinks
+        to (A − L)·√3 = 1.5·R − √3·L, where A = R·√3/2 is the apothem.  The arc
+        still subtends 60°→120° about C (the construction is self-similar), and
+        the lead-in straight of length L along the normal lands exactly back on
+        the edge midpoint.  L = 0 recovers the pure edge-to-edge arc above.
+
+        **Parallel centrelines.**  ``--track_line_count`` concentric centreline
+        arcs are drawn about the same centre C, sharing the 60°→120° angular span
+        so they stay parallel and each meets the module edge on the same radial
+        line as the primary centreline (i.e. neighbouring modules' lines still
+        join).  Centreline ``i`` is offset radially by ``(i − (N−1)/2) ·
+        spacing``: an odd N puts one line on the centreline (offset 0) with the
+        rest paired either side; an even N straddles it (offsets ±spacing/2,
+        ±3·spacing/2, …).
+
+        **Centre vs. track.**  Two independent toggles decide what is etched
+        around each centreline radius ρ:
+
+          - ``--draw_center`` etches ρ itself (the bare centreline guide).
+          - ``--draw_track`` treats ρ as the *middle* of a physical track of
+            width ``--track_width`` and etches the two footprint edges at
+            ρ ± track_width/2 — where the actual track/roadbed will be laid.
+
+        Both may be enabled at once (centreline plus its two edges).  Every arc
+        is concentric about C, so all of them stay mutually parallel and join
+        across module boundaries.  Any arc whose radius would collapse to ≤ 0
+        (a very large offset on a small hexagon) is skipped.
+
+        **Radius label.**  When ``--track_label`` is on, each track's resulting
+        curve radius ρ is etched as text at the centreline apex — millimetres
+        just outside the centreline, inches (1 dp) just inside — with the font
+        sized from ``--track_width`` so both lines fall inside the track
+        footprint and are hidden once track is laid.
+
+        **Transition ticks.**  When ``--track_crossing`` is on (and a lead-in is
+        present), a short radial tick is etched at each point where a straight
+        lead-in meets the curve, crossing the track at right angles to mark the
+        straight/curve transition.
+
+        **Generalisation to the full hexagon.**  The trapezoid draws one curve —
+        its lower pair of edges, bisector pointing straight down (270°).  The
+        same construction works for any 120°-apart edge pair by pointing the
+        bisector at their mid-direction β: the arc centre becomes C = O + 2·(A −
+        L)·(cos β, sin β), the endpoints sit at (β+210°) and (β+150°) about C,
+        and the outward lead-in directions are the two edge normals β∓60°.  On a
+        flat-top hexagon (edge 1 top = 90°, 2 = 30°, 3 = 330°, 4 bottom = 270°,
+        5 = 210°, 6 = 150°) the selectable routes are: ``--track_left`` 4→6
+        (β = 210°), ``--track_right`` 4→2 (β = 330°), ``--track_top`` 6→2
+        (β = 90°), and ``--track_middle`` 4→1, a straight diameter through the
+        centre (edges 180° apart, so no finite radius — drawn as straight lines
+        with no radius label or transition tick).
+
+        Drawn in ``Color.ETCHING`` inside a saved context so the engrave colour
+        does not leak into subsequent cut paths.  Fired from callback[0], which
+        both ``regularPolygonWall`` and ``drawTrapezoidWall`` position at the
+        hexagon centre.
+
+        @param r           - Hexagon circumradius (== track-geometry R), in mm.
+        @param isTrapezoid - True for the half-hexagon deck (draws the single
+                             lower curve); False for the full hexagon (draws the
+                             --track_left/middle/right/top routes selected).
+
+        """
+        n_lines = self.track_line_count
+        if n_lines < 1:
+            return
+
+        spacing = self.track_spacing
+        half_width = self.track_width / 2.0
+        lead_in = self.track_lead_in
+        apothem = r * math.sqrt(3.0) / 2.0
+        rho_center = (apothem - lead_in) * math.sqrt(3.0)  # 1.5·R − √3·L
+        SEGMENTS = 64  # polyline resolution — plenty for a smooth engraved arc
+
+        # Crossing-tick half-length: spans the track (rail to rail) when the
+        # footprint edges are drawn, plus a small overhang so the tick clearly
+        # crosses every line; a bare centreline gets just the overhang each side.
+        cross_half = (half_width if self.draw_track else 0.0) + 6.0
+
+        # Label font scales with the physical track width so the text always fits
+        # inside the track footprint (and is hidden once track is laid), sizing
+        # itself up for HO and down for N.  At 0.35·width a single line centred in
+        # a half-band [0, width/2] spans width·[0.075, 0.425] — clear of both the
+        # centreline and the rail edge.
+        label_fontsize = self.track_width * 0.35
+        label_band = self.track_width / 4.0  # centre of each half of the width band
+
+        # Per-track radial offsets, symmetric about 0 so odd counts land a line on
+        # the centreline and even counts straddle it.
+        offsets = [(i - (n_lines - 1) / 2.0) * spacing for i in range(n_lines)]
+
+        def draw_curve(bisector_deg):
+            """Draw the full track family for a 120°-edge-pair with the given
+            bisector direction β (pointing from the hex centre toward the arc
+            centre C).  See the docstring for the generalised geometry."""
+            br = bisector_deg
+            # Arc centre C on the bisector; endpoints at β±... about C; the two
+            # outward lead-in directions are the edge normals β∓60°.
+            cx = 2.0 * (apothem - lead_in) * math.cos(math.radians(br))
+            cy = 2.0 * (apothem - lead_in) * math.sin(math.radians(br))
+            ang_a = math.radians(br + 210.0)          # endpoint A about C
+            ang_b = math.radians(br + 150.0)          # endpoint B about C
+            dir_a = (math.cos(math.radians(br - 60.0)), math.sin(math.radians(br - 60.0)))
+            dir_b = (math.cos(math.radians(br + 60.0)), math.sin(math.radians(br + 60.0)))
+            u_apex = (math.cos(math.radians(br + 180.0)), math.sin(math.radians(br + 180.0)))
+            # Text angle aligned with the track (tangent at the apex), normalised
+            # to (−90°, 90°] so the label reads upright.
+            text_angle = ((br + 90.0 + 90.0) % 180.0) - 90.0
+
+            def line(rho):
+                if rho <= 0:
+                    return
+                ax = cx + rho * math.cos(ang_a)
+                ay = cy + rho * math.sin(ang_a)
+                bx = cx + rho * math.cos(ang_b)
+                by = cy + rho * math.sin(ang_b)
+                self.ctx.move_to(ax + lead_in * dir_a[0], ay + lead_in * dir_a[1])
+                self.ctx.line_to(ax, ay)
+                for step in range(1, SEGMENTS + 1):
+                    a = ang_a + (ang_b - ang_a) * step / SEGMENTS
+                    self.ctx.line_to(cx + rho * math.cos(a), cy + rho * math.sin(a))
+                self.ctx.line_to(bx + lead_in * dir_b[0], by + lead_in * dir_b[1])
+                self.ctx.stroke()
+
+            def crossing(rho):
+                if rho <= 0:
+                    return
+                for ang in (ang_a, ang_b):
+                    ca, sa = math.cos(ang), math.sin(ang)
+                    r_lo = max(0.0, rho - cross_half)
+                    r_hi = rho + cross_half
+                    self.ctx.move_to(cx + r_lo * ca, cy + r_lo * sa)
+                    self.ctx.line_to(cx + r_hi * ca, cy + r_hi * sa)
+                    self.ctx.stroke()
+
+            for off in offsets:
+                rho = rho_center + off
+                if self.draw_center:
+                    line(rho)
+                if self.draw_track:
+                    line(rho - half_width)
+                    line(rho + half_width)
+                if (self.track_crossing and lead_in > 0
+                        and (self.draw_center or self.draw_track)):
+                    crossing(rho)
+                if (self.track_label and rho > 0 and label_fontsize > 0
+                        and (self.draw_center or self.draw_track)):
+                    # Apex of the centreline arc, then labels offset radially into
+                    # each half of the width band: millimetres on the outer side,
+                    # inches (1 dp) on the inner side, rotated to follow the track.
+                    apex_x = cx + rho * u_apex[0]
+                    apex_y = cy + rho * u_apex[1]
+                    with self.saved_context():
+                        self.text(
+                            f"{rho:.0f} mm",
+                            x=apex_x + label_band * u_apex[0],
+                            y=apex_y + label_band * u_apex[1],
+                            angle=text_angle, align="middle center",
+                            fontsize=label_fontsize, color=Color.ETCHING)
+                    with self.saved_context():
+                        self.text(
+                            f'{rho / 25.4:.1f}"',
+                            x=apex_x - label_band * u_apex[0],
+                            y=apex_y - label_band * u_apex[1],
+                            angle=text_angle, align="middle center",
+                            fontsize=label_fontsize, color=Color.ETCHING)
+
+        def draw_straight():
+            """Middle route (edge 4 → edge 1): a straight vertical diameter through
+            the centre.  Edges 180° apart give no finite radius, so there is no
+            arc, radius label, or transition tick — just the straight line(s), the
+            footprint edges, and the parallel offsets, running full apothem to
+            apothem (y = −A … +A) offset in x."""
+            def sline(xoff):
+                self.ctx.move_to(xoff, -apothem)
+                self.ctx.line_to(xoff, apothem)
+                self.ctx.stroke()
+            for off in offsets:
+                if self.draw_center:
+                    sline(off)
+                if self.draw_track:
+                    sline(off - half_width)
+                    sline(off + half_width)
+
+        with self.saved_context():
+            self.set_source_color(Color.ETCHING)
+            if isTrapezoid:
+                # The half-hexagon deck: its single lower curve (bisector 270°).
+                draw_curve(270.0)
+            else:
+                # Full hexagon: the routes selected by the four toggles.
+                if self.track_left:
+                    draw_curve(210.0)   # edge 4 → edge 6
+                if self.track_right:
+                    draw_curve(330.0)   # edge 4 → edge 2
+                if self.track_top:
+                    draw_curve(90.0)    # edge 6 → edge 2
+                if self.track_middle:
+                    draw_straight()     # edge 4 → edge 1
+
     def drawTrapezoidWall(self, r, edges_char='e', hole=None, callback=None, move=None):
         """Draw a trapezoidal panel — the bottom (or top) half of a regular hexagon.
 
@@ -1016,7 +1328,7 @@ class HexmoHexagon(Boxes):
         _.setValues(self.thickness, angle=90)
         _.edgeObjects(self, chars="zZH")
 
-        def drawTop(r, top_type, joint_type):
+        def drawTop(r, top_type, joint_type, is_top=False):
             """Render one face (top or bottom) as the appropriate panel style.
 
             Top is always 'closed'; bottom is 'spoke' or 'closed'.  In
@@ -1030,9 +1342,18 @@ class HexmoHexagon(Boxes):
             from V0 to the hex centre with its standard moveTo(r/2, H, angle)
             formula — the same position used by the spoke bottom panel.
 
+            The centre slot (callback[0], fired at the hex centre) carries the
+            kite cutouts on a spoke face, or — on the top *deck* in trapezoid
+            mode when --track_lines is on — the etched track-curve guide.  These
+            never coincide: the top is always 'closed' (never 'spoke') and the
+            track guide is only wired onto the top face, so a single callback[0]
+            slot serves both without conflict.
+
             @param r          - Inner corner radius of this face.
             @param top_type   - 'closed' or 'spoke'.
             @param joint_type - Two-character edge string, e.g. 'yY' or 'zZ'.
+            @param is_top     - True for the top (deck) face.  Enables the track
+                                guide callback; the bottom face never gets it.
             """
             # Build the support-hole callback for closed panels.  Fires at the
             # V0-start slot (index 1); index 0 is None so the kites/centre slot
@@ -1042,6 +1363,18 @@ class HexmoHexagon(Boxes):
                 support_cb = [None, lambda: self.drawSupportHoles(r=r, isTrapezoid=isTrapezoid)]
             else:
                 support_cb = None
+
+            # Track-curve guide: etched onto the top deck.  In trapezoid mode it
+            # draws the single lower curve; on the full hexagon it draws the
+            # --track_left/middle/right/top routes selected.  It occupies
+            # callback[0]; if support slots are present we splice it into the
+            # index-0 slot of the existing support callback list.
+            if is_top and self.track_lines:
+                track_cb = lambda: self.drawTrackLines(r=r, isTrapezoid=isTrapezoid)
+                if support_cb is not None:
+                    support_cb = [track_cb] + support_cb[1:]
+                else:
+                    support_cb = [track_cb]
 
             if isTrapezoid:
                 if top_type == "spoke":
@@ -1071,7 +1404,7 @@ class HexmoHexagon(Boxes):
         with self.saved_context():
             # Draw bottom panel first, then top (order affects SVG layout).
             drawTop(r, self.bottom, "yY")
-            drawTop(r, self.top, "zZ")
+            drawTop(r, self.top, "zZ", is_top=True)
             # Support walls must be placed inside this saved_context block so
             # they land after the face panels in the layout stream.  Outside the
             # block the cursor reverts to its pre-block position, causing the
