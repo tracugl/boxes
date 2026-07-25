@@ -86,6 +86,15 @@ class HexmoHexagon(Boxes):
                  "dropping the six corner holes per end — far fewer laser pierces "
                  "and a much shorter cut time.")
         self.argparser.add_argument(
+            "--gap_holes", action="store", type=str, default="g4",
+            choices=["g4", "g2"],
+            help="Registration cluster filling each gap between the big holes.  "
+                 "'g4' (default) draws the full group — two mediums with two Ø6 "
+                 "pilot holes each (2 medium + 4 small).  'g2' draws a single "
+                 "centred medium with one pilot directly above and below it "
+                 "(1 medium + 2 small), mirroring the reduced corner cluster — "
+                 "fewer laser pierces and a shorter cut time.")
+        self.argparser.add_argument(
             "--trapezoid", action="store", type=boolarg, default=False,
             help="If true, only draw a half-hexagon.")
         self.argparser.add_argument(
@@ -465,8 +474,18 @@ class HexmoHexagon(Boxes):
         sm_offset   = r2 + r3 + MIN_CLEAR          # ≈ 20.5 mm
         half_for_G6 = sm_offset + r3 + MIN_CLEAR   # ≈ 28.5 mm
 
+        if self.gap_holes == "g2":
+            # G2: mirror the reduced corner cluster — a single centred medium
+            # with one pilot directly above and below it (1 medium + 2 small).
+            if half_gap >= half_for_G2m:
+                self.hole(l / 2,  y_mid, r2)  # centred medium
+                self.hole(l - sp, y_mid, r3)  # pilot toward one edge
+                self.hole(sp,     y_mid, r3)  # pilot toward the other edge
+            return
+
         if half_gap >= half_for_G6:
-            # Full G6 equivalent: G2-small · G2-medium · G2-small (symmetric).
+            # Full G4 pattern: G2-small · G2-medium · G2-small (symmetric),
+            # i.e. two mediums each flanked by a pilot above and below.
             self.hole(l - sp,        y_mid - sm_offset, r3)  # lower small, right side
             self.hole(sp,            y_mid - sm_offset, r3)  # lower small, left side
             self.hole(l - r2/2 - sp, y_mid,             r2)  # medium, right side
@@ -529,8 +548,17 @@ class HexmoHexagon(Boxes):
         y_bot_r2 = sp + r2 / 2      # medium hole centre, near bottom
         y_top_r2 = h - sp - r2 / 2  # medium hole centre, near top
 
+        if self.gap_holes == "g2":
+            # G2: single centred medium with one pilot toward each edge
+            # (1 medium + 2 small), the transposed mirror of the reduced corner.
+            if half_gap >= half_for_G2m:
+                self.hole(x_mid, h / 2,     r2)  # centred medium
+                self.hole(x_mid, y_bot_r3,  r3)  # pilot near bottom edge
+                self.hole(x_mid, y_top_r3,  r3)  # pilot near top edge
+            return
+
         if half_gap >= half_for_G6:
-            # Full G6 equivalent: three x-positions × two y-positions (top+bottom).
+            # Full G4 pattern: three x-positions × two y-positions (top+bottom).
             self.hole(x_mid - sm_offset, y_bot_r3, r3)  # left-small,    bottom
             self.hole(x_mid - sm_offset, y_top_r3, r3)  # left-small,    top
             self.hole(x_mid,             y_bot_r2, r2)  # centre-medium, bottom

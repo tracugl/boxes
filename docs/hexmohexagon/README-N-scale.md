@@ -212,6 +212,14 @@ end of every side panel:
   (≈48 fewer holes on a trapezoid, 12 per side panel), keeping enough for
   registration. Same option on both generators.
 
+The mid-panel gap-fill clusters (between the big holes) have a matching toggle:
+
+- `--gap_holes=g4` (default) — full cluster: two mediums each with a pilot above
+  and below (2 medium + 4 small per gap).
+- `--gap_holes=g2` — a single centred medium with one pilot above and below
+  (1 medium + 2 small per gap), mirroring the reduced corner cluster. ~6 fewer
+  holes per side panel. Same option on both generators.
+
 Other levers: `--supports=0` (no internal support walls), `bottom=closed`
 instead of `spoke`, and the track-guide extras (`--track_label=0`,
 `--track_crossing=0`).

@@ -347,6 +347,15 @@ class HexmoRectangle(Boxes):
                  "directly above and below it, dropping the offset side pair per "
                  "end — fewer laser pierces and a shorter cut time.  Matches the "
                  "HexmoHexagon option of the same name.")
+        self.argparser.add_argument(
+            "--gap_holes", action="store", type=str, default="g4",
+            choices=["g4", "g2"],
+            help="Registration cluster filling each gap between the big holes on "
+                 "the divider/support panels.  'g4' (default) draws two mediums "
+                 "with two Ø6 pilot holes each (2 medium + 4 small).  'g2' draws "
+                 "a single centred medium with one pilot above and below it "
+                 "(1 medium + 2 small) — fewer laser pierces.  Matches the "
+                 "HexmoHexagon option of the same name.")
 
     def _drawCornerGroup8Rect(self, s):
         """Draw the end-column alignment cluster for a rectangularWall panel.
@@ -442,8 +451,17 @@ class HexmoRectangle(Boxes):
         y_bot_r2 = sp_y + r2 / 2
         y_top_r2 = l_eff - sp - r2 / 2
 
+        if self.gap_holes == "g2":
+            # G2: single centred medium with one pilot toward each edge
+            # (1 medium + 2 small), matching the reduced HexmoHexagon pattern.
+            if half_gap >= half_for_G2m:
+                self.hole(x_mid, l_eff / 2, r2)  # centred medium
+                self.hole(x_mid, y_bot_r3,  r3)  # pilot near bottom edge
+                self.hole(x_mid, y_top_r3,  r3)  # pilot near top edge
+            return
+
         if half_gap >= half_for_G6:
-            # Full G6 equivalent: three x-positions × two y-positions (top + bottom).
+            # Full G4 pattern: three x-positions × two y-positions (top + bottom).
             self.hole(x_mid - sm_offset, y_bot_r3, r3)
             self.hole(x_mid - sm_offset, y_top_r3, r3)
             self.hole(x_mid,             y_bot_r2, r2)
