@@ -555,7 +555,17 @@ class SVGSurface(Surface):
                         fontweight = ("normal", "bold")[bool(bold)]
                         fontstyle = ("normal", "italic")[bool(italic)]
 
-                        style = f"font-family: {font} ; font-weight: {fontweight}; font-style: {fontstyle}; fill: {rgb_to_svg_color(*params['rgb'])}"
+                        svg_color = rgb_to_svg_color(*params['rgb'])
+                        if params.get('stroke'):
+                            # Stroke-only text: paint the glyph *outlines* in the
+                            # stroke colour with no fill, so a laser that
+                            # vector-etches by stroke colour (and ignores fill)
+                            # will trace the letters.  A hairline stroke-width
+                            # keeps the outlines crisp at small font sizes.
+                            paint = f"fill: none; stroke: {svg_color}; stroke-width: 0.1"
+                        else:
+                            paint = f"fill: {svg_color}"
+                        style = f"font-family: {font} ; font-weight: {fontweight}; font-style: {fontstyle}; {paint}"
                         t = ET.SubElement(g, "text",
                                           #x=f"{x:.3f}", y=f"{y:.3f}",
                                           transform=f"matrix( {tm} )",
