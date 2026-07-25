@@ -338,6 +338,15 @@ class HexmoRectangle(Boxes):
             help="Etch a crossing tick perpendicular to the track at each end "
                  "(offset inward by --track_lead_in) marking where the track "
                  "enters/leaves the module.  Only drawn when --track_lead_in > 0.")
+        self.argparser.add_argument(
+            "--corner_holes", action="store", type=str, default="g6",
+            choices=["g6", "g2"],
+            help="Small-hole cluster around each end registration medium hole.  "
+                 "'g6' (default) draws the medium plus the surrounding Ø6 pilot "
+                 "holes.  'g2' keeps only the medium and the two pilot holes "
+                 "directly above and below it, dropping the offset side pair per "
+                 "end — fewer laser pierces and a shorter cut time.  Matches the "
+                 "HexmoHexagon option of the same name.")
 
     def _drawCornerGroup8Rect(self, s):
         """Draw the end-column alignment cluster for a rectangularWall panel.
@@ -364,19 +373,23 @@ class HexmoRectangle(Boxes):
         r2 = self._R2
         r3 = self._R3
 
-        # Right-end cluster: small pair at 2·sp, then small/medium/small at 3·sp.
-        self.hole(s - 2 * sp, l_eff - sp,  r3)   # near top, 2nd column
-        self.hole(s - 2 * sp, sp_y,        r3)   # near bottom, 2nd column
-        self.hole(s - 3 * sp, l_eff - sp,  r3)   # near top, 3rd column
-        self.hole(s - 3 * sp, y_center,    r2)   # centre medium, 3rd column
-        self.hole(s - 3 * sp, sp_y,        r3)   # near bottom, 3rd column
+        # Always drawn: the medium at each end (x = 3·sp) plus the pilot holes
+        # directly above and below it (the 3rd-column pair, same x as the medium).
+        self.hole(s - 3 * sp, l_eff - sp,  r3)   # right medium: pin above
+        self.hole(s - 3 * sp, y_center,    r2)   # right centre medium
+        self.hole(s - 3 * sp, sp_y,        r3)   # right medium: pin below
+        self.hole(3 * sp,     l_eff - sp,  r3)   # left medium: pin above
+        self.hole(3 * sp,     y_center,    r2)   # left centre medium
+        self.hole(3 * sp,     sp_y,        r3)   # left medium: pin below
 
-        # Left-end cluster: small pair at 2·sp, then small/medium/small at 3·sp.
-        self.hole(2 * sp,     l_eff - sp,  r3)   # near top, 2nd column
-        self.hole(2 * sp,     sp_y,        r3)   # near bottom, 2nd column
-        self.hole(3 * sp,     l_eff - sp,  r3)   # near top, 3rd column
-        self.hole(3 * sp,     y_center,    r2)   # centre medium, 3rd column
-        self.hole(3 * sp,     sp_y,        r3)   # near bottom, 3rd column
+        # The offset side pair (2nd column at 2·sp) is only drawn in the full
+        # 'g6' pattern; 'g2' omits it to save pierces.
+        if self.corner_holes != "g6":
+            return
+        self.hole(s - 2 * sp, l_eff - sp,  r3)   # right, near top, 2nd column
+        self.hole(s - 2 * sp, sp_y,        r3)   # right, near bottom, 2nd column
+        self.hole(2 * sp,     l_eff - sp,  r3)   # left, near top, 2nd column
+        self.hole(2 * sp,     sp_y,        r3)   # left, near bottom, 2nd column
 
     def _drawSupportGapFeatures(self, x_lo, x_hi):
         """Fill the x-axis gap between two features with a symmetric hole sub-group.

@@ -76,6 +76,16 @@ class HexmoHexagon(Boxes):
             "--supports", action="store", type=boolarg, default=True,
             help="add internal support walls and matching finger-joint slots in the top and bottom panels.")
         self.argparser.add_argument(
+            "--corner_holes", action="store", type=str, default="g6",
+            choices=["g6", "g2"],
+            help="Small-hole cluster around each end registration medium hole.  "
+                 "'g6' (default) draws the full group — the medium plus the six "
+                 "surrounding Ø6 pilot holes (an L-cluster at each corner plus the "
+                 "pair directly above/below the medium).  'g2' keeps only the "
+                 "medium and the two pilot holes directly above and below it, "
+                 "dropping the six corner holes per end — far fewer laser pierces "
+                 "and a much shorter cut time.")
+        self.argparser.add_argument(
             "--trapezoid", action="store", type=boolarg, default=False,
             help="If true, only draw a half-hexagon.")
         self.argparser.add_argument(
@@ -381,29 +391,34 @@ class HexmoHexagon(Boxes):
         r2 = self._R2
         r3 = self._R3
 
-        # Top-right corner L-cluster and top-left corner L-cluster.
+        # Always drawn: the two medium registration holes (one near each end,
+        # on the panel centre line) plus the pilot holes directly above and
+        # below each medium (the "centre-line pins" at x = sp and x = l − sp,
+        # y = 3·sp / s − 3·sp).  These give registration with minimal pierces.
+        self.hole(l - sp, s - 3 * sp, r3)  # top medium: pin above
+        self.hole(l / 2,  s - 3 * sp, r2)  # top-centre medium hole
+        self.hole(l - sp, 3 * sp,     r3)  # bottom medium: pin above
+        self.hole(l / 2,  3 * sp,     r2)  # bottom-centre medium hole
+        self.hole(sp,     s - 3 * sp, r3)  # top medium: pin below
+        self.hole(sp,     3 * sp,     r3)  # bottom medium: pin below
+
+        # The six surrounding pilot holes per end (four corner L-clusters) are
+        # only drawn in the full 'g6' pattern; 'g2' omits them to save pierces.
+        if self.corner_holes != "g6":
+            return
+
+        # Top-right and top-left corner L-clusters.
         self.hole(l - sp,     s - sp,     r3)
         self.hole(l - sp,     s - 2 * sp, r3)
         self.hole(l - 2 * sp, s - sp,     r3)
-
-        # Centre-line pins at 3·sp from both top and bottom edges.
-        self.hole(l - sp, s - 3 * sp, r3)
-        self.hole(l / 2,  s - 3 * sp, r2)  # top-centre medium hole
-        self.hole(l - sp, 3 * sp,     r3)
-        self.hole(l / 2,  3 * sp,     r2)  # bottom-centre medium hole
-
-        self.hole(sp,     s - 3 * sp, r3)
-        self.hole(sp,     3 * sp,     r3)
-
         self.hole(sp,         s - sp,     r3)
         self.hole(sp,         s - 2 * sp, r3)
         self.hole(2 * sp,     s - sp,     r3)
 
-        # Bottom-right corner L-cluster and bottom-left corner L-cluster.
+        # Bottom-right and bottom-left corner L-clusters.
         self.hole(l - sp,     sp,         r3)
         self.hole(l - sp,     2 * sp,     r3)
         self.hole(l - 2 * sp, sp,         r3)
-
         self.hole(sp,         sp,         r3)
         self.hole(sp,         2 * sp,     r3)
         self.hole(2 * sp,     sp,         r3)
