@@ -207,6 +207,33 @@ curl "http://localhost:4455/HexmoRectangle?render=1\
 
 ---
 
+## Reducing laser cut time
+
+Most of the cut *time* on these panels is pierces, and the small Ø6 registration
+pilot holes dominate the count. The biggest lever is the corner cluster at each
+end of every side panel:
+
+- `--corner_holes=g6` (default) — full cluster: the medium hole plus the six
+  surrounding Ø6 pilot holes.
+- `--corner_holes=g2` — keeps only the medium and the two pilot holes directly
+  above/below it, dropping the six corner holes per end. Big pierce savings
+  (≈48 fewer holes on a trapezoid, 12 per side panel), keeping enough for
+  registration. Same option on both generators.
+
+The mid-panel gap-fill clusters (between the big holes) have a matching toggle:
+
+- `--gap_holes=g4` (default) — full cluster: two mediums each with a pilot above
+  and below (2 medium + 4 small per gap).
+- `--gap_holes=g2` — a single centred medium with one pilot above and below
+  (1 medium + 2 small per gap), mirroring the reduced corner cluster. ~6 fewer
+  holes per side panel. Same option on both generators.
+
+Other levers: `--supports=0` (no internal support walls), `bottom=closed`
+instead of `spoke`, and the track-guide extras (`--track_label=0`,
+`--track_crossing=0`).
+
+---
+
 ## Gotchas
 
 - **`--outside`**: leave it **off** (the default). With it on, `radius` is treated
