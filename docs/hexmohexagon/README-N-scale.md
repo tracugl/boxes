@@ -52,30 +52,39 @@ holds exactly.
 
 ---
 
-## N-scale target: 280 mm curve
+## N-scale target: ~280 mm curve
 
 280 mm is essentially the standard N set-track curve (e.g. Kato R282).
 
 ```
-R = 280 / 1.5 = 186.7 mm
+R = 280 / 1.5 = 186.7 mm  →  rounded to radius = 190
 ```
+
+`radius=190` is the round-number choice used throughout this file (and by the
+ready-made N-scale URL, below). It yields a track curve of `190 × 1.5 = 285 mm` —
+within a few millimetres of the R282 standard, and comfortably in the broad-curve
+range.
 
 | Parameter | Value | Why |
 |---|---|---|
-| `--radius` | **186.7** | set directly by the 280 mm track radius |
+| `--radius` | **190** | set directly by the 280 mm track radius |
 | `--edge_width` | **22** | outer frame width, scaled from HO by ~0.37 |
 | `--spoke_width` | **45** | keeps the kite cutouts non-degenerate (s ≈ 58 mm > 0) |
-| `--support_length` | **56** | internal support walls |
+| `--support_length` | **55** | internal support walls |
 | `--h` (height) | your call | module/board depth — independent of track radius |
 | `--thickness` | 3 (or 6) | material choice; 3 mm ply suits the lighter N module |
 | `--FingerJoint_play` | 0.3 (default 0.2) | looser finger-joint fit suits 3 mm ply; drop to 0.2 for a tighter fit |
 
 
 **Why the spoke/frame/support values must shrink:** the defaults were tuned for
-the 500 mm HO hexagon. Left at HO sizes on a 187 mm hexagon, the kite cutouts
+the 500 mm HO hexagon. Left at HO sizes on a 190 mm hexagon, the kite cutouts
 go degenerate and the generator silently falls back to a **solid** hex (no spoke
-pattern). The values above were scaled by the radius ratio 187/500 ≈ 0.37 and
+pattern). The values above were scaled by the radius ratio 190/500 ≈ 0.38 and
 verified to keep the spokes intact.
+
+> **Shortcut:** you don't have to type these values field-by-field — open the
+> ready-made N-scale URL and the whole form arrives pre-filled. See
+> [Scale presets (bookmarkable URLs)](#scale-presets-bookmarkable-urls) below.
 
 ---
 
@@ -89,12 +98,49 @@ docker compose up        # start the server
 
 ```bash
 curl "http://localhost:4455/HexmoHexagon?render=1\
-&radius=186.7\
+&radius=190\
 &edge_width=22\
 &spoke_width=45\
-&support_length=56\
-&bottom=spoke&top=closed&thickness=6" -o hexmo_n.svg
+&support_length=55\
+&bottom=spoke&top=closed&thickness=3" -o hexmo_n.svg
 ```
+
+---
+
+## Scale presets (bookmarkable URLs)
+
+The generator form pre-fills **every field straight from the URL query string** —
+this is built-in boxes behaviour, no special option required. So a "scale preset"
+is just a URL you save: open it and the whole form arrives populated with the
+N-scale values, ready to review, tweak, or render.
+
+**N-scale HexmoHexagon** — open this to load the form pre-filled (append
+`&render=1` to jump straight to the SVG):
+
+```
+http://localhost:4455/HexmoHexagon?radius=190&edge_width=22&spoke_width=45&support_length=55&thickness=3&FingerJoint_play=0.3&bottom=spoke&top=closed
+```
+
+**N-scale HexmoRectangle** — only the shared mating dimensions differ from
+default (a straight module has no frame/spoke/support geometry, and its column
+count auto-selects from the radius):
+
+```
+http://localhost:4455/HexmoRectangle?radius=190&thickness=3&FingerJoint_play=0.3
+```
+
+How to use it:
+
+1. **Bookmark** each URL (or keep them in a notes file). The browser bookmark
+   *is* the preset.
+2. **Open** it — the form loads with the N values already in every box.
+3. **Tweak** anything you like (a different height, a tighter radius) directly in
+   the form, then hit **Render**. Because you are editing real form fields, every
+   change is visible on the page before you render.
+
+The HO-scale equivalents are just the generator defaults, so the bare
+`http://localhost:4455/HexmoHexagon` form already starts at HO — see
+[README-HO-scale.md](./README-HO-scale.md#scale-presets-bookmarkable-urls).
 
 ---
 
@@ -165,19 +211,19 @@ the track at each point where a lead-in meets the curve, marking the
 straight/curve transition.
 
 ```bash
-# Half-hexagon: the single lower curve
+# Half-hexagon: the single lower curve (N-scale params)
 curl "http://localhost:4455/HexmoHexagon?render=1\
-&radius=186.7&edge_width=22&spoke_width=45&support_length=56\
-&bottom=spoke&top=closed&thickness=3\
+&radius=190&edge_width=22&spoke_width=45&support_length=55&thickness=3\
+&bottom=spoke&top=closed\
 &trapezoid=1&track_lines=1&track_line_count=1\
 &draw_center=1&draw_track=1&track_width=20&track_lead_in=30" -o hexmo_n_half.svg
 ```
 
 ```bash
-# Full hexagon: left + right + middle routes
+# Full hexagon: left + right + middle routes (N-scale params)
 curl "http://localhost:4455/HexmoHexagon?render=1\
-&radius=186.7&edge_width=22&spoke_width=45&support_length=56\
-&bottom=spoke&top=closed&thickness=3\
+&radius=190&edge_width=22&spoke_width=45&support_length=55&thickness=3\
+&bottom=spoke&top=closed\
 &track_lines=1&draw_center=1&draw_track=1&track_width=20&track_lead_in=30\
 &track_left=1&track_right=1&track_middle=1" -o hexmo_n_full.svg
 ```
@@ -193,7 +239,7 @@ where the track enters/leaves the module.
 
 ```bash
 curl "http://localhost:4455/HexmoRectangle?render=1\
-&radius=186.7&thickness=3\
+&radius=190&thickness=3\
 &track_lines=1&draw_center=1&draw_track=1&track_width=20&track_lead_in=30" -o hexmo_rect_track.svg
 ```
 
@@ -230,7 +276,7 @@ instead of `spoke`, and the track-guide extras (`--track_label=0`,
 
 - **`--outside`**: leave it **off** (the default). With it on, `radius` is treated
   as an outside measurement and the inside is shrunk by one thickness — but the
-  track geometry needs the *inside corners* at 186.7 mm.
+  track geometry needs the *inside corners* at 190 mm.
 - **Solid-hex fallback**: if you change `edge_width`/`spoke_width` and the spoke
   pattern disappears, the kites went degenerate. Keep
   `edge_width < A_inner` and `spoke_width` small enough that

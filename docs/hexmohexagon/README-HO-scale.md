@@ -107,6 +107,43 @@ curl "http://localhost:4455/HexmoHexagon?render=1\
 
 ---
 
+## Scale presets (bookmarkable URLs)
+
+The generator form pre-fills **every field straight from the URL query string** —
+this is built-in boxes behaviour, no special option required. So a "scale preset"
+is just a URL you save: open it and the whole form arrives populated, ready to
+review, tweak, or render.
+
+**HO scale is the generator default**, so there is nothing to load — the bare
+form already starts at HO:
+
+```
+http://localhost:4455/HexmoHexagon
+```
+
+If you want an explicit, self-documenting HO bookmark (handy after you've been
+editing at another scale), spell the values out:
+
+```
+http://localhost:4455/HexmoHexagon?radius=500&edge_width=60&spoke_width=120&support_length=150&thickness=6&FingerJoint_play=0.2&bottom=spoke&top=closed
+```
+
+For the **N-scale** bookmark (radius 190 and the shrunk frame/spoke/support
+values), see
+[README-N-scale.md → Scale presets](./README-N-scale.md#scale-presets-bookmarkable-urls).
+
+How to use it:
+
+1. **Bookmark** the URL you want (or keep it in a notes file). The bookmark
+   *is* the preset.
+2. **Open** it — the form loads with those values already in every box (append
+   `&render=1` to jump straight to the SVG instead).
+3. **Tweak** anything directly in the form — e.g. a tighter 610 mm (24") curve on
+   4 mm ply is just `radius=407` and `thickness=4` in the boxes — then hit
+   **Render**. Every change is visible on the page before you render.
+
+---
+
 ## Track-curve guide
 
 You can etch the track curve onto the top (deck) panel as a lay-out guide. It is
