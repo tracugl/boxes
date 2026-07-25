@@ -1107,20 +1107,25 @@ class HexmoHexagon(Boxes):
                     # inches (1 dp) on the inner side, rotated to follow the track.
                     apex_x = cx + rho * u_apex[0]
                     apex_y = cy + rho * u_apex[1]
+                    # stroke=True paints the glyph outlines in the ETCHING
+                    # stroke colour with no fill, so lasers that vector-etch by
+                    # stroke colour (ignoring fill) still trace these labels.
                     with self.saved_context():
                         self.text(
                             f"{rho:.0f} mm",
                             x=apex_x + label_band * u_apex[0],
                             y=apex_y + label_band * u_apex[1],
                             angle=text_angle, align="middle center",
-                            fontsize=label_fontsize, color=Color.ETCHING)
+                            fontsize=label_fontsize, color=Color.ETCHING,
+                            stroke=True)
                     with self.saved_context():
                         self.text(
                             f'{rho / 25.4:.1f}"',
                             x=apex_x - label_band * u_apex[0],
                             y=apex_y - label_band * u_apex[1],
                             angle=text_angle, align="middle center",
-                            fontsize=label_fontsize, color=Color.ETCHING)
+                            fontsize=label_fontsize, color=Color.ETCHING,
+                            stroke=True)
 
         def draw_straight():
             """Middle route (edge 4 → edge 1): a straight vertical diameter through

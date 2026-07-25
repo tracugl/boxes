@@ -1522,7 +1522,7 @@ class Boxes:
         self.edge(2 * rs, tabs)
 
     @restore
-    def text(self, text, x=0, y=0, angle=0, align="", fontsize=10, color=[0.0, 0.0, 0.0], font="Arial"):
+    def text(self, text, x=0, y=0, angle=0, align="", fontsize=10, color=[0.0, 0.0, 0.0], font="Arial", stroke=False):
         """
         Draw text
 
@@ -1531,6 +1531,10 @@ class Boxes:
         :param y:  (Default value = 0)
         :param angle:  (Default value = 0)
         :param align:  (Default value = "") string with combinations of (top|middle|bottom) and (left|center|right) separated by a space
+        :param stroke:  (Default value = False) if True, render the glyph
+            outlines in the stroke colour with no fill, so a laser that
+            vector-etches by stroke colour (ignoring fill) will trace the text.
+            Leave False for normal filled text.
         """
         self.moveTo(x, y, angle)
         text = text.split("\n")
@@ -1557,7 +1561,7 @@ class Boxes:
                 raise ValueError("Unknown alignment: %s" % align)
 
         for line in reversed(text):
-            self.ctx.show_text(line, fs=fontsize, align=halign, rgb=color, font=font)
+            self.ctx.show_text(line, fs=fontsize, align=halign, rgb=color, font=font, stroke=stroke)
             self.moveTo(0, 1.4 * fontsize)
 
     tx_sizes = {
