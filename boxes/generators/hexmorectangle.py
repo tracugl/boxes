@@ -356,6 +356,45 @@ class HexmoRectangle(Boxes):
                  "a single centred medium with one pilot above and below it "
                  "(1 medium + 2 small) — fewer laser pierces.  Matches the "
                  "HexmoHexagon option of the same name.")
+        self.argparser.add_argument(
+            "--big_hole_shape", action="store", type=str, default="circle",
+            choices=["circle", "rounded_rect"],
+            help="Shape of the large weight-reduction through-holes.  'circle' "
+                 "(default) draws them as circles (unchanged behaviour).  "
+                 "'rounded_rect' draws each as a square with rounded corners "
+                 "occupying the same bounding box as the circle (side = the "
+                 "circle diameter), so all fit/clearance checks are unaffected.  "
+                 "The small registration and medium holes are never changed by "
+                 "this option.  Matches the HexmoHexagon option of the same name.")
+        self.argparser.add_argument(
+            "--big_hole_roundness", action="store", type=float, default=0.5,
+            help="Corner rounding for --big_hole_shape=rounded_rect, as a "
+                 "fraction of the hole's half-width (0 = square corners, "
+                 "1 = fully round, i.e. back to a circle).  Default 0.5 — on the "
+                 "Ø70 mm big holes that is a 17.5 mm corner radius.  Values are "
+                 "clamped by rectangularHole, so out-of-range numbers are safe.")
+
+    def _drawBigHole(self, x, y, r):
+        """Draw one large weight-reduction through-hole centred at (x, y).
+
+        Honours ``--big_hole_shape``: a circle of radius ``r`` by default, or —
+        when ``rounded_rect`` is selected — a square of side ``2·r`` (identical
+        bounding box, so every fit/clearance reservation upstream still holds)
+        with rounded corners.  The corner radius is ``--big_hole_roundness × r``;
+        :meth:`Boxes.rectangularHole` clamps it to at most half the side, so a
+        roundness of 1 degrades gracefully to a circle-like shape and any
+        out-of-range value is safe.  Mirrors ``HexmoHexagon._drawBigHole``.
+
+        :param x: hole centre x (mm, callback frame).
+        :param y: hole centre y (mm, callback frame).
+        :param r: radius of the equivalent circular hole (mm).
+        """
+        if self.big_hole_shape == "rounded_rect":
+            corner = max(0.0, self.big_hole_roundness) * r
+            self.rectangularHole(x, y, 2 * r, 2 * r, r=corner,
+                                 center_x=True, center_y=True)
+        else:
+            self.hole(x, y, r)
 
     def _drawCornerGroup8Rect(self, s):
         """Draw the end-column alignment cluster for a rectangularWall panel.
@@ -527,7 +566,7 @@ class HexmoRectangle(Boxes):
         y_big    = l_eff / 2
 
         # Central big hole (single vertically-centred, matching outer-wall big holes).
-        self.hole(x_mid, y_big, r4)
+        self._drawBigHole(x_mid, y_big, r4)
         # Small flanking pairs (top + bottom at ±sm_off from centre).
         for off in (-sm_off, sm_off):
             self.hole(x_mid + off, y_bot_r3, r3)
@@ -563,7 +602,7 @@ class HexmoRectangle(Boxes):
             return
         x_mid = (x_lo + x_hi) / 2
         y_mid = l_eff / 2
-        self.hole(x_mid, y_mid, r4)
+        self._drawBigHole(x_mid, y_mid, r4)
 
     def drawAlignmentHolesRect(self, s, gap_features=True, draw_corners=True):
         """Cut alignment features into an outer wall drawn by rectangularWall.
@@ -639,7 +678,7 @@ class HexmoRectangle(Boxes):
         l_eff = self.h - 2 * self.thickness
         y_big = l_eff / 2
         for x in big_xs:
-            self.hole(x, y_big, r4)
+            self._drawBigHole(x, y_big, r4)
 
         # Fill every gap between adjacent features with the band pattern.
         # Skipped when gap_features=False (e.g. short outer walls), where the
@@ -1082,8 +1121,8 @@ class HexmoRectangle(Boxes):
             l_eff = self.h - 2 * t
             y_big = l_eff / 2
             if x_floor + self._R4 + self._MIN_CLEAR <= row_h:
-                self.hole(x_floor,     y_big, self._R4)
-                self.hole(H - x_floor, y_big, self._R4)
+                self._drawBigHole(x_floor,     y_big, self._R4)
+                self._drawBigHole(H - x_floor, y_big, self._R4)
             # Interior segments 1 … n_cols−2: full gap band when the segment is wide
             # enough, otherwise a single centred big hole.
             # The _drawGapBandFeatures threshold duplicates the guard inside that

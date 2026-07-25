@@ -271,6 +271,25 @@ instead of `spoke`, and the track-guide extras (`--track_label=0`,
 
 ---
 
+## Big-hole shape
+
+The large weight-reduction through-holes are circles by default. `--big_hole_shape`
+lets you draw them as rounded-corner squares instead — purely a look/material
+choice, applied to every big hole on both generators.
+
+- `--big_hole_shape=circle` (default) — circular holes (unchanged output).
+- `--big_hole_shape=rounded_rect` — each big hole becomes a square with rounded
+  corners occupying the **same bounding box** as the circle (side = the circle
+  diameter), so every hole-fit and clearance check is unaffected and the count
+  and positions are identical. The small registration and medium fallback holes
+  are never changed.
+- `--big_hole_roundness` (default `0.5`) — corner rounding for `rounded_rect`, as
+  a fraction of the hole's half-width: `0` = square corners, `1` = fully round
+  (back to a circle). At the default `0.5`, the Ø70 mm big holes get a 17.5 mm
+  corner radius. Out-of-range values are clamped, so they never error.
+
+---
+
 ## Gotchas
 
 - **`--outside`**: leave it **off** (the default). With it on, `radius` is treated
