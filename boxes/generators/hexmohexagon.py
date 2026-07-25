@@ -1440,11 +1440,17 @@ class HexmoHexagon(Boxes):
             self.drawAlignmentHoles(side_orig, l, "A")
 
         # Alignment-hole callback for the trapezoid long back wall.
-        # The long wall spans two hex-side-lengths, so its pre-shrink width is
-        # 2*side_orig.  Passing that as the `s` parameter scales all fractional
-        # hole positions proportionally to the wider panel.
+        # The hole pattern is always laid over the full 2*side_orig reference and
+        # is symmetric about its own centre, so it is independent of how much the
+        # drawn panel (side_long) has been trimmed.  To keep it centred on — and
+        # therefore fixed relative to the centre of — the panel, the callback
+        # origin (the bottom-right corner, at side_long/2 right of the panel
+        # centre) is shifted by m = side_long/2 - side_orig.  For the historic
+        # side_long = 2*side_orig - 2t this is -t; for the shortened
+        # side_long = 2*side_orig - 3t it is -1.5t.  Deriving m from side_long
+        # means the holes never move when the trim changes.
         def draw_aligned_holes_long():
-            self.moveTo(0, -self.thickness)
+            self.moveTo(0, side_long / 2 - side_orig)
             self.drawAlignmentHolesLong(2 * side_orig, l, "A")
 
         # Standard stepped-tab side-panel border.  With no taper, d_top = d_bottom = 0
@@ -1465,10 +1471,16 @@ class HexmoHexagon(Boxes):
             #   3 × standard walls  — one each for right slant, short front, left slant
             #
 
-            # Long back-wall border.  Width is 2*side_orig − 2*t because the panel
-            # spans two hex-side-lengths with finger-joint notches only at the two
-            # outer ends (no junction at the midpoint in a trapezoid box).
-            side_long = 2 * side_orig - 2 * t
+            # Long back-wall border.  The panel spans two hex-side-lengths with
+            # finger-joint notches only at the two outer ends (no junction at the
+            # midpoint in a trapezoid box).  It is trimmed by a further material
+            # thickness (t/2 off each end, symmetric) beyond the 2*side_orig − 2*t
+            # nominal: at full width the long wall butts into the two slanted side
+            # walls when assembled and needs sanding, so the extra t of clearance
+            # lets it drop in.  Because the trim is symmetric the panel centre is
+            # unchanged, and the alignment-hole callback re-centres on side_long
+            # (see draw_aligned_holes_long) so every hole keeps its position.
+            side_long = 2 * side_orig - 3 * t
             borders_long = [side_long, 90,
                             0, -90, t_, 90, l, 90, t_, -90, 0,
                             90, side_long, 90,
