@@ -95,6 +95,23 @@ class HexmoHexagon(Boxes):
                  "(1 medium + 2 small), mirroring the reduced corner cluster — "
                  "fewer laser pierces and a shorter cut time.")
         self.argparser.add_argument(
+            "--big_hole_shape", action="store", type=str, default="circle",
+            choices=["circle", "rounded_rect"],
+            help="Shape of the large weight-reduction through-holes.  'circle' "
+                 "(default) draws them as circles (unchanged behaviour).  "
+                 "'rounded_rect' draws each as a square with rounded corners "
+                 "occupying the same bounding box as the circle (side = the "
+                 "circle diameter), so all fit/clearance checks are unaffected.  "
+                 "The small registration and medium fallback holes are never "
+                 "changed by this option.")
+        self.argparser.add_argument(
+            "--big_hole_roundness", action="store", type=float, default=0.5,
+            help="Corner rounding for --big_hole_shape=rounded_rect, as a "
+                 "fraction of the hole's half-width (0 = square corners, "
+                 "1 = fully round, i.e. back to a circle).  Default 0.5 — on the "
+                 "Ø70 mm big holes that is a 17.5 mm corner radius.  Values are "
+                 "clamped by rectangularHole, so out-of-range numbers are safe.")
+        self.argparser.add_argument(
             "--trapezoid", action="store", type=boolarg, default=False,
             help="If true, only draw a half-hexagon.")
         self.argparser.add_argument(
@@ -186,6 +203,28 @@ class HexmoHexagon(Boxes):
 
         self.n = 6
 
+    def _drawBigHole(self, x, y, r):
+        """Draw one large weight-reduction through-hole centred at (x, y).
+
+        Honours ``--big_hole_shape``: a circle of radius ``r`` by default, or —
+        when ``rounded_rect`` is selected — a square of side ``2·r`` (identical
+        bounding box, so every fit/clearance reservation upstream still holds)
+        with rounded corners.  The corner radius is ``--big_hole_roundness × r``;
+        :meth:`Boxes.rectangularHole` clamps it to at most half the side, so a
+        roundness of 1 degrades gracefully to a circle-like shape and any
+        out-of-range value is safe.
+
+        :param x: hole centre x (mm, callback frame).
+        :param y: hole centre y (mm, callback frame).
+        :param r: radius of the equivalent circular hole (mm).
+        """
+        if self.big_hole_shape == "rounded_rect":
+            corner = max(0.0, self.big_hole_roundness) * r
+            self.rectangularHole(x, y, 2 * r, 2 * r, r=corner,
+                                 center_x=True, center_y=True)
+        else:
+            self.hole(x, y, r)
+
     def drawSupports(self, isTrapezoid=False):
         """Draw rectangular internal support walls, one per half-spoke.
 
@@ -266,7 +305,7 @@ class HexmoHexagon(Boxes):
                         big_xs = [x_floor + i * step for i in range(n)]
 
                     for x in big_xs:
-                        self.hole(x, h / 2, r1)
+                        self._drawBigHole(x, h / 2, r1)
 
                     # Fill gaps between big holes with sub-hole pairs.
                     lo_bounds = [sp]                   + [x + r1 for x in big_xs]
@@ -634,7 +673,7 @@ class HexmoHexagon(Boxes):
 
         # Draw the big through-holes along the vertical centre line.
         for y in big_ys:
-            self.hole(l / 2, y, r1)
+            self._drawBigHole(l / 2, y, r1)
 
         # Fill every gap with sub-groups via _drawGapFeatures.
         # Boundaries: the corner group's inner edge is 3·sp + r2 (top of the
@@ -702,7 +741,7 @@ class HexmoHexagon(Boxes):
 
         # Draw the big through-holes along the vertical centre line.
         for y in big_ys:
-            self.hole(l / 2, y, r1)
+            self._drawBigHole(l / 2, y, r1)
 
         # Fill every gap with sub-groups via _drawGapFeatures — same logic as
         # drawAlignmentHoles.  The "transition zone" gaps near s/2 are naturally
