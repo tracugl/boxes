@@ -105,11 +105,11 @@ class HexmoHexagon(Boxes):
                  "The small registration and medium fallback holes are never "
                  "changed by this option.")
         self.argparser.add_argument(
-            "--big_hole_roundness", action="store", type=float, default=0.5,
+            "--big_hole_roundness", action="store", type=float, default=0.3,
             help="Corner rounding for --big_hole_shape=rounded_rect, as a "
                  "fraction of the hole's half-width (0 = square corners, "
-                 "1 = fully round, i.e. back to a circle).  Default 0.5 — on the "
-                 "Ø70 mm big holes that is a 17.5 mm corner radius.  Values are "
+                 "1 = fully round, i.e. back to a circle).  Default 0.3 — on the "
+                 "Ø70 mm big holes that is a 10.5 mm corner radius.  Values are "
                  "clamped by rectangularHole, so out-of-range numbers are safe.")
         self.argparser.add_argument(
             "--trapezoid", action="store", type=boolarg, default=False,
@@ -122,7 +122,7 @@ class HexmoHexagon(Boxes):
                  "side supports are omitted and the two kite cutouts are "
                  "widened to take advantage of the extra clearance.")
         self.argparser.add_argument(
-            "--track_lines", action="store", type=boolarg, default=False,
+            "--track_lines", action="store", type=boolarg, default=True,
             help="Etch the 60° model-railway track curve onto the top (deck) "
                  "panel as an alignment guide.  The curve is the arc a train "
                  "follows as it crosses the module: radius = 1.5 × the hexagon "
@@ -144,12 +144,12 @@ class HexmoHexagon(Boxes):
                  "--track_line_count > 1.  Defaults to 80 mm.  Ignored when only "
                  "one line is drawn.")
         self.argparser.add_argument(
-            "--track_width", action="store", type=float, default=40.0,
+            "--track_width", action="store", type=float, default=30.0,
             help="Physical width (mm) of the actual model-railway track laid on "
                  "the deck (the roadbed/tie footprint).  Used by --draw_track to "
                  "place a pair of edge lines at ± track_width/2 either side of "
-                 "each centreline.  Set to your scale's track width (e.g. ~40 mm "
-                 "HO, ~20 mm N).")
+                 "each centreline.  Set to your scale's track width (30 mm HO, "
+                 "17 mm N).")
         self.argparser.add_argument(
             "--track_lead_in", action="store", type=float, default=30.0,
             help="Length (mm) of a straight lead-in section where each track "
@@ -190,12 +190,12 @@ class HexmoHexagon(Boxes):
             help="Full hexagon: draw the top curve, from edge 6 (upper-left) to "
                  "edge 2 (upper-right).")
         self.argparser.add_argument(
-            "--draw_center", action="store", type=boolarg, default=True,
+            "--draw_center", action="store", type=boolarg, default=False,
             help="When --track_lines is on, etch the track centreline arc(s) "
                  "themselves (the --track_line_count parallel curves).  This is "
                  "the original guide behaviour and is on by default.")
         self.argparser.add_argument(
-            "--draw_track", action="store", type=boolarg, default=False,
+            "--draw_track", action="store", type=boolarg, default=True,
             help="When --track_lines is on, treat each centreline as the middle "
                  "of the track and etch a pair of edge lines offset by "
                  "± track_width/2, showing where the actual track footprint sits."
