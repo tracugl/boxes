@@ -34,6 +34,7 @@ re-rendered for different mini sizes, paper sizes, or row counts.
 """
 
 import logging
+import textwrap
 
 from boxes import *  # noqa: F401, F403 — boxes idiom: imports Boxes, edges, boolarg, math, etc.
 from boxes.Color import Color
@@ -186,6 +187,19 @@ class _NotchedTopEdge(edges.BaseEdge):
             # panel still closes cleanly.
             self.edge(length)
             return
+        if d <= 0:
+            # OPEN-CORNER form. With no lip there is no outer notch wall to
+            # draw: the pen is already at notch-floor level, because the
+            # preceding edge was wrapped in :class:`_ShortenedEdge` and
+            # stopped `n` mm short of the corner. Drawing a wall here would
+            # retrace the `n` mm of the preceding edge that we deliberately
+            # gave up, cutting the same line twice.
+            #
+            # Sequence: walk `w` along the notch floor, turn OUT of the panel
+            # (-90 CW), walk `n` back up to edge level, turn to resume along
+            # the edge (+90 CCW), walk the remaining `length - w`.
+            self.polyline(w, -90, n, 90, length - w)
+            return
         # Polyline trace from the edge's start corner, heading along the
         # edge (in rectangularWall's TOP edge that's local -x world).
         # Sequence: walk `d` mm along the edge (the protective lip),
@@ -198,10 +212,75 @@ class _NotchedTopEdge(edges.BaseEdge):
         self.polyline(d, 90, n, -90, w, -90, n, 90, length - d - w)
 
 
+class _ShortenedEdge(edges.BaseEdge):
+    """Wraps another edge, drawing it a fixed amount shorter than asked.
+
+    :meth:`Boxes.rectangularWall` decides every edge's length itself, so a
+    panel feature that needs one side to stop short has no way to say so.
+    This wrapper is that way: it passes ``length - shorten`` down to the edge
+    it wraps and leaves everything else — joint geometry, widths, margins —
+    untouched.
+
+    Used for the corner where a label-strip notch sits flush, with no lip
+    (``label_strip_inset = 0``). There the notch's outer wall would lie
+    exactly on the adjacent edge's own line, so cutting both traces the same
+    few millimetres twice. Shortening the adjacent edge by the notch depth
+    lets :class:`_NotchedTopEdge` skip that wall entirely: the outline
+    reaches the notch floor once and turns straight along it.
+
+    The layout maths in ``rectangularWall`` reads ``spacing()``, which
+    :class:`BaseEdge` derives from ``startWidth()`` and ``margin()`` — all
+    three are delegated, so the part reserves its usual space on the sheet
+    and simply comes out ``shorten`` mm shorter on this one side.
+    """
+
+    char = None
+    description = "Edge drawn shorter than its nominal length"
+
+    def __init__(self, boxes_, base, shorten) -> None:
+        # `settings` is None: this wrapper has no geometry of its own, it only
+        # rescales the call it forwards.
+        super().__init__(boxes_, None)
+        self.base = base
+        self.shorten = shorten
+
+    def __call__(self, length, **kw):
+        self.base(max(0.0, length - self.shorten), **kw)
+
+    def startWidth(self) -> float:
+        return self.base.startWidth()
+
+    def endWidth(self) -> float:
+        return self.base.endWidth()
+
+    def margin(self) -> float:
+        return self.base.margin()
+
+
 class BattletechCarryBox(FlexBook):
     """BattleTech-themed flex-spine carry book with map sleeve, mech rows, and utility tray."""
 
     ui_group = "FlexBox"
+
+    #: Floor on ``dice_hole_wall``, in mm. Stops a user-supplied 0 (or a
+    #: negative) leaving the dice hole flush with the bulge's outer edge,
+    #: which would cut the bulge open.
+    DICE_HOLE_MIN_WALL = 1.0
+
+    #: Wood left between a deflector ramp's inner tip and the living-hinge
+    #: flex at the back of the spine, in mm. The ramp protrudes
+    #: ``dice_tower_ramp_width`` into a cavity only ``y / 2`` deep, so on a
+    #: shallow spine the ramp would otherwise press against — or cut through
+    #: — the flex. Fixed rather than a UI parameter to keep the dice-tower
+    #: option from growing yet another knob.
+    DICE_RAMP_FLEX_CLEARANCE = 5.0
+
+    #: Characters per line when warnings are wrapped onto the SVG canvas.
+    WARNING_WRAP_COLUMNS = 96
+
+    #: Font size (mm) for the on-canvas warning block. Larger than the 4 mm
+    #: boxes uses for part labels, since the point is to be noticed.
+    WARNING_FONTSIZE = 5.0
 
     description = """
 A FlexBook sized for a BattleTech kit: paper hex maps slide into a glued sleeve
@@ -238,8 +317,10 @@ the slots, doubling the bridge thickness. Set the lip to 0 and/or disable the
 reinforcement to go back to edge-adjacent single-thickness slots.
 
 Override `inner depth in mm` (the `y` parameter) if your tallest mech is taller
-than the default 70 mm row height — the closed-book cavity must satisfy
-`y - 2*thickness >= row_height + map_sleeve_depth`.
+than the default 70 mm row height. The tray heights are derived from `y`, so
+that is the only number you need to change: `row_height` and `utility_tray_h`
+both default to 0 = "work it out from the cavity", and grow or shrink with `y`
+automatically. Set either to a positive value to pin it instead.
 """
 
     def __init__(self) -> None:
@@ -250,16 +331,27 @@ than the default 70 mm row height — the closed-book cavity must satisfy
         # same FingerJoint + Flex edge settings, supply BattleTech-sized
         # defaults, and add our own arguments — all in one pass.
         Boxes.__init__(self)
-        # Default finger-joint play to 0.3× thickness (= 0.9 mm total slot
-        # clearance on 3 mm stock, ~0.45 mm per side). The box is intended
-        # for 3 mm MDF that gets primed and painted before assembly: `play`
-        # is the TOTAL finger-in-slot gap, so it is split across both sides,
-        # and each side must swallow paint film on BOTH the finger edge and
-        # the slot wall. MDF primer builds up ~0.15-0.2 mm per absorbent cut
-        # edge, so a generous gap avoids having to sand fuzzy fingers back.
-        # The design is glue-assembled, so the residual gap after painting
-        # is exactly what the glue fills. Override --FingerJoint_play to tune.
-        self.addSettingsArgs(edges.FingerJointSettings, play=0.3)
+        # Finger-joint geometry, all in multiples of `thickness`:
+        #
+        # `finger` / `space` = 4 (vs the library default 2) gives 12 mm
+        # fingers separated by 12 mm gaps on 3 mm stock, roughly halving the
+        # finger count per edge. Coarser teeth suit this box for three
+        # reasons: the panels are long (a 261 mm row wall would otherwise
+        # carry ~20 fingers), fewer/wider fingers mean fewer stress risers
+        # and less charring on MDF, and wide slots are far easier to clear
+        # of primer and to glue up cleanly than a dense comb.
+        #
+        # `play` = 0.2 (= 0.6 mm total slot clearance on 3 mm stock, ~0.3 mm
+        # per side). The box is intended for 3 mm MDF that gets primed and
+        # painted before assembly: `play` is the TOTAL finger-in-slot gap, so
+        # it is split across both sides, and each side must swallow paint film
+        # on BOTH the finger edge and the slot wall. MDF primer builds up
+        # ~0.15-0.2 mm per absorbent cut edge, so some gap avoids having to
+        # sand fuzzy fingers back. The design is glue-assembled, so the
+        # residual gap after painting is exactly what the glue fills.
+        # Override --FingerJoint_play / _finger / _space to tune.
+        self.addSettingsArgs(edges.FingerJointSettings,
+                             finger=4.0, space=4.0, play=0.2)
         self.addSettingsArgs(edges.FlexSettings)
 
         # Cover face = 266 × 311 mm. Sized so the default tray layout
@@ -278,7 +370,10 @@ than the default 70 mm row height — the closed-book cavity must satisfy
         # Map sleeve (230 × 280 mm internal) gets ~18 mm bezel along the
         # cover-width axis and ~15 mm along the cover-height axis.
         # Spine depth = 90 mm so the closed cavity (84 mm interior) holds a
-        # 70 mm mech row + 10 mm map sleeve + ~4 mm clearance.
+        # 10 mm map sleeve plus a 73 mm tray stack with 1 mm of slack. The
+        # tray heights are DERIVED from this y — see
+        # :meth:`_resolve_cavity_heights` — so changing y here (or in the UI)
+        # resizes the rows and the utility tray to match.
         self.buildArgParser(x=266.0, y=90.0, h=311.0)
 
         # FlexBook's own per-instance args — duplicated here because we
@@ -321,24 +416,51 @@ than the default 70 mm row height — the closed-book cavity must satisfy
         # heavies (240 mm of cells) and another holds 6 mediums (also
         # 240 mm of cells but with 2 more dividers).
         self.argparser.add_argument(
-            "--row_height", action="store", type=float, default=70.0,
+            "--row_height", action="store", type=float, default=0.0,
             help="Shared interior height (mm) of every mech-tray row — the "
                  "vertical space inside each cell for the mech itself. "
-                 "Internal dividers stop at this height.")
+                 "Internal dividers stop at this height. Leave at 0 to "
+                 "derive it from the spine cavity: "
+                 "`y - 2*thickness - map_sleeve_depth - thickness - "
+                 "cavity_slack`, which is 70 mm at the default y = 90. "
+                 "Deriving it means a change to `inner depth in mm` (y) "
+                 "automatically resizes the trays to match. Set a positive "
+                 "value to pin the height and ignore the cavity (a warning "
+                 "is logged if it cannot close).")
+        self.argparser.add_argument(
+            "--cavity_slack", action="store", type=float, default=1.0,
+            help="Clearance (mm) left along the spine-depth axis when "
+                 "row_height / utility_tray_h are derived from y. Absorbs "
+                 "paint film, glue squeeze-out and cover bow so the book "
+                 "still closes. Only consulted for values left at 0.")
+        self.argparser.add_argument(
+            "--include_label_strip", action="store", type=boolarg, default=True,
+            help="Recess a name-plate strip into the top of each mech row, "
+                 "for writing or labelling which mech lives in which cell. "
+                 "Disable to leave the short walls and dividers with plain "
+                 "top edges and emit no strip.")
         self.argparser.add_argument(
             "--label_strip_depth", action="store", type=float, default=12.0,
-            help="Depth (mm) of a name-plate strip recessed into the row "
-                 "across the short walls and the internal dividers. Both "
-                 "short walls and every divider get a rectangular notch "
-                 "cut into their top edge (`label_strip_depth` wide x "
+            help="Depth (mm) of the name-plate strip, measured across the "
+                 "row's depth axis. Both short walls and every divider get a "
+                 "rectangular notch cut into their top edge (this wide x "
                  "`thickness` deep); the strip is a flat piece sized "
-                 "floor_w x this depth x thickness that drops into these "
-                 "notches from above. The strip's TOP face sits flush "
-                 "with the wall tops — assembled row total height is "
-                 "still exactly row_height, no protrusion above. The "
-                 "front portion of each cell's open top is covered by "
-                 "the strip; the BACK portion stays open for mech "
-                 "insertion. Set to 0 to disable (no notches, no strip).")
+                 "floor_w x this depth x thickness that drops into those "
+                 "notches from above. The strip's TOP face sits flush with "
+                 "the wall tops — assembled row height is still exactly "
+                 "row_height, no protrusion. The strip covers the front part "
+                 "of each cell's open top; the BACK part stays open for "
+                 "inserting the mech.")
+        self.argparser.add_argument(
+            "--label_strip_inset", action="store", type=float, default=3.0,
+            help="Distance (mm) from the row's front edge to the near side "
+                 "of the label strip — the lip of wood left in front of it. "
+                 "0 puts the strip hard against the front edge with no lip, "
+                 "which cuts fine but leaves the notch open at the corner, "
+                 "so the strip is held only by friction against the panels "
+                 "behind it. A few mm gives the notch a closed outer wall "
+                 "and something for the strip to sit against. Increase to "
+                 "move the strip back over the cells.")
         self.argparser.add_argument(
             "--row_target_outer_width", action="store", type=float, default=0.0,
             help="Target outer width (mm) for ALL mech-tray rows. Each row "
@@ -473,15 +595,19 @@ than the default 70 mm row height — the closed-book cavity must satisfy
             help="Internal depth of the utility tray in mm — also the "
                  "width of the drawer-style opening on one long side.")
         self.argparser.add_argument(
-            "--utility_tray_h", action="store", type=float, default=70.0,
-            help="Internal height (top-to-bottom) of the utility tray "
-                 "in mm. Same axis as row_height for the mech rows — "
-                 "the default matches row_height so the tray and the "
-                 "mech rows share a flat top profile inside the cavity. "
-                 "Determines the drawer-mouth aperture (utility_tray_w "
-                 "× utility_tray_h), so taller values let bulkier items "
-                 "pass through the open long side. Capped by the spine "
-                 "cavity at roughly y − 4t (78 mm at default y = 90).")
+            "--utility_tray_h", action="store", type=float, default=0.0,
+            help="Internal height (top-to-bottom) of the utility tray in "
+                 "mm. Same axis as row_height for the mech rows, but the "
+                 "tray is CLOSED top and bottom, so its assembled exterior "
+                 "is `utility_tray_h + 2*thickness` — one thickness taller "
+                 "than an open-top row of the same internal height. Leave "
+                 "at 0 to derive it as `row_height - thickness` (67 mm at "
+                 "the defaults), which makes the tray's exterior exactly "
+                 "match the rows' so they share a flat top profile inside "
+                 "the cavity. Determines the drawer-mouth aperture "
+                 "(utility_tray_w × utility_tray_h), so taller values let "
+                 "bulkier items pass through the open long side, at the "
+                 "cost of standing proud of the rows.")
 
         # ---- Dice tower (in the spine) ---------------------------------
         # Turn the otherwise-wasted spine cavity into a small dice tower.
@@ -498,16 +624,30 @@ than the default 70 mm row height — the closed-book cavity must satisfy
                  "Disable to leave the side walls + recess wall as plain "
                  "panels.")
         self.argparser.add_argument(
-            "--dice_hole_radius", action="store", type=float, default=35.0,
-            help="Radius (mm) of the semicircular dice entry/exit hole "
-                 "cut into each side-wall bulge. The semicircle's flat "
-                 "side is the DIAMETER (= 2 * this value) and its curve "
-                 "extends toward the bulge's outer edge. Default 20 mm "
-                 "gives a 40 mm flat side — two 16 mm d6 dice exit "
-                 "side by side with plenty of clearance. The wider "
-                 "single opening lets dice fall out without having to "
-                 "align with a small fixed hole. Set to 0 to disable "
-                 "just the side-wall holes (ramps still emitted).")
+            "--include_dice_holes", action="store", type=boolarg, default=True,
+            help="Cut the D-shaped dice entry/exit opening into each "
+                 "side-wall bulge. Disable to leave the bulges solid while "
+                 "still emitting the deflector ramps.")
+        self.argparser.add_argument(
+            "--dice_hole_wall", action="store", type=float, default=6.0,
+            help="Wood (mm) left between the dice opening and the outer edge "
+                 "of the side-wall bulge. Because the opening's curve is "
+                 "concentric with the bulge, this rim is a constant width all "
+                 "the way round the arc, so it reads as a clean band rather "
+                 "than a crescent. This is what sizes the opening: hole "
+                 "radius = bulge radius (y / 2) - this value, so the opening "
+                 "grows and shrinks with the spine automatically. Larger "
+                 "values give a stronger bulge and a smaller mouth.")
+        self.argparser.add_argument(
+            "--dice_hole_radius", action="store", type=float, default=0.0,
+            help="Radius (mm) of the D-shaped dice entry/exit opening cut "
+                 "into each side-wall bulge. Leave at 0 (recommended) to use "
+                 "the bulge's own radius less `dice_hole_wall`, which makes "
+                 "the opening concentric with the outer bend and keeps the "
+                 "rim an even width. Set a positive value to force a smaller "
+                 "radius — the arc then no longer follows the bulge and the "
+                 "rim widens toward the sides. Values larger than the "
+                 "concentric radius are clamped, with a warning.")
         self.argparser.add_argument(
             "--dice_hole_clearance_finger", action="store", type=float, default=6.0,
             help="Minimum clearance (mm) between the dice hole's flat "
@@ -677,12 +817,12 @@ than the default 70 mm row height — the closed-book cavity must satisfy
             # will see geometry that violates the requested clearance,
             # but at least the part still renders. They can reduce
             # end_clearance, ramp_len, the ramp angle, or grow the wall.
-            logging.warning(
-                "BattletechCarryBox: dice_tower_ramp_end_clearance=%.1f mm "
-                "leaves no room for %d ramp(s) of length %.1f mm at %.1f deg "
-                "on a wall of long-axis length %.1f mm. Falling back to "
-                "centred placement — reduce end_clearance, ramp_length, "
-                "ramp_angle, or grow y (spine depth) / h (cover height).",
+            self._warn(
+                "dice_tower_ramp_end_clearance=%.1f mm leaves no room for %d "
+                "ramp(s) of length %.1f mm at %.1f deg on a wall of long-axis "
+                "length %.1f mm. Falling back to centred placement — reduce "
+                "end_clearance, ramp_length, ramp_angle, or grow y (spine "
+                "depth) / h (cover height).",
                 end_clearance, n, ramp_len, angle, wall_y,
             )
             positions_y = [t + wall_y / 2.0] * n
@@ -709,11 +849,10 @@ than the default 70 mm row height — the closed-book cavity must satisfy
         row_half_x_span = (ramp_len / 2.0) * abs(math.cos(math.radians(angle)))
         max_offset = max(0.0, midline_x - row_half_x_span)
         if offset > max_offset:
-            logging.warning(
-                "BattletechCarryBox: dice_tower_ramp_offset=%.1f mm exceeds "
-                "the %.1f mm room available on a wall of short-axis length "
-                "%.1f mm with ramp_length=%.1f mm at %.1f deg. Clamping to "
-                "%.1f mm.",
+            self._warn(
+                "dice_tower_ramp_offset=%.1f mm exceeds the %.1f mm room "
+                "available on a wall of short-axis length %.1f mm with "
+                "ramp_length=%.1f mm at %.1f deg. Clamping to %.1f mm.",
                 offset, max_offset, wall_h, ramp_len, angle, max_offset,
             )
             offset = max_offset
@@ -752,62 +891,46 @@ than the default 70 mm row height — the closed-book cavity must satisfy
         # Inherited finger holes for end-wall mating (recess + latch walls).
         self.fingerHolesAt(0, x + 1.5 * t, h, 0)
 
-        # Dice entry/exit hole — a single SEMICIRCLE cut into the bulge.
-        # The bulge is centred at panel-local (h/2, x + 2t) with radius
-        # r (= spine_radius); the semicircle is placed with its FLAT
-        # side toward the main side-wall body and its CURVE extending
-        # toward the bulge's outer edge. Compared with two separate
-        # circular holes, the wider continuous opening means dice don't
-        # need to align with a fixed centre to fall through — they can
-        # exit anywhere along the flat side, making the bottom-of-spine
-        # exit feel less restrictive.
-        if self.include_dice_tower and self.dice_hole_radius > 0:
+        # Dice entry/exit opening — a single D-shaped circular segment cut
+        # into the bulge, flat side toward the main side-wall body and curve
+        # toward the bulge's outer edge. One wide continuous mouth beats two
+        # small round holes: dice don't have to line up with a fixed centre,
+        # they can fall through anywhere along the chord.
+        #
+        # The arc shares the bulge's CENTRE — panel-local (h/2, x + 2t) — so
+        # with its radius set to (r - dice_hole_wall) by
+        # :meth:`_resolve_dice_hole_radius` the leftover rim is a constant
+        # width all the way round, instead of the crescent you get from two
+        # arcs of different radii.
+        #
+        # Sharing the centre means the flat side can no longer be the
+        # diameter: the diameter line sits at panel-y = x + 2t, only 0.5t
+        # above the finger-hole row at x + 1.5t that mates the recess wall,
+        # which would leave almost no wood between the two cuts. So we raise
+        # the flat side to a CHORD, `dice_hole_clearance_finger` above that
+        # row, and cut only the segment above it.
+        if self.include_dice_tower and self.include_dice_holes:
             cx_mid = h / 2.0
             hr = self.dice_hole_radius
-            # Geometry constraints. The bulge occupies panel-y in
-            # [x + 2t, x + 2t + r]; the finger-hole row mating the
-            # recess wall sits at panel-y = x + 1.5t. The semicircle
-            # must fit between these, with a small wood margin at each
-            # end so neither the diameter cut nor the curved apex
-            # weakens the surrounding structure.
-            #
-            # apex_min_clearance is the minimum wood thickness between
-            # the semicircle's curved apex and the bulge's outer edge,
-            # kept as a small fixed value so the curve never crashes
-            # through the bulge regardless of user input.
-            apex_min_clearance = 1.0
+            bulge_centre_y = x + 2 * t
             finger_holes_y = x + 1.5 * t
-            bulge_apex_y = (x + 2 * t) + r
-            # User-requested clearance: how far the diameter sits above
-            # the finger-hole row. The maximum legal flat_y is set by
-            # the apex constraint (semicircle's top must clear the
-            # bulge edge).
-            flat_y_requested = finger_holes_y + self.dice_hole_clearance_finger
-            flat_y_max = bulge_apex_y - apex_min_clearance - hr
-            if flat_y_requested > flat_y_max:
-                # User asked for more finger-side clearance than the
-                # bulge can give while keeping the apex inside it.
-                # Clamp to the maximum legal position so the curve
-                # still has apex_min_clearance below the bulge edge.
-                # The resulting finger-side gap will be < requested;
-                # log so the user can see why and either reduce
-                # dice_hole_radius or grow the spine (y).
-                flat_y = flat_y_max
-                actual_finger_gap = flat_y - finger_holes_y
-                logging.warning(
-                    "BattletechCarryBox: dice_hole_clearance_finger=%.1f mm "
-                    "requested but only %.1f mm fits with "
-                    "dice_hole_radius=%.1f mm in a bulge of radius %.1f mm. "
-                    "Position clamped — reduce dice_hole_radius or grow y "
-                    "(spine depth) to recover the requested clearance.",
-                    self.dice_hole_clearance_finger,
-                    actual_finger_gap,
-                    hr,
-                    r,
+            chord_y = finger_holes_y + self.dice_hole_clearance_finger
+            chord_offset = chord_y - bulge_centre_y
+            if abs(chord_offset) >= hr:
+                # The chord has been pushed past the arc — no segment exists.
+                # Only reachable with a large dice_hole_clearance_finger on a
+                # shallow spine, since the radius itself is already bounded.
+                self._warn(
+                    "dice_hole_clearance_finger=%.1f mm pushes the opening's "
+                    "flat side outside a %.1f mm radius arc, leaving no "
+                    "opening to cut. Dice opening omitted — reduce "
+                    "dice_hole_clearance_finger or dice_hole_wall, or grow y "
+                    "(spine depth).",
+                    self.dice_hole_clearance_finger, hr,
                 )
             else:
-                flat_y = flat_y_requested
-            self._semicircle_hole(cx_mid, flat_y, hr)
+                self._circular_segment_hole(cx_mid, bulge_centre_y, hr,
+                                            chord_offset)
 
         self.edges["F"](h)
         self.corner(90, 0)
@@ -1239,49 +1362,76 @@ than the default 70 mm row height — the closed-book cavity must satisfy
     # Part-emission helpers
     # -----------------------------------------------------------------
 
-    def _semicircle_hole(self, x, y, r):
-        """Cut a semicircular hole in the current panel.
+    def _circular_segment_hole(self, x, y, r, chord_offset=0.0):
+        """Cut a circular-segment ("D" shaped) hole in the current panel.
 
-        The semicircle's flat side is horizontal, with its midpoint at
-        ``(x, y)`` in panel-local coordinates. The curve extends UPWARD
-        by ``r`` mm — apex at ``(x, y + r)``, endpoints of the flat
-        side at ``(x - r, y)`` and ``(x + r, y)``.
+        The hole is the part of a circle of radius ``r`` centred on panel-local
+        ``(x, y)`` that lies ABOVE a horizontal chord sitting ``chord_offset``
+        mm above that centre. The curved side is therefore an arc of a circle
+        concentric with ``(x, y)`` — which is what lets the dice hole share a
+        centre, and so a uniform wall thickness, with the side wall's bulge.
 
-        Implementation note: boxes' :class:`Context._arc` approximates
-        each arc with a single cubic Bezier whose control-point formula
-        divides by ``ax*by - ay*bx``. For a 180° arc that denominator
-        is zero, yielding NaN control points and a degenerate straight
-        line in the output SVG. Boxes' own :meth:`Boxes.circle` works
-        around this by emitting ten 36° arcs in sequence; we mirror
-        that pattern with six 30° arcs (small enough that each Bezier
-        is a faithful approximation), then close the diameter with an
-        explicit ``line_to`` since boxes' Context exposes no
-        ``close_path``.
+        ``chord_offset = 0`` puts the chord on the diameter and gives a plain
+        semicircle. Positive values raise the chord toward the apex, making a
+        shallower and narrower D; negative values drop it below the centre,
+        giving more than half a circle. The chord's half-width works out at
+        ``sqrt(r**2 - chord_offset**2)``, so the caller must keep
+        ``abs(chord_offset) < r`` or the chord misses the circle entirely.
+
+        Implementation note: boxes' :class:`Context._arc` approximates each arc
+        with a single cubic Bezier whose control-point formula divides by
+        ``ax*by - ay*bx``. That denominator vanishes at 180°, yielding NaN
+        control points and a degenerate straight line in the output SVG. Boxes'
+        own :meth:`Boxes.circle` sidesteps this by emitting ten 36° arcs in
+        sequence; we do the same, splitting whatever sweep we need into
+        sub-arcs of at most 30° so each Bezier stays faithful, then close the
+        chord with an explicit ``line_to`` (boxes' Context exposes no
+        ``close_path``).
+
+        Args:
+            x: Panel-local x of the arc's CENTRE.
+            y: Panel-local y of the arc's CENTRE — note this is the centre,
+                not the chord, unlike a plain semicircle helper.
+            r: Arc radius in mm.
+            chord_offset: Height of the flat chord above the centre, in mm.
+
+        Raises:
+            ValueError: If ``abs(chord_offset) >= r``, i.e. the chord does not
+                intersect the circle and there is no segment to cut.
         """
+        if abs(chord_offset) >= r:
+            raise ValueError(
+                f"chord_offset {chord_offset:.2f} must be smaller than "
+                f"radius {r:.2f} for a circular segment to exist")
+
+        # Half-angle subtended by the chord, measured from the centre. The arc
+        # we keep runs from this angle round to its mirror on the far side.
+        a0 = math.asin(chord_offset / r)
+        a1 = math.pi - a0
+        sweep = a1 - a0
+        # Cap each sub-arc at 30° so no single Bezier approximation degenerates.
+        n_segments = max(2, math.ceil(sweep / (math.pi / 6)))
+
         # Finish any open path so this hole starts a fresh subpath.
         self.ctx.stroke()
         with self.saved_context():
             self.set_source_color(Color.INNER_CUT)
-            # Translate the local frame so the centre of the diameter
-            # is at the local origin. boxes' Context applies a y-flip
-            # at output time; sweeping cairo's ``arc`` (CCW in cairo's
-            # native y-down frame) from angle 0 to π traces the
-            # +y side of the origin in cairo-local coords, which after
-            # the output y-flip lands UP relative to the panel — i.e.
-            # toward the bulge's apex, which is what we want.
+            # Translate the local frame so the arc's centre is at the local
+            # origin. boxes' Context applies a y-flip at output time; sweeping
+            # cairo's ``arc`` (CCW in cairo's native y-down frame) over
+            # increasing angle traces the +y side of the origin in cairo-local
+            # coords, which after the output y-flip lands UP relative to the
+            # panel — i.e. toward the bulge's apex, which is what we want.
             self.moveTo(x, y)
-            # Start the path at the right end of the diameter (r, 0).
-            self.ctx.move_to(r, 0)
-            # Emit the half-circle as six 30° sub-arcs (avoids the
-            # single-Bezier degeneracy at 180°).
-            n_segments = 6
+            # Start the path at the chord's right-hand end.
+            start = (r * math.cos(a0), r * math.sin(a0))
+            self.ctx.move_to(*start)
             for i in range(n_segments):
-                a1 = i * math.pi / n_segments
-                a2 = (i + 1) * math.pi / n_segments
-                self.ctx.arc(0, 0, r, a1, a2)
-            # Cursor is now at (-r, 0). Close the diameter back to the
-            # starting point (r, 0).
-            self.ctx.line_to(r, 0)
+                self.ctx.arc(0, 0, r,
+                             a0 + sweep * i / n_segments,
+                             a0 + sweep * (i + 1) / n_segments)
+            # Cursor is now at the chord's left-hand end; close the chord.
+            self.ctx.line_to(*start)
             self.ctx.stroke()
 
     def _emit_half_ellipse_ramp(self, length, width, move=None, label="dice tower ramp"):
@@ -1404,7 +1554,7 @@ than the default 70 mm row height — the closed-book cavity must satisfy
         # strips at the spine end of the sleeve.
         self.rectangularWall(d, w, "eeee", move="up", label="map sleeve strip (short)")
 
-    def _row_finger_holes_callback(self, cells, height):
+    def _row_finger_holes_callback(self, cells, height, floor_w=None):
         """Build a callback that drills finger holes for slot-in dividers.
 
         For a row of N cells we need N-1 internal dividers. Each divider
@@ -1419,12 +1569,40 @@ than the default 70 mm row height — the closed-book cavity must satisfy
         the first divider — without it the holes would sit on the divider
         edge instead of beside it.
 
+        Why the cell block is centred
+        -----------------------------
+        A row's two long walls are cut as identical pieces, and the panel
+        OUTLINE is already mirror-symmetric about its vertical centreline
+        (``FFeF`` puts the same ``F`` edge on both ends, and the bottom
+        ``F`` finger pattern is itself centred). So the only thing that
+        can give the piece a handedness — a "this face out" side — is the
+        divider hole pattern.
+
+        Filler padding (see :meth:`_emit_mech_row`) makes ``floor_w``
+        wider than the cells strictly need. If that slack all sat at the
+        trailing end, the hole pattern would sit off-centre, and flipping
+        one wall over to face the other way would shift every hole by the
+        full filler width — 6 mm on the default 4-heavy row, 23 mm on the
+        default 1-heavy-4-medium row. The dividers then simply don't
+        reach. Splitting the slack evenly across both ends instead keeps
+        the pattern centred, so either wall can be installed either way
+        round.
+
+        Note that this makes the piece reversible only when the cell
+        sequence is itself palindromic (as the default 4-heavy and
+        6-medium rows are). A row like ``Heavy+Medium+Medium`` has
+        intrinsically asymmetric divider spacing, and no amount of
+        centring can make a mirrored copy line up.
+
         Args:
             cells: List of cell widths in mm for this row.
             height: Length of each finger-hole row in mm. Pass the divider
                 height (NOT the wall height) so the holes stop short of
                 the wall top when called with a shorter height, leaving the
                 label strip band unbroken.
+            floor_w: Final floor width in mm, i.e. the cells' natural width
+                plus any filler padding. Used to centre the cell block. Pass
+                ``None`` to pack the cells hard against the leading edge.
 
         Returns:
             A callable suitable for the ``callback=[...]`` parameter of
@@ -1436,8 +1614,15 @@ than the default 70 mm row height — the closed-book cavity must satisfy
 
         t = self.thickness
 
+        # Half the filler slack, used as the leading offset so the cell
+        # block ends up centred in the floor.
+        natural_floor_w = sum(cells) + (len(cells) - 1) * t
+        lead = 0.0
+        if floor_w is not None and floor_w > natural_floor_w:
+            lead = 0.5 * (floor_w - natural_floor_w)
+
         def cb():
-            pos = -0.5 * t
+            pos = lead - 0.5 * t
             # cells[:-1] because there are len(cells)-1 dividers — the last
             # cell has no divider to its right (the outer wall closes the row).
             for cell_w in cells[:-1]:
@@ -1445,6 +1630,24 @@ than the default 70 mm row height — the closed-book cavity must satisfy
                 self.fingerHolesAt(pos, 0, height)
 
         return cb
+
+    def _label_strip_enabled(self):
+        """Whether rows should get a label strip, notches and all.
+
+        Two call sites depend on this — the one that cuts the notches into the
+        short walls and dividers, and the one that emits the strip itself — and
+        they must agree or you get notched panels with no strip to fill them
+        (or worse, a strip and nowhere to put it). Hence one predicate rather
+        than the condition written twice.
+
+        A zero or negative ``label_strip_depth`` counts as off as well as the
+        checkbox: a strip with no depth is not a part, and
+        :class:`_NotchedTopEdge` would fall back to a plain edge anyway.
+
+        Returns:
+            True if the label strip and its notches should be emitted.
+        """
+        return self.include_label_strip and self.label_strip_depth > 0
 
     def _emit_mech_row(self, cells, depth):
         """Emit one mech-tray row as a freestanding open-top finger-jointed box.
@@ -1471,13 +1674,18 @@ than the default 70 mm row height — the closed-book cavity must satisfy
         ------------------------------
         If ``row_target_outer_width`` is set (default 261 mm) and the row's
         natural outer width is LESS than the target, the row's floor is
-        extended at the trailing edge to make the outer dimensions match.
-        The trailing extension is just empty floor — no extra divider —
-        so a 4-heavy row (240 mm of cells + 5 walls = 255 mm natural) gets
-        a 6 mm strip of unused floor at one end, ending up the same outer
-        size as a 6-medium row (240 + 7 walls = 261 mm natural, no filler).
-        This keeps the tray system visually uniform regardless of the cell
-        mix.
+        widened to make the outer dimensions match. The extra width is just
+        empty floor — no extra divider — and it is split EVENLY between the
+        two ends, so a 4-heavy row (240 mm of cells + 5 walls = 255 mm
+        natural) gets a 3 mm strip of unused floor at each end, ending up
+        the same outer size as a 6-medium row (240 + 7 walls = 261 mm
+        natural, no filler). This keeps the tray system visually uniform
+        regardless of the cell mix.
+
+        Centring the slack rather than dumping it at one end also keeps the
+        long walls' divider holes symmetric, so the two identical long-wall
+        pieces can each be installed either face outward — see
+        :meth:`_row_finger_holes_callback`.
 
         Args:
             cells: List of cell widths in mm (from :func:`_parse_cells`).
@@ -1511,36 +1719,55 @@ than the default 70 mm row height — the closed-book cavity must satisfy
             floor_w = target_outer_w - 2 * t
         else:
             if target_outer_w > 0 and target_outer_w < natural_outer_w:
-                print(
-                    f"[BattletechCarryBox] WARNING: row natural outer width "
-                    f"{natural_outer_w:.1f}mm exceeds row_target_outer_width "
-                    f"{target_outer_w:.1f}mm; rendering at natural width."
+                self._warn(
+                    "a row's natural outer width %.1f mm exceeds "
+                    "row_target_outer_width %.1f mm; rendering that row at "
+                    "its natural width, so rows will not be uniform.",
+                    natural_outer_w, target_outer_w,
                 )
             floor_w = natural_floor_w
 
         # Finger hole callback drills divider mating holes in the long
         # walls, spanning the divider's full height.
-        holes_cb = self._row_finger_holes_callback(cells, h)
+        holes_cb = self._row_finger_holes_callback(cells, h, floor_w)
         cb_list = [holes_cb] if holes_cb is not None else None
 
-        # If a label strip is enabled, the short walls and the dividers
-        # need a rectangular NOTCH cut into their top edges so the strip
-        # drops in flush with the wall tops. The notch is the strip's
-        # width (label_strip_depth) by `thickness` deep, offset by one
-        # `thickness` inward from the panel's front-top corner — that
-        # `thickness` lip of wood keeps the notch's outer wall from
-        # landing on the panel's outer edge (which would create
-        # double-cut artifacts at the corner). The strip itself
-        # therefore sits `thickness` mm inset from the row's front face;
-        # in exchange the cut path is clean.
-        if self.label_strip_depth > 0:
+        # If a label strip is enabled, the short walls and the dividers need a
+        # rectangular NOTCH cut into their top edges so the strip drops in
+        # flush with the wall tops. The notch is `label_strip_depth` wide by
+        # `thickness` deep, set back from the panel's front-top corner by
+        # `label_strip_inset` — that lip of wood gives the notch a closed
+        # outer wall for the strip to sit against. At an inset of 0 the notch
+        # opens straight onto the corner instead: still a clean cut, but the
+        # strip is then held by friction against the panels behind it alone.
+        if self._label_strip_enabled():
+            inset = max(0.0, self.label_strip_inset)
+            # _NotchedTopEdge silently falls back to a plain edge if the notch
+            # cannot fit, which would leave the strip with nothing holding it.
+            # Catch that here instead, where we can name the culprit.
+            if inset + self.label_strip_depth > depth:
+                self._warn(
+                    "label_strip_inset=%.1f mm plus label_strip_depth=%.1f mm "
+                    "exceeds the %.1f mm row depth, so the notch does not fit "
+                    "and the strip has nothing to sit in. Reduce the inset or "
+                    "the strip depth, or deepen the row.",
+                    inset, self.label_strip_depth, depth,
+                )
             notched_top = _NotchedTopEdge(
                 self, None, self.label_strip_depth, t,
-                notch_inset=t)
-            short_wall_edges = ["F", "f", notched_top, "F"]
-            divider_edges = ["e", "f", notched_top, "f"]
+                notch_inset=inset)
+            # rectangularWall traverses bottom, right, top, left — so the top
+            # edge's start corner is where the RIGHT edge (index 1) finishes.
+            # With no lip, that edge has to stop at the notch floor instead of
+            # climbing to the corner, or the notch's wall retraces its last
+            # `t` mm. See :class:`_ShortenedEdge`.
+            near_edge = "f"
+            if inset <= 0:
+                near_edge = _ShortenedEdge(self, self.edges["f"], t)
+            short_wall_edges = ["F", near_edge, notched_top, "f"]
+            divider_edges = ["e", near_edge, notched_top, "f"]
         else:
-            short_wall_edges = "FfeF"
+            short_wall_edges = "Ffef"
             divider_edges = "efef"
 
         with self.saved_context():
@@ -1596,7 +1823,7 @@ than the default 70 mm row height — the closed-book cavity must satisfy
         #
         # Width = label_strip_depth (the notch width); thickness = the
         # row's material thickness (= notch depth, so it fits flush).
-        if self.label_strip_depth > 0:
+        if self._label_strip_enabled():
             self.rectangularWall(
                 floor_w + 2 * t, self.label_strip_depth, "eeee",
                 move="up", label="row label strip")
@@ -1665,6 +1892,314 @@ than the default 70 mm row height — the closed-book cavity must satisfy
             label="utility tray short wall")
 
     # -----------------------------------------------------------------
+    # Warning collection
+    # -----------------------------------------------------------------
+
+    def _warn(self, message, *args):
+        """Record a design warning, both to the log and onto the drawing.
+
+        Warnings here describe geometry that was silently adjusted — a ramp
+        clamped, a hole omitted, a tray that will not let the book close. The
+        user needs to know, and the log alone is not enough: when the
+        generator is driven from the web UI the SVG downloads with HTTP 200
+        and nothing on screen says anything was changed, so a log-only
+        warning is one you find out about from the laser cutter. Every
+        message therefore goes to two places:
+
+        * :mod:`logging`, which reaches stderr on the CLI and the container
+          log on the web path;
+        * a text block drawn on the SVG canvas by
+          :meth:`_emit_warning_block`, which you cannot miss when you open
+          the file.
+
+        Messages are deduplicated because several are raised from per-panel
+        helpers that run once per side wall, and repeating them adds nothing.
+
+        Args:
+            message: A printf-style format string.
+            *args: Values for the format string. Interpolation is deferred to
+                :mod:`logging`'s own formatting for the log record, then done
+                eagerly for the canvas copy.
+        """
+        logging.warning("BattletechCarryBox: " + message, *args)
+        rendered = message % args if args else message
+        if rendered not in self._warnings:
+            self._warnings.append(rendered)
+
+    def _emit_warning_block(self):
+        """Draw any collected warnings onto the canvas as annotation text.
+
+        Emitted as the last "part" so it lands at the end of the layout
+        rather than displacing anything. Drawn in
+        :data:`Color.ANNOTATIONS`, the same non-cutting colour boxes uses
+        for part labels, so a laser job that filters annotations out will
+        skip it as it already skips the labels.
+        """
+        if not self._warnings:
+            return
+
+        lines = ["!! BattletechCarryBox: geometry was adjusted !!", ""]
+        for i, warning in enumerate(self._warnings, start=1):
+            wrapped = textwrap.wrap(warning, self.WARNING_WRAP_COLUMNS)
+            # Hanging indent so continuation lines read as part of the entry.
+            lines.append(f"{i}. {wrapped[0]}")
+            lines.extend(f"   {line}" for line in wrapped[1:])
+            lines.append("")
+
+        fontsize = self.WARNING_FONTSIZE
+        # 0.61 mm per mm of font size is boxes' own rough advance width for
+        # single-digit font sizes (see Boxes.tx_sizes); close enough to
+        # reserve a block that the text will not overflow.
+        width = self.WARNING_WRAP_COLUMNS * fontsize * 0.61
+        height = len(lines) * 1.4 * fontsize
+
+        if self.move(width, height, "up", before=True):
+            return
+        self.text("\n".join(lines), 0, 0, fontsize=fontsize,
+                  color=Color.ANNOTATIONS, align="bottom left")
+        self.move(width, height, "up")
+
+    # -----------------------------------------------------------------
+    # Spine-depth axis budget
+    # -----------------------------------------------------------------
+
+    def _resolve_cavity_heights(self, spine_depth):
+        """Fill in any tray heights left at 0 from the spine cavity depth.
+
+        Three settings share the spine-depth axis — ``map_sleeve_depth``,
+        ``row_height`` and ``utility_tray_h`` — and they are not independent:
+        together they have to fit inside the closed book. Rather than make
+        the user keep three numbers consistent by hand, the two tray heights
+        default to 0 meaning "derive me", and only the sleeve depth (which
+        is dictated by how many map sheets you carry, not by the box) stays
+        a free input.
+
+        The budget, from the outside in::
+
+            cavity = spine_depth - 2t          # inside faces of both covers
+            usable = cavity - map_sleeve_depth # sleeve lines the far cover
+
+        The sleeve is glued to the inside of ONE cover and the trays sit on
+        the other, so they stack along this axis and the sleeve's depth comes
+        straight off the top of the tray budget.
+
+        Converting ``usable`` into interior heights needs the panel geometry,
+        because "height" means something different for the two tray types:
+
+        * A mech row is OPEN-TOP. Its floor is a ``ffff`` plate whose fingers
+          sit in the walls' bottom ``F`` notches, so the floor's underside is
+          flush with the wall bottoms and eats one ``t`` below the cell
+          interior. Assembled exterior = ``row_height + t``.
+        * The utility tray is CLOSED, with a lid as well as a floor, so it
+          spends a ``t`` at each end. Assembled exterior =
+          ``utility_tray_h + 2t``.
+
+        Hence the ``- t`` and ``- 2t`` below. Both land on the same exterior
+        height, which is what makes the tray tops flush with the row tops.
+        The label strip does not enter into it: it is recessed into notches
+        cut ``t`` deep in the row's top edges, so it sits flush rather than
+        standing proud.
+
+        A user-supplied positive value is always honoured — someone doing a
+        test print may deliberately over-stuff the box — but we warn if the
+        resulting stack cannot close.
+
+        Args:
+            spine_depth: The book's spine depth in mm. Pass ``self.y`` BEFORE
+                :meth:`render` performs its y↔h swap, since afterwards
+                ``self.y`` holds the cover height instead.
+        """
+        t = self.thickness
+        cavity_depth = spine_depth - 2 * t
+        sleeve_d = self.map_sleeve_depth if self.include_map_sleeve else 0.0
+        usable = cavity_depth - sleeve_d - self.cavity_slack
+
+        if self.row_height <= 0:
+            self.row_height = usable - t
+        if self.utility_tray_h <= 0:
+            # Match the rows' EXTERIOR height, not their interior, so the
+            # tray top finishes flush with the row tops.
+            self.utility_tray_h = self.row_height - t
+
+        # Tallest thing standing on the tray-side cover, by exterior height.
+        row_outer_h = self.row_height + t
+        stack = [("mech row", row_outer_h)]
+        if self.include_utility_tray:
+            stack.append(("utility tray", self.utility_tray_h + 2 * t))
+        name, tallest = max(stack, key=lambda pair: pair[1])
+
+        budget = cavity_depth - sleeve_d - tallest
+        if budget < 0:
+            self._warn(
+                "closed-book cavity is %.1f mm, of which map_sleeve_depth "
+                "takes %.1f mm, leaving %.1f mm — but the %s stands %.1f mm "
+                "tall. Book will not close cleanly (over budget by %.1f mm). "
+                "Raise `inner depth in mm` (y) or lower the tray height.",
+                cavity_depth, sleeve_d, cavity_depth - sleeve_d, name,
+                tallest, -budget,
+            )
+        elif self.row_height <= 0 or self.utility_tray_h <= 0:
+            # Cavity so shallow that the derivation produced a non-positive
+            # interior height; the panels would be degenerate.
+            self._warn(
+                "spine depth %.1f mm is too shallow to derive tray heights "
+                "(row_height came out %.1f mm). Raise `inner depth in mm` (y) "
+                "or reduce map_sleeve_depth.",
+                spine_depth, self.row_height,
+            )
+
+    def _resolve_dice_hole_radius(self, spine_depth):
+        """Size the dice opening to the side-wall bulge it is cut into.
+
+        The bulge is a half-disc of radius ``spine_depth / 2``, so it shrinks
+        with ``y``. A fixed hole radius therefore looks wrong at every ``y``
+        but one: too big for a shallow spine, and on a deep one it leaves a
+        crescent-shaped gap because its arc has a different radius from the
+        bulge's outer bend.
+
+        Both problems go away if the opening's arc is CONCENTRIC with the
+        bulge, one ``dice_hole_wall`` inside it::
+
+            bulge radius = spine_depth / 2
+            hole radius  = bulge radius - dice_hole_wall
+
+        The rim is then a constant ``dice_hole_wall`` wide everywhere along
+        the arc, and the opening tracks ``y`` automatically. That is what a
+        ``dice_hole_radius`` of 0 selects.
+
+        A user-supplied positive radius is honoured (smaller openings are a
+        legitimate preference — they just don't follow the bulge) but is
+        clamped to the concentric radius, since anything larger would break
+        through the bulge's outer edge.
+
+        Note this sets the radius only. Where the flat chord sits is
+        :meth:`flexBookSide`'s business, since that depends on the recess
+        wall's finger row.
+
+        Args:
+            spine_depth: The book's spine depth in mm. Pass ``self.y`` BEFORE
+                :meth:`render` performs its y↔h swap.
+        """
+        if not self.include_dice_tower or not self.include_dice_holes:
+            return
+
+        bulge_radius = spine_depth / 2.0
+        wall = max(self.dice_hole_wall, self.DICE_HOLE_MIN_WALL)
+        concentric_radius = bulge_radius - wall
+
+        if concentric_radius <= 0:
+            # The rim alone is wider than the bulge. Drop the opening rather
+            # than cut through the bulge edge; the ramps are still emitted.
+            self._warn(
+                "spine depth %.1f mm gives only a %.1f mm bulge, which cannot "
+                "hold a dice opening with a %.1f mm wall around it. Opening "
+                "omitted — grow y (spine depth) or reduce dice_hole_wall.",
+                spine_depth, bulge_radius, wall,
+            )
+            self.include_dice_holes = False
+        elif self.dice_hole_radius <= 0:
+            self.dice_hole_radius = concentric_radius
+        elif self.dice_hole_radius > concentric_radius:
+            self._warn(
+                "dice_hole_radius=%.1f mm would break through the %.1f mm "
+                "bulge of a %.1f mm spine; clamped to %.1f mm, the concentric "
+                "radius that leaves the %.1f mm dice_hole_wall intact.",
+                self.dice_hole_radius, bulge_radius, spine_depth,
+                concentric_radius, wall,
+            )
+            self.dice_hole_radius = concentric_radius
+
+    def _resolve_ramp_geometry(self, spine_depth):
+        """Clamp the deflector ramps to fit the spine they hang in.
+
+        The ramps are sized in absolute mm but live inside a cavity whose
+        dimensions follow ``y``, so on a shallow spine they outgrow it in two
+        independent directions. Neither was previously checked.
+
+        **Protrusion.** A ramp sticks ``dice_tower_ramp_width`` out from the
+        recess wall into a half-cylindrical cavity of radius
+        ``spine_depth / 2``. At the default ``y = 90`` that is 30 mm into a
+        45 mm radius, comfortable; by ``y = 60`` the radius IS 30 mm, so the
+        ramp touches the living-hinge flex, and below that it passes through
+        it. Capped at ``radius - DICE_RAMP_FLEX_CLEARANCE``.
+
+        **Span along the spine depth.** A ramp's tab row is drilled at
+        ``dice_tower_ramp_angle``, so it occupies
+        ``ramp_length * cos(angle)`` of the recess wall's SHORT axis — which
+        is the spine depth. At the defaults that is ``50 * cos(30) = 43.3``
+        mm out of 90, fine; but below about ``y = 44`` the row is longer than
+        the wall is deep and its finger holes fall off the panel. Capped so
+        the row fits with one ``thickness`` of wood at each end.
+
+        We clamp rather than scale up. The 50 × 30 mm ramp is inherited from
+        boxes' own DiceTower generator, and a bigger ramp does not tumble
+        dice any better — it just eats cavity that the trays want. So the
+        settings mean "this big, or smaller if the spine demands it".
+
+        Note this runs BEFORE :meth:`_drill_recess_ramp_holes`, which applies
+        its own clamp to ``dice_tower_ramp_offset``. That clamp reads the
+        length we may have just reduced, so the two compose in the right
+        order.
+
+        Args:
+            spine_depth: The book's spine depth in mm. Pass ``self.y`` BEFORE
+                :meth:`render` performs its y↔h swap.
+        """
+        if not self.include_dice_tower or self.dice_tower_ramp_count <= 0:
+            return
+
+        t = self.thickness
+        spine_radius = spine_depth / 2.0
+
+        # --- Protrusion into the spine cavity ---------------------------
+        max_width = spine_radius - self.DICE_RAMP_FLEX_CLEARANCE
+        if max_width <= 0:
+            self._warn(
+                "spine depth %.1f mm leaves no room for deflector ramps once "
+                "%.1f mm of flex clearance is allowed. Ramps omitted — grow y "
+                "(spine depth) or set dice_tower_ramp_count=0 to drop the "
+                "dice tower.",
+                spine_depth, self.DICE_RAMP_FLEX_CLEARANCE,
+            )
+            self.dice_tower_ramp_count = 0
+            return
+        if self.dice_tower_ramp_width > max_width:
+            self._warn(
+                "dice_tower_ramp_width=%.1f mm would reach the living-hinge "
+                "flex in a spine of radius %.1f mm (y=%.1f); clamped to %.1f "
+                "mm, leaving %.1f mm clearance. Grow y to keep deeper ramps.",
+                self.dice_tower_ramp_width, spine_radius, spine_depth,
+                max_width, self.DICE_RAMP_FLEX_CLEARANCE,
+            )
+            self.dice_tower_ramp_width = max_width
+
+        # --- Span along the recess wall's short (spine-depth) axis -------
+        cos_a = abs(math.cos(math.radians(self.dice_tower_ramp_angle)))
+        if cos_a < 1e-9:
+            # A vertical ramp has no spine-depth span to constrain.
+            return
+        max_span = spine_depth - 2 * t
+        max_length = max_span / cos_a
+        if max_span <= 0:
+            self._warn(
+                "spine depth %.1f mm is too shallow to seat a ramp tab row at "
+                "all. Ramps omitted — grow y (spine depth).",
+                spine_depth,
+            )
+            self.dice_tower_ramp_count = 0
+        elif self.dice_tower_ramp_length > max_length:
+            self._warn(
+                "dice_tower_ramp_length=%.1f mm spans %.1f mm of the %.1f mm "
+                "spine-depth axis at %.1f deg, so its finger holes would run "
+                "off the recess wall; clamped to %.1f mm. Grow y (spine "
+                "depth) or reduce dice_tower_ramp_angle to keep longer ramps.",
+                self.dice_tower_ramp_length,
+                self.dice_tower_ramp_length * cos_a, spine_depth,
+                self.dice_tower_ramp_angle, max_length,
+            )
+            self.dice_tower_ramp_length = max_length
+
+    # -----------------------------------------------------------------
     # Render entry point
     # -----------------------------------------------------------------
 
@@ -1686,24 +2221,13 @@ than the default 70 mm row height — the closed-book cavity must satisfy
         spine_depth = self.y
         t = self.thickness
 
-        # Closed-book cavity depth = spine_depth - 2*thickness. The map
-        # sleeve eats `map_sleeve_depth` of that, leaving the rest for
-        # the mech rows. The label strip (if any) is RECESSED into the
-        # row's top via notches in the short walls + dividers, so it
-        # doesn't add to the row's total height. Warn (don't fail) if
-        # the user's settings can't physically close the book — they
-        # may be deliberately over-stuffing for a test print.
-        cavity_depth = spine_depth - 2 * t
-        sleeve_d = self.map_sleeve_depth if self.include_map_sleeve else 0.0
-        budget = cavity_depth - sleeve_d - self.row_height
-        if budget < 0:
-            print(
-                f"[BattletechCarryBox] WARNING: closed-book cavity is "
-                f"{cavity_depth:.1f}mm but row_height ({self.row_height}) + "
-                f"map_sleeve_depth ({sleeve_d}) = "
-                f"{self.row_height + sleeve_d:.1f}mm. "
-                f"Book will not close cleanly (over budget by {-budget:.1f}mm)."
-            )
+        # Collected by _warn() as the resolvers and panel helpers run, then
+        # drawn onto the canvas by _emit_warning_block() at the very end.
+        self._warnings = []
+
+        self._resolve_cavity_heights(spine_depth)
+        self._resolve_dice_hole_radius(spine_depth)
+        self._resolve_ramp_geometry(spine_depth)
 
         # The latch doubler laminates t mm onto the latch wall's INNER
         # (cavity-facing) face, stealing that much from the cavity's
@@ -1813,3 +2337,8 @@ than the default 70 mm row height — the closed-book cavity must satisfy
                     self.dice_tower_ramp_length,
                     self.dice_tower_ramp_width,
                     move="up", label="dice tower ramp")
+
+        # ---- 7. Warning block -----------------------------------------
+        # Last, so anything _warn() collected while the panels were being
+        # emitted is included. Drawn in the annotation colour, not cut.
+        self._emit_warning_block()
