@@ -354,23 +354,31 @@ on the inside of one cover, up to three independent mech-tray rows hold the
 miniatures (each row gets its own cell layout), and a small removable utility
 tray rides along for dice and pens.
 
-**Closure:** FlexBook's 7-piece sliding-pin latch hardware is suppressed. Apply
-4× 8 mm × 3 mm neodymium disc magnets when assembling: glue one pair onto the
-inside face of the front cover and one matching pair onto the inside face of
-the latch wall. The generator etches alignment circles (faint blue ETCHING
-strokes that the laser cutter engraves rather than cuts) on both panels at
-the correct positions — centre a magnet on each etched circle, glue with
-epoxy or CA, and the four magnets will line up across the closing seam.
+**Closure:** FlexBook's 7-piece sliding-pin latch hardware is suppressed, and
+so is the magnet closure that replaced it. What holds the book shut is the row
+of mechanical latch tabs on the latch wall, which poke up through matching
+slots in the front cover: lift the cover straight up to open, drop it straight
+down to close. The tabs locate the cover positively against sliding, so it
+cannot shuffle off sideways in a bag, but nothing pulls the cover DOWN — there
+is no sprung, magnetic, or friction catch. Held upside down and shaken, the
+cover will come off. Add a strap, elastic, or your own magnets if you want a
+positive hold; the panels are plain in that area, so there is room for any of
+them.
 
 **Latch doubler (thin material):** With `latch_doubler` enabled (default), an
 extra plain-edged plate is emitted carrying the same latch-tab profile. Glue
 it flat onto the inner (cavity-facing) face of the latch wall before assembly
 so the tabs become double thickness (6 mm at 3 mm material) and don't snap.
 The cover's tab slots are automatically widened to receive the thicker tabs.
-Because the doubler then sits between the wall and the closing cover, glue the
-latch-side magnets onto the **doubler's** exposed face (its etched circles
-match the wall's). Disable `latch_doubler` to return to a single-thickness
-latch with t-wide slots.
+Disable `latch_doubler` to return to a single-thickness latch with t-wide
+slots.
+
+Both pieces carry two matching Ø`latch_dowel_d` holes near the lid-side edge.
+Push a dowel or drill blank through both before you clamp: nothing else holds
+the doubler in register, and if it slides even a couple of mm while the glue is
+wet the stacked tabs will miss the cover's slots and the latch won't close.
+Pull the dowel once dry, or leave it in as a shear pin. Set `latch_dowel_d`
+to 0 to omit the holes.
 
 **Cover slot strength:** the tab slots are otherwise close to the cover's free
 edge, leaving a thin bridge of wood that can snap. Two settings (both on by
@@ -576,41 +584,20 @@ automatically. Set either to a positive value to pin it instead.
                      f"with numeric widths, e.g. 'Heavy+Medium+Medium+40' "
                      f"or 'Heavy*4'. Leave empty to skip this row.")
 
-        # ---- Magnet placement guides -----------------------------------
-        # FlexBook's sliding-pin latch is suppressed (see the panel overrides
-        # below). In its place we etch alignment marks for user-supplied disc
-        # magnets: two pairs near the latch end of the book — one pair on the
-        # inside of the front cover, one pair on the inside of the latch wall.
-        # The marks are drawn in Color.ETCHING (a non-cutting blue stroke that
-        # laser-cutter software interprets as engrave-only), so they appear as
-        # surface engravings rather than holes through the wood.
-        self.argparser.add_argument(
-            "--magnet_diameter", action="store", type=float, default=8.0,
-            help="Diameter (mm) of the disc magnets the user will glue at "
-                 "assembly time — etched alignment circles are sized to match")
-        self.argparser.add_argument(
-            "--magnet_pair_spacing", action="store", type=float, default=220.0,
-            help="Distance (mm) between the two magnet pairs along the latch "
-                 "edge of the cover — larger = more grip across a heavier "
-                 "book. Must also stay clear of the latch tab slots, which "
-                 "sit at ±latch_tab_spacing/2 along the same edge: the "
-                 "default 220 puts the magnets at ±110, well outside the "
-                 "±60 slots. See _check_latch_magnet_clearance, which warns "
-                 "if a combination overlaps.")
-        self.argparser.add_argument(
-            "--magnet_edge_inset", action="store", type=float, default=10.0,
-            help="Distance (mm) from the panel's outer edge to the magnet "
-                 "centre. Should be at least magnet_diameter/2 + 2 mm so the "
-                 "magnet body sits clear of the edge")
-
         # ---- Latch tabs / slots -----------------------------------------
-        # Magnets alone resist vertical separation when the book is closed,
-        # but they don't stop the cover from sliding laterally (e.g. in a
-        # bag). Adding small mechanical tabs on the latch wall's top edge
-        # that poke through matching slots in the cover locks the cover in
-        # place: lift straight up to open, drop straight down (with magnetic
-        # snap) to close. Tab height = thickness so each tab sits flush
-        # with the cover's outer face — magnets still do all the holding.
+        # FlexBook's sliding-pin latch is suppressed (see the panel overrides
+        # below) and so is the magnet closure that replaced it, which leaves
+        # these tabs as the entire closure. Small mechanical tabs on the latch
+        # wall's top edge poke through matching slots in the cover: lift the
+        # cover straight up to open, drop it straight down to close. Tab
+        # height = thickness so each tab sits flush with the cover's outer
+        # face.
+        #
+        # Note what they do and don't do. They locate the cover positively
+        # against SLIDING, so it can't shuffle off sideways in a bag. Nothing
+        # pulls the cover DOWN — there is no catch of any kind — so an
+        # inverted, shaken book will shed its cover. That is a deliberate
+        # design choice, not an oversight; see the class description.
         self.argparser.add_argument(
             "--latch_tab_count", action="store", type=int, default=2,
             help="Number of mechanical latch tabs along the lid-side edge "
@@ -623,9 +610,9 @@ automatically. Set either to a positive value to pin it instead.
                  "outside the cover.")
         self.argparser.add_argument(
             "--latch_tab_spacing", action="store", type=float, default=120.0,
-            help="Distance (mm) between adjacent latch tab centres. "
-                 "Pick a value smaller than magnet_pair_spacing so the tab "
-                 "slots and magnet etchings don't collide on the cover.")
+            help="Distance (mm) between adjacent latch tab centres. Wider "
+                 "spacing resists twisting better; keep the outermost tab "
+                 "clear of the cover's corners.")
         self.argparser.add_argument(
             "--latch_tab_clearance", action="store", type=float, default=0.3,
             help="Per-side clearance (mm) between the latch tab and the "
@@ -642,18 +629,48 @@ automatically. Set either to a positive value to pin it instead.
                  "doubled-thickness tabs. The doubler is a plain-edged "
                  "rectangle (no finger joints) sized to the latch wall's "
                  "footprint; it also stiffens the whole wall against "
-                 "bending. Glue magnets onto the doubler's exposed face "
-                 "(its etched circles match the latch wall's). Because the "
+                 "bending. Because the "
                  "doubler eats one thickness off the cavity's cell-width "
                  "axis, the cover (x) is automatically widened by one "
                  "thickness when this is on, so the trays keep their fit. "
                  "Disable to return to a single-thickness latch, t-wide "
                  "cover slots, and the un-widened cover.")
         self.argparser.add_argument(
+            "--latch_dowel_d", action="store", type=float, default=6.0,
+            help="Diameter (mm) of the two registration holes cut through "
+                 "BOTH the latch wall and its doubler, at matching "
+                 "positions. Drop a dowel or drill blank of this size "
+                 "through both before clamping: nothing else locates the "
+                 "two pieces during glue-up, and if they slide even a "
+                 "couple of mm the stacked tabs no longer line up with the "
+                 "cover's slots and the latch will not close. The dowel can "
+                 "be pulled once the glue sets or left in as a shear pin. "
+                 "Only cut when latch_doubler is on — with a single-piece "
+                 "latch there is nothing to register, so the holes would be "
+                 "pointless perforations. Set 0 to omit them.")
+        self.argparser.add_argument(
+            "--latch_dowel_spacing", action="store", type=float, default=220.0,
+            help="Distance (mm) between the two registration holes along "
+                 "the latch wall's lid-side edge, placed symmetrically about "
+                 "the middle of that edge. Wide spacing registers better "
+                 "against rotation, so prefer the largest value that still "
+                 "clears the wall's finger joints — the generator clamps "
+                 "and warns if it does not.")
+        self.argparser.add_argument(
+            "--latch_dowel_inset", action="store", type=float, default=12.0,
+            help="Distance (mm) from the latch wall's lid-side edge to the "
+                 "registration-hole centres. Kept near that edge rather than "
+                 "at mid-depth, since the tabs it is protecting the alignment "
+                 "of are on that edge and a dowel close to them registers "
+                 "them more directly. The default 12 leaves 9 mm of wood to "
+                 "the edge with a 6 mm hole; values that leave less than two "
+                 "thicknesses, or that put a hole under a tab, are clamped or "
+                 "refused with a warning.")
+        self.argparser.add_argument(
             "--latch_cover_lip", action="store", type=float, default=8.0,
             help="Length (mm) by which the front cover is extended PAST the "
                  "latch wall at the opening edge, forming a small overhanging "
-                 "lip. The tab slots and magnet marks are moved inboard by "
+                 "lip. The tab slots are moved inboard by "
                  "the same amount, so the strip of material between each slot "
                  "and the cover's free edge (the bit that snaps) grows from "
                  "~thickness to ~thickness+lip. The lip also doubles as a "
@@ -1064,9 +1081,10 @@ automatically. Set either to a positive value to pin it instead.
     # slot/U-notch cuts in the latch wall). For a carry-book this size and
     # weight it's both fiddly and out of proportion: the brackets are
     # 15 × 17 mm at t=3 mm and the pin slides parallel to the cover (easy
-    # to dislodge in a bag). We swap the whole thing for two pairs of
-    # user-supplied self-adhesive disc magnets glued to the inner faces at
-    # assembly time — see this class's docstring/description.
+    # to dislodge in a bag). We swap the whole thing for the row of tabs on
+    # the latch wall's lid-side edge — see this class's docstring/description,
+    # which is also where the consequence is spelled out: the tabs locate the
+    # cover but nothing holds it down.
     #
     # That requires:
     #   * skipping the 4 brackets + stopper + pin parts at render time
@@ -1152,22 +1170,152 @@ automatically. Set either to a positive value to pin it instead.
         args.append(90)
         return args
 
+    def _draw_latch_dowel_holes(self, h, y):
+        """Cut the two glue-up registration holes into a latch panel.
+
+        Called by BOTH :meth:`flexBookLatchWall` and
+        :meth:`flexBookLatchDoubler`, from the same point in each method's
+        drawing sequence (just before the tabbed lid-side edge), so both
+        panels see the identical local frame: local ``+x`` runs along the lid-side
+        edge, local ``+y`` points INTO the panel. Since the doubler's
+        rectangle matches the wall's nominal ``h`` x ``y`` footprint, one set
+        of local coordinates lands on the same spot in both parts — which is
+        the entire point, and the reason this is one shared method rather
+        than two copies that could drift apart.
+
+        Nothing else locates the doubler against the wall during glue-up:
+        the side walls only loosely corral it, and wet glue lets it slide.
+        A couple of mm of slip is enough that the stacked tabs miss the
+        cover's slots and the latch will not close. Dropping a dowel through
+        both holes pins them until the glue sets.
+
+        Placement is a symmetric pair, ``±latch_dowel_spacing/2`` about the
+        middle of the lid-side edge, ``latch_dowel_inset`` in from that edge.
+        Two properties come out of that:
+
+        * sitting near the lid-side edge puts the dowels close to the tabs
+          whose alignment they exist to protect, which registers them more
+          directly than a hole out at mid-depth would;
+        * a symmetric pattern is unchanged by an end-for-end flip, so the
+          user cannot fit the doubler the wrong way round along the edge.
+
+        Three things are checked, and they fail differently on purpose:
+
+        * **Spacing** into the finger joints at the ends of the edge — clamped,
+          because the holes only slide inward and nothing is lost.
+        * **Inset** too close to either long edge — clamped for the same reason.
+        * **Diameter** too large for the wall's depth, or a hole landing under
+          a tab — refused, holes omitted. A hole narrowed to fit is a hole the
+          user's dowel will not enter, and a hole through a tab root trades
+          the problem being solved for a worse one; in both cases silently
+          producing something useless is worse than producing nothing.
+
+        Args:
+            h: The wall's short (side-to-side) dimension in mm — the axis the
+                inset is measured along.
+            y: The wall's long lid-side edge length in mm — the axis the
+                pair is spaced along.
+        """
+        # Only meaningful with two pieces to register against each other.
+        if not self.latch_doubler or self.latch_dowel_d <= 0:
+            return
+
+        t = self.thickness
+        d = self.latch_dowel_d
+        r = d / 2
+        rim = 2 * t  # one t for the joint being cleared, one structural
+
+        # Depth: the hole has to fit between the two long edges with a rim on
+        # each side. If it cannot, no inset works and a thinner dowel is the
+        # only fix — so refuse rather than clamp.
+        if h - d - 2 * rim < 0:
+            self._warn(
+                "latch_dowel_d=%.1f mm cannot fit across the latch wall's "
+                "%.1f mm depth with a %.1f mm rim on each side, so the "
+                "registration holes were omitted. Use a thinner dowel, or set "
+                "latch_dowel_d=0 to silence this and align the doubler to the "
+                "wall by eye.",
+                d, h, rim,
+            )
+            return
+
+        # Inset: clamp into the band where the hole clears both long edges.
+        inset = self.latch_dowel_inset
+        lo, hi = rim + r, h - rim - r
+        if not lo <= inset <= hi:
+            clamped = min(max(inset, lo), hi)
+            self._warn(
+                "latch_dowel_inset=%.1f mm puts the registration holes within "
+                "%.1f mm of a latch wall edge, so it was clamped to %.1f mm "
+                "(the usable band is %.1f-%.1f mm at this dowel size).",
+                inset, rim, clamped, lo, hi,
+            )
+            inset = clamped
+
+        # Spacing: keep both holes clear of the finger joints at the ends of
+        # the lid-side edge. Clamping just slides them inward.
+        max_spacing = y - d - 2 * rim
+        spacing = self.latch_dowel_spacing
+        if max_spacing <= 0:
+            self._warn(
+                "the latch wall is too short (%.1f mm) to fit two %.1f mm "
+                "registration holes clear of its finger joints, so they "
+                "were omitted.",
+                y, d,
+            )
+            return
+        if spacing > max_spacing:
+            self._warn(
+                "latch_dowel_spacing=%.1f mm would put a registration hole "
+                "into the latch wall's finger joints, so it was clamped to "
+                "%.1f mm — the widest pair leaving a %.1f mm rim at each "
+                "end of the lid-side edge.",
+                spacing, max_spacing, rim,
+            )
+            spacing = max_spacing
+
+        centres = [y / 2 - spacing / 2, y / 2 + spacing / 2]
+
+        # Tab roots. The dowels now sit near the lid-side edge, the same edge
+        # the tabs stand on, so a wide tab or an unlucky spacing can put a hole
+        # straight through the root of one. That would weaken the exact feature
+        # the dowel exists to align, so refuse instead of quietly cutting it.
+        if self.latch_tab_count > 0 and self.latch_tab_width > 0:
+            half_tab = self.latch_tab_width / 2
+            for k in range(self.latch_tab_count):
+                tab_along = (k - (self.latch_tab_count - 1) / 2) \
+                    * self.latch_tab_spacing + y / 2
+                for c_along in centres:
+                    if abs(c_along - tab_along) < half_tab + r + t:
+                        self._warn(
+                            "a registration hole at %.1f mm along the "
+                            "lid-side edge would cut into the root of the "
+                            "latch tab centred at %.1f mm, so the holes were "
+                            "omitted. Respace them (latch_dowel_spacing), or "
+                            "narrow/respace the tabs.",
+                            c_along, tab_along,
+                        )
+                        return
+
+        for c_along in centres:
+            self.hole(c_along, inset, d=d)
+
     def flexBookCover(self, move=None):
         """Emit the cover panel without FlexBook's latch slot or anchor holes.
 
         This is a verbatim copy of :meth:`FlexBook.flexBookCover` with the
         three ``rectangularHole`` calls removed — those holes were the pin
         slot and the two square anchor holes for the under-cover latch
-        brackets. With the magnet-based closure they have no purpose.
+        brackets, and nothing in the tab-only closure uses them.
         """
         x, y = self.x, self.y
         c4 = self.c4
         t = self.thickness
 
         # Opening-edge lip: extend the FRONT cover past the latch wall by
-        # this amount so the tab slots (and magnet marks) move inboard,
-        # away from the free edge. Only meaningful when tabs exist — with
-        # no tabs there is nothing to move, so the lip collapses to 0.
+        # this amount so the tab slots move inboard, away from the free edge.
+        # Only meaningful when tabs exist — with no tabs there is nothing to
+        # move, so the lip collapses to 0.
         lip = self.latch_cover_lip if self.latch_tab_count > 0 else 0.0
 
         tw = 2 * x + 6 * t + 2 * c4 + t + lip
@@ -1204,10 +1352,9 @@ automatically. Set either to a positive value to pin it instead.
         self.corner(90, 2 * t)
         self.edges["e"](y / 2)
         # FlexBook drills three rectangular holes here for the latch hardware
-        # (pin slot + 2 anchor holes). We replace them with:
-        #   * Etched alignment circles for user-applied disc magnets, and
-        #   * Through-cut rectangular slots that receive the latch tabs on
-        #     the latch wall's lid-side edge.
+        # (pin slot + 2 anchor holes). We replace them with through-cut
+        # rectangular slots that receive the latch tabs on the latch wall's
+        # lid-side edge.
         #
         # Coordinate frame: the cursor is at the midpoint of the cover's
         # latch-end edge, facing along the edge (heading is +y world UP).
@@ -1216,19 +1363,8 @@ automatically. Set either to a positive value to pin it instead.
         # in local +y direction, which is LEFT of motion). For this cursor
         # that puts local +y at -x world — i.e. INTO the cover panel,
         # away from the latch edge. So positive LY values move INTO the
-        # panel; that's where we want both the magnet etchings and the
-        # through-slots that receive the latch wall's tabs.
-        half_span = self.magnet_pair_spacing / 2
-        # Magnets: ±magnet_pair_spacing/2 along the edge, magnet_edge_inset
-        # INTO the panel — plus the lip, since the latch wall (and therefore
-        # the magnet it carries) stays put while the cover edge moved out by
-        # `lip`; the cover marks must shift inboard to stay aligned.
-        self.regularPolygonHole(
-            +half_span, self.magnet_edge_inset + lip,
-            d=self.magnet_diameter, n=24, color=Color.ETCHING)
-        self.regularPolygonHole(
-            -half_span, self.magnet_edge_inset + lip,
-            d=self.magnet_diameter, n=24, color=Color.ETCHING)
+        # panel; that's where we want the through-slots that receive the
+        # latch wall's tabs.
         # Latch slots: ±latch_tab_spacing/2 along the edge, centred 1.5×t
         # INTO the panel so each slot sits over the centre of the latch
         # wall's thickness when closed (the wall is t mm thick; its outer
@@ -1271,7 +1407,7 @@ automatically. Set either to a positive value to pin it instead.
         self.move(tw, th, move)
 
     def flexBookLatchWall(self, h, y, latchSize, callback=None, move=None):
-        """Emit the latch-end wall with magnet markers and tab protrusions.
+        """Emit the latch-end wall with its tab protrusions.
 
         FlexBook's version of this method drew a horizontal pin slot in the
         wall's surface and a U-shaped notch in the bottom edge — the
@@ -1285,12 +1421,16 @@ automatically. Set either to a positive value to pin it instead.
           a matching slot in the cover, locking the cover laterally so it
           can't slide off in transit. Tab height == cover thickness so
           each tab sits flush with the cover's outer face when latched.
-        * Two etched alignment circles inside the panel near the lid-side
-          edge, indicating where the user glues disc magnets at assembly.
+        * Two through-holes near the lid-side edge, matching a pair cut into
+          the doubler, that take a dowel to hold the two pieces in register
+          while they are glued (see :meth:`_draw_latch_dowel_holes`). Only
+          cut when ``latch_doubler`` is on — with a single-piece latch there
+          is nothing to register against.
 
-        Magnets handle the vertical hold-down; the tabs handle lateral
-        location. ``latchSize`` is accepted for FlexBook signature parity
-        but is unused.
+        The tabs are the whole closure: they locate the cover against sliding
+        but nothing holds it down, so an inverted book will shed its cover.
+        See the class description. ``latchSize`` is accepted for FlexBook
+        signature parity but is unused.
         """
         del latchSize  # accepted for signature compatibility but unused
         t = self.thickness
@@ -1319,8 +1459,7 @@ automatically. Set either to a positive value to pin it instead.
         # The four edges of the wall in the order they're drawn:
         #   1. bottom edge (length h):  short, mates with one side wall
         #   2. right edge  (length y):  long, the FLOOR-side of the wall
-        #                               (`f` kept for parity with FlexBook;
-        #                               vestigial under the magnet design)
+        #                               (`f` kept for parity with FlexBook)
         #   3. top edge    (length h):  short, mates with the other side wall
         #   4. left edge   (length y):  long, the LID-side of the wall
         #                               — drawn as a polyline with two tab
@@ -1331,23 +1470,18 @@ automatically. Set either to a positive value to pin it instead.
         self.corner(90)
         self.edges["f"](h)
         self.corner(90)
-        # Magnet alignment circles, placed on the lid-side face just inside
-        # the panel from the lid-side edge (the 4th edge, drawn next).
+        # Glue-up registration holes, placed just inside the panel from the
+        # lid-side edge (the 4th edge, drawn next).
         # Cursor is at (x_adjust + tab_extent, t + y), heading -y world
         # (about to draw the left edge going DOWN). Local +x = heading
         # (-y world); local +y is 90° CCW from heading (boxes convention,
         # = +x world from this cursor), which points INTO the wall panel
-        # from the lid-side edge. Positive LY therefore moves the marker
+        # from the lid-side edge. Positive LY therefore moves a feature
         # INTO the panel. The midpoint of the lid-side edge sits at +y/2
-        # along the cursor's heading direction, so markers go at
-        # local (y/2 ± half_span, +inset).
-        half_span = self.magnet_pair_spacing / 2
-        self.regularPolygonHole(
-            y / 2 - half_span, self.magnet_edge_inset,
-            d=self.magnet_diameter, n=24, color=Color.ETCHING)
-        self.regularPolygonHole(
-            y / 2 + half_span, self.magnet_edge_inset,
-            d=self.magnet_diameter, n=24, color=Color.ETCHING)
+        # along the cursor's heading direction, so the pair goes at
+        # local (y/2 ± spacing/2, +inset). The doubler cuts these at
+        # identical coordinates.
+        self._draw_latch_dowel_holes(h, y)
         # Lid-side edge: a polyline with tab protrusions (or a plain edge
         # if `latch_tab_count == 0`). The polyline INCLUDES the final 90°
         # corner that closes the panel outline, so we don't add another
@@ -1378,10 +1512,11 @@ automatically. Set either to a positive value to pin it instead.
         * The lid-side edge reuses :meth:`_build_tabbed_edge_polyline` with
           the same ``y`` length, so its tab centres coincide with the latch
           wall's tabs and the fins stack cleanly.
-        * The same two magnet alignment circles are etched on the doubler's
-          face. Because the doubler sits between the wall and the closing
-          cover, ITS exposed face is the one the cover meets — so the user
-          glues the disc magnets onto the doubler, not the bare wall.
+        * The same two dowel registration holes are cut at the same local
+          coordinates as the wall's (see :meth:`_draw_latch_dowel_holes`).
+          The tabs are what make this necessary: they only stack into a
+          usable 2t fin if the two pieces are glued in register, and nothing
+          else holds them there while the glue is wet.
 
         ``h`` and ``y`` carry the same (post-swap) meaning as in
         :meth:`flexBookLatchWall`: ``h`` is the short (side-to-side) edge,
@@ -1413,15 +1548,11 @@ automatically. Set either to a positive value to pin it instead.
         self.edges["e"](h)
         self.corner(90)
 
-        # Magnet alignment circles at the same positions as the latch wall
-        # (see :meth:`flexBookLatchWall` for the coordinate-frame derivation).
-        half_span = self.magnet_pair_spacing / 2
-        self.regularPolygonHole(
-            y / 2 - half_span, self.magnet_edge_inset,
-            d=self.magnet_diameter, n=24, color=Color.ETCHING)
-        self.regularPolygonHole(
-            y / 2 + half_span, self.magnet_edge_inset,
-            d=self.magnet_diameter, n=24, color=Color.ETCHING)
+        # Glue-up registration holes, at the SAME local coordinates as the
+        # latch wall's (see :meth:`flexBookLatchWall` for the coordinate-frame
+        # derivation) — that correspondence is what lets a dowel through both
+        # pin the two pieces together.
+        self._draw_latch_dowel_holes(h, y)
 
         # Lid-side edge with the matching tab protrusions; the polyline
         # includes the final 90° corner that closes the outline.
@@ -2169,77 +2300,6 @@ automatically. Set either to a positive value to pin it instead.
         self.move(width, height, "up")
 
     # -----------------------------------------------------------------
-    # Cross-parameter geometry checks
-    # -----------------------------------------------------------------
-
-    def _check_latch_magnet_clearance(self):
-        """Warn if a latch tab slot would collide with a magnet mark.
-
-        Four independent settings decide where two different features land on
-        the front cover's latch edge, and nothing stops them being put on top
-        of each other:
-
-        * the magnet alignment circles, at ``±magnet_pair_spacing / 2`` along
-          the edge and ``magnet_edge_inset`` into the panel, with radius
-          ``magnet_diameter / 2``;
-        * the tab through-slots, at ``±latch_tab_spacing / 2`` along the edge
-          and ``latch_tab_width`` wide, sized and positioned exactly as
-          :meth:`flexBookCover` cuts them.
-
-        Overlap is a quiet but real defect: the slot cuts away part of the
-        etched circle, so the mark it is meant to align a magnet against is
-        incomplete, and the magnet loses the wood under its outer edge that it
-        needs to glue to. Nothing downstream notices, which is why this check
-        exists — the geometry is legal, just wrong.
-
-        A rim of one thickness is required rather than bare contact: a magnet
-        glued right up against the lip of a through-slot has almost no glue
-        area on that side and peels off.
-
-        The opening lip is ignored because :meth:`flexBookCover` shifts both
-        features inboard by it, so it cancels out of the comparison.
-        """
-        if self.latch_tab_count <= 0 or self.latch_tab_width <= 0:
-            return  # No tabs, therefore no slots to collide with.
-
-        t = self.thickness
-        clearance = self.latch_tab_clearance
-
-        # Slot half-extents, mirroring flexBookCover's own sizing.
-        slot_half_along = (self.latch_tab_width + 2 * clearance) / 2
-        tab_thickness = 2 * t if self.latch_doubler else t
-        slot_centre_into = 2 * t if self.latch_doubler else 1.5 * t
-        slot_half_into = (tab_thickness + 2 * clearance) / 2
-
-        magnet_r = self.magnet_diameter / 2
-        magnet_into = self.magnet_edge_inset
-        # Required rim between the magnet's rim and the slot's lip.
-        needed = magnet_r + t
-
-        for k in range(self.latch_tab_count):
-            slot_along = (k - (self.latch_tab_count - 1) / 2) * self.latch_tab_spacing
-            for sign in (+1, -1):
-                magnet_along = sign * self.magnet_pair_spacing / 2
-                # Distance from the magnet centre to the slot rectangle,
-                # per axis: 0 when the centre is inside the slot's band on
-                # that axis, otherwise the gap to the nearest lip.
-                gap_along = max(0.0, abs(magnet_along - slot_along) - slot_half_along)
-                gap_into = max(0.0, abs(magnet_into - slot_centre_into) - slot_half_into)
-                if math.hypot(gap_along, gap_into) < needed:
-                    self._warn(
-                        "a latch tab slot lands on a magnet alignment mark on "
-                        "the front cover: the slot at %.1f mm along the latch "
-                        "edge is %.1f mm from the magnet at %.1f mm, which "
-                        "does not leave the %.1f mm of wood the magnet needs "
-                        "to glue to. Move the magnets along the edge "
-                        "(magnet_pair_spacing), push them deeper into the "
-                        "panel (magnet_edge_inset), or narrow/respace the "
-                        "tabs (latch_tab_width, latch_tab_spacing).",
-                        slot_along, math.hypot(gap_along, gap_into),
-                        magnet_along, needed,
-                    )
-
-    # -----------------------------------------------------------------
     # Spine-depth axis budget
     # -----------------------------------------------------------------
 
@@ -2489,8 +2549,8 @@ automatically. Set either to a positive value to pin it instead.
         We do **not** call ``super().render()`` here. FlexBook.render() bakes
         in the 7-piece sliding-pin latch (4 brackets + stopper + pin emitted
         as parts, plus the slot/anchor cuts on the cover/wall). Replicating
-        only the parts we want lets us swap in a magnet-based closure
-        without inheriting any latch hardware.
+        only the parts we want lets us swap in the tab-based closure without
+        inheriting any latch hardware.
 
         The y↔h swap and ``radius``/``c4`` derivation are reproduced from
         :meth:`FlexBook.render` so the cover/spine/side helpers see the same
@@ -2508,9 +2568,6 @@ automatically. Set either to a positive value to pin it instead.
         self._resolve_cavity_heights(spine_depth)
         self._resolve_dice_hole_radius(spine_depth)
         self._resolve_ramp_geometry(spine_depth)
-        # Pure check, no geometry resolved — run it after the resolvers so a
-        # warning about the latch reads below theirs in the warning block.
-        self._check_latch_magnet_clearance()
 
         # The latch doubler laminates t mm onto the latch wall's INNER
         # (cavity-facing) face, stealing that much from the cavity's
@@ -2564,7 +2621,7 @@ automatically. Set either to a positive value to pin it instead.
 
         # FlexBook.render() now emits the 4 latch brackets, stopper plate,
         # and latch pin (flexbook.py:299-313). We intentionally skip all
-        # of that — magnets glued at assembly time replace it.
+        # of that — the latch wall's tabs replace it.
 
         # ---- 3. Map sleeve (4 glue-assembled pieces) -------------------
         if self.include_map_sleeve:
