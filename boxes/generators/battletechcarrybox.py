@@ -22,7 +22,7 @@ book/cover/spine/latch panel drawing helpers, then bolts on three extra
 part groups in :meth:`render`:
 
 1. **Map sleeve** — a flat, glue-assembled pocket fixed to the inside of one
-   cover that holds paper hex maps.
+   cover that holds paper hex maps, with a finger-pull notch at its mouth.
 2. **Mech-tray rows** — up to three independently liftable finger-jointed
    open-top boxes, each with its own slot-in dividers, so different cell
    widths can coexist (e.g. 60 mm cells for assault mechs + 40 mm cells for
@@ -60,7 +60,7 @@ NAMED_CELL_WIDTHS = {
 # though each row holds a different mix of mech sizes.
 DEFAULT_ROW_CELLS = (
     "Heavy+Heavy+Heavy+Heavy",                          # 4 heavies — a heavy lance
-    "Heavy+Medium+Medium+Medium+Medium",                # 1 heavy + 4 mediums
+    "Medium+Medium+Heavy+Medium+Medium",                # 1 heavy, centred, + 4 mediums
     "Medium+Medium+Medium+Medium+Medium+Medium",        # 6 mediums
 )
 
@@ -257,6 +257,72 @@ class _ShortenedEdge(edges.BaseEdge):
         return self.base.margin()
 
 
+class _FingerPullEdge(edges.BaseEdge):
+    """A plain straight edge with a semicircular bite out of its middle.
+
+    Used on the two panels that would otherwise be impossible to get hold
+    of: the utility tray lid's drawer-mouth edge, and one short edge of the
+    map sleeve face. Both close onto their contents flush, with no proud
+    surface or tab anywhere, so the notch is the only thing that gives a
+    fingertip somewhere to hook. Which edge each panel puts it on is the
+    caller's choice — see :meth:`BattletechCarryBox._finger_pull_edge`,
+    which also clamps the radius to what the panel can spare.
+
+    The cut is a true semicircle of ``radius`` mm sitting on the edge line:
+    the mouth is ``2 * radius`` wide and the deepest point reaches
+    ``radius`` mm into the panel. Both ends of the diameter are ordinary
+    90 degree convex panel corners, so the panel outline stays one closed
+    path and needs no separate hole cut.
+
+    Drawn from the edge's start corner heading along the edge with the panel
+    interior on the LEFT (:meth:`Boxes.rectangularWall` traverses its edges
+    counter-clockwise), the trace is:
+
+    1. straight run up to the notch mouth;
+    2. ``+90`` to point INTO the panel (same sign convention as
+       :class:`_NotchedTopEdge`);
+    3. ``-180`` swept at ``radius`` — because the turn is to the right while
+       the heading points inwards, the arc centre lands on the edge line and
+       the semicircle bulges into the material;
+    4. ``+90`` to resume the original heading, now ``2 * radius`` further
+       along the edge;
+    5. the matching straight run to the far corner.
+
+    The three turns sum to zero, so the caller's heading is unchanged and the
+    edge consumes exactly its nominal ``length``. Kerf compensation is
+    :meth:`Boxes.corner`'s job: it shrinks the swept radius by ``burn`` for
+    the concave arc and rounds the two convex corners by ``burn``, so the
+    finished notch measures ``radius`` in the wood rather than in the path.
+    """
+
+    char = None
+    description = "Straight edge with a central semicircular finger pull"
+
+    def __init__(self, boxes_, settings, radius) -> None:
+        # `settings` is unused — there is no finger geometry to configure —
+        # but BaseEdge takes the slot, so callers pass None.
+        super().__init__(boxes_, settings)
+        self.radius = radius
+
+    def __call__(self, length, **kw):
+        r = self.radius
+        # Straight run either side of the notch. Both are equal, which is
+        # what centres the pull on the edge.
+        run = (length - 2 * r) / 2
+        if r <= 0 or run <= 0:
+            # Radius disabled, or so large the notch would swallow the whole
+            # edge (and with it the corners the adjacent joints rely on).
+            # Fall back to a plain edge so the panel still closes cleanly;
+            # the caller clamps and warns before it ever gets here.
+            self.edge(length)
+            return
+        self.edge(run)
+        self.corner(90)
+        self.corner(-180, r)
+        self.corner(90)
+        self.edge(run)
+
+
 class BattletechCarryBox(FlexBook):
     """BattleTech-themed flex-spine carry book with map sleeve, mech rows, and utility tray."""
 
@@ -315,6 +381,16 @@ amount, widening that bridge (the lip also serves as a finger-pull); and
 the cover along the opening edge, flush with the free edge and just outboard of
 the slots, doubling the bridge thickness. Set the lip to 0 and/or disable the
 reinforcement to go back to edge-adjacent single-thickness slots.
+
+**Finger pulls:** the map stack and the utility tray both sit flush with
+nothing proud to grip, so each gets a semicircular notch to hook a fingertip
+into. On the **utility tray lid** it is centred on the open (drawer-mouth)
+edge. On the **map sleeve face** it is centred on one short edge — that notch
+is what marks the sleeve's mouth, so glue the short strip along the *opposite*
+short edge and install the sleeve with the notched end away from the spine.
+Sizes come from `utility_tray_finger_hole_r` and `map_sleeve_finger_hole_r`
+(radius in mm, so each mouth is twice that wide); set either to 0 for a plain
+edge.
 
 Override `inner depth in mm` (the `y` parameter) if your tallest mech is taller
 than the default 70 mm row height. The tray heights are derived from `y`, so
@@ -402,6 +478,22 @@ automatically. Set either to a positive value to pin it instead.
         self.argparser.add_argument(
             "--map_sleeve_depth", action="store", type=float, default=10.0,
             help="Internal depth of the map sleeve in mm (paper-stack thickness)")
+        self.argparser.add_argument(
+            "--map_sleeve_finger_hole_r", action="store", type=float,
+            default=25.0,
+            help="Radius (mm) of the semicircular finger pull cut into one "
+                 "SHORT edge of the map sleeve face — the edge at the open "
+                 "mouth, opposite the short glue strip. A stack of paper "
+                 "maps sits flush inside the pocket with no tab to grab, so "
+                 "the notch is what lets you press a fingertip onto the top "
+                 "sheet and slide the stack out. The mouth is twice this "
+                 "wide and reaches this far down the face. The default 25 mm "
+                 "is deliberately bigger than the tray lid's 15 mm: paper "
+                 "has to be dragged out by friction against the top sheet "
+                 "rather than hooked, so the opening wants a whole thumb "
+                 "pad, not a fingertip. Set 0 for a plain edge. Values that "
+                 "would leave less than two thicknesses of wood at the "
+                 "face's corners are clamped, with a warning.")
 
         # ---- Mech-tray rows ---------------------------------------------
         # Three independent rows, each with its own depth + cell layout.
@@ -497,9 +589,14 @@ automatically. Set either to a positive value to pin it instead.
             help="Diameter (mm) of the disc magnets the user will glue at "
                  "assembly time — etched alignment circles are sized to match")
         self.argparser.add_argument(
-            "--magnet_pair_spacing", action="store", type=float, default=120.0,
+            "--magnet_pair_spacing", action="store", type=float, default=220.0,
             help="Distance (mm) between the two magnet pairs along the latch "
-                 "edge of the cover — larger = more grip across a heavier book")
+                 "edge of the cover — larger = more grip across a heavier "
+                 "book. Must also stay clear of the latch tab slots, which "
+                 "sit at ±latch_tab_spacing/2 along the same edge: the "
+                 "default 220 puts the magnets at ±110, well outside the "
+                 "±60 slots. See _check_latch_magnet_clearance, which warns "
+                 "if a combination overlaps.")
         self.argparser.add_argument(
             "--magnet_edge_inset", action="store", type=float, default=10.0,
             help="Distance (mm) from the panel's outer edge to the magnet "
@@ -520,12 +617,12 @@ automatically. Set either to a positive value to pin it instead.
                  "of the latch wall. 2 is enough to prevent rotation; 1 "
                  "allows the cover to pivot. 0 disables tabs entirely.")
         self.argparser.add_argument(
-            "--latch_tab_width", action="store", type=float, default=10.0,
+            "--latch_tab_width", action="store", type=float, default=60.0,
             help="Width (mm) of each latch tab along the closing seam. "
                  "Wider tabs are easier to align but more visible from "
                  "outside the cover.")
         self.argparser.add_argument(
-            "--latch_tab_spacing", action="store", type=float, default=60.0,
+            "--latch_tab_spacing", action="store", type=float, default=120.0,
             help="Distance (mm) between adjacent latch tab centres. "
                  "Pick a value smaller than magnet_pair_spacing so the tab "
                  "slots and magnet etchings don't collide on the cover.")
@@ -608,6 +705,22 @@ automatically. Set either to a positive value to pin it instead.
                  "(utility_tray_w × utility_tray_h), so taller values let "
                  "bulkier items pass through the open long side, at the "
                  "cost of standing proud of the rows.")
+        self.argparser.add_argument(
+            "--utility_tray_finger_hole_r", action="store", type=float,
+            default=15.0,
+            help="Radius (mm) of the semicircular finger pull cut into the "
+                 "middle of the utility tray LID's open edge — the one at "
+                 "the drawer mouth. The assembled tray sits flush against "
+                 "the mech rows with nothing to grip, so this notch is what "
+                 "you hook a fingertip into to slide it out. The mouth is "
+                 "twice this wide and reaches this far into the lid; 15 mm "
+                 "takes an adult fingertip. Set 0 for a plain lid edge "
+                 "(e.g. if the tray is a friction fit and you would rather "
+                 "keep the dust seal). Values that would leave less than "
+                 "two thicknesses of wood at the lid's corners or in front "
+                 "of the opposite finger joint are clamped, with a warning. "
+                 "Only the lid is notched — the floor stays solid so "
+                 "nothing falls out of the bottom.")
 
         # ---- Dice tower (in the spine) ---------------------------------
         # Turn the otherwise-wasted spine cavity into a small dice tower.
@@ -1518,7 +1631,16 @@ automatically. Set either to a positive value to pin it instead.
         All pieces use plain butt edges (``"eeee"``) because they are
         glue-assembled — no finger joints would survive the strip's narrow
         depth. The user is expected to clamp + glue the strips between the
-        cover and the inner face.
+        cover and the inner face. The one exception is the inner face's TOP
+        short edge, which carries a semicircular finger pull (see
+        :class:`_FingerPullEdge`): a stack of paper maps sits flush in the
+        pocket with nothing proud to pinch, so the notch is what gives a
+        fingertip enough purchase on the top sheet to slide the stack out.
+
+        Because the face is otherwise symmetric, that notch is what marks
+        which short side is the mouth — the short glue strip goes on the
+        OTHER short edge, and the sleeve is then installed with the notched
+        end away from the spine.
 
         Outer dimensions:
         * Inner face: ``(map_sleeve_w + 2t)`` × ``(map_sleeve_h + 2t)`` —
@@ -1538,9 +1660,17 @@ automatically. Set either to a positive value to pin it instead.
         h = self.map_sleeve_h
         d = self.map_sleeve_depth
 
-        # Inner face that sits against the cover.
-        self.rectangularWall(w + 2 * t, h + 2 * t, "eeee", move="up",
-                             label="map sleeve face")
+        # Inner face that sits against the cover. Its TOP short edge carries
+        # the finger pull; glue the short strip along the BOTTOM short edge so
+        # the notch ends up at the sleeve's open mouth. The face is otherwise
+        # symmetric, so which short edge is "top" is decided here rather than
+        # at assembly — see the docstring.
+        self.rectangularWall(
+            w + 2 * t, h + 2 * t,
+            ["e", "e", self._finger_pull_edge(
+                self.map_sleeve_finger_hole_r, "map_sleeve_finger_hole_r",
+                w + 2 * t, h + 2 * t, "map sleeve face"), "e"],
+            move="up", label="map sleeve face")
 
         # Two long strips (left + right of the sleeve, parallel to the
         # cover height). Length matches the inner face's height
@@ -1828,6 +1958,69 @@ automatically. Set either to a positive value to pin it instead.
                 floor_w + 2 * t, self.label_strip_depth, "eeee",
                 move="up", label="row label strip")
 
+    def _finger_pull_edge(self, radius, param, edge_length, panel_depth, what):
+        """Build a :class:`_FingerPullEdge`, clamped to what the panel allows.
+
+        Shared by the two panels that carry a pull notch — the utility tray
+        lid and the map sleeve face. Both are thin flat panels held only at
+        their edges, and in both the notch is centred on one edge and eats
+        ``radius`` mm into the panel, so the same two bounds apply:
+
+        * **Sideways** — each end of the notch mouth has to stay clear of
+          the panel's two adjacent corners. A radius of half the edge length
+          would reach both corners exactly, so the limit is
+          ``edge_length / 2`` less a rim.
+        * **Depthways** — the deepest point has to stay clear of whatever
+          the opposite edge carries, so the limit is ``panel_depth`` less a
+          rim.
+
+        Every rim is ``2 * t``. One thickness is what the thing being cleared
+        actually occupies — a finger joint on the tray lid, a glued strip
+        wall on the sleeve face — and the second is structural: a
+        single-thickness rim beside a fingertip-sized opening is exactly
+        where a thin panel snaps the first time someone pulls on it.
+
+        Args:
+            radius: The radius the user asked for, in mm. ``0`` or negative
+                disables the notch.
+            param: Name of the argparser option that supplied ``radius``,
+                used to make any warning actionable.
+            edge_length: Length of the edge the notch is centred on, in mm.
+            panel_depth: Extent of the panel perpendicular to that edge, in
+                mm — how far the notch has room to cut.
+            what: Human-readable panel name for warning messages.
+
+        Returns:
+            A :class:`_FingerPullEdge`. Its radius is ``0`` — i.e. it draws
+            a plain straight edge — when the user disabled the notch or the
+            panel is too small to carry one.
+        """
+        t = self.thickness
+        r = radius
+
+        if r > 0:
+            max_r = min(edge_length / 2 - 2 * t, panel_depth - 2 * t)
+            if max_r <= 0:
+                self._warn(
+                    "the %s is too small for a finger pull (a %.1f x %.1f mm "
+                    "panel at thickness %.1f mm leaves no room for the notch "
+                    "plus a rim), so its edge was left plain. Enlarge the "
+                    "panel or set %s=0 to silence this.",
+                    what, edge_length, panel_depth, t, param,
+                )
+                r = 0.0
+            elif r > max_r:
+                self._warn(
+                    "%s=%.1f mm would cut past what the %s can give up, so "
+                    "it was clamped to %.1f mm. That is the largest "
+                    "semicircle leaving a %.1f mm rim at the panel's corners "
+                    "and in front of its opposite edge.",
+                    param, r, what, max_r, 2 * t,
+                )
+                r = max_r
+
+        return _FingerPullEdge(self, None, r)
+
     def _emit_utility_tray(self):
         """Emit a drawer-style enclosed utility tray.
 
@@ -1845,7 +2038,13 @@ automatically. Set either to a positive value to pin it instead.
         * **Floor** (w × d, edges ``ffef``): tabs on three sides
           mating with the long wall + both short walls; the fourth
           edge is plain ``e`` because it sits at the open long side.
-        * **Lid** (w × d, edges ``ffef``): mirror of the floor.
+        * **Lid** (w × d, edges ``ffef``): mirror of the floor, except
+          that its open edge carries a semicircular finger pull (see
+          :class:`_FingerPullEdge`). The tray is a closed box wedged
+          between the mech rows with no proud surface to grab, so the
+          notch is the only purchase for pulling it out. It goes in the
+          lid and not the floor for the obvious reason: a hole in the
+          floor is a hole dice fall through.
         * **Long wall** (1 piece, w × h, edges ``FFFF``): closed on
           all four edges (floor below, lid above, short walls on each
           end). The OTHER long wall is intentionally omitted — that's
@@ -1865,10 +2064,20 @@ automatically. Set either to a positive value to pin it instead.
             # will become the drawer opening when assembled).
             self.rectangularWall(w, d, "ffef", move="up",
                                  label="utility tray floor")
-            # Lid — same edge spec as the floor; mirrors the floor at
-            # the opposite vertical (lid covers the tray's top in 3D).
-            self.rectangularWall(w, d, "ffef", move="up",
-                                 label="utility tray lid")
+            # Lid — same edge spec as the floor, mirroring it at the
+            # opposite vertical (the lid covers the tray's top in 3D),
+            # except that the open edge is swapped for the finger-pull
+            # variant. rectangularWall accepts edge OBJECTS as well as
+            # spec characters, so the list below reads as "ffef" with the
+            # third entry replaced. At radius 0 _FingerPullEdge draws a
+            # plain edge, making the lid byte-identical to the floor.
+            self.rectangularWall(
+                w, d,
+                ["f", "f", self._finger_pull_edge(
+                    self.utility_tray_finger_hole_r,
+                    "utility_tray_finger_hole_r", w, d,
+                    "utility tray lid"), "f"],
+                move="up", label="utility tray lid")
             # Long wall (only ONE — the closed long side of the tray).
             # All four edges have finger joints since this wall mates
             # with the floor + lid + both short walls.
@@ -1958,6 +2167,77 @@ automatically. Set either to a positive value to pin it instead.
         self.text("\n".join(lines), 0, 0, fontsize=fontsize,
                   color=Color.ANNOTATIONS, align="bottom left")
         self.move(width, height, "up")
+
+    # -----------------------------------------------------------------
+    # Cross-parameter geometry checks
+    # -----------------------------------------------------------------
+
+    def _check_latch_magnet_clearance(self):
+        """Warn if a latch tab slot would collide with a magnet mark.
+
+        Four independent settings decide where two different features land on
+        the front cover's latch edge, and nothing stops them being put on top
+        of each other:
+
+        * the magnet alignment circles, at ``±magnet_pair_spacing / 2`` along
+          the edge and ``magnet_edge_inset`` into the panel, with radius
+          ``magnet_diameter / 2``;
+        * the tab through-slots, at ``±latch_tab_spacing / 2`` along the edge
+          and ``latch_tab_width`` wide, sized and positioned exactly as
+          :meth:`flexBookCover` cuts them.
+
+        Overlap is a quiet but real defect: the slot cuts away part of the
+        etched circle, so the mark it is meant to align a magnet against is
+        incomplete, and the magnet loses the wood under its outer edge that it
+        needs to glue to. Nothing downstream notices, which is why this check
+        exists — the geometry is legal, just wrong.
+
+        A rim of one thickness is required rather than bare contact: a magnet
+        glued right up against the lip of a through-slot has almost no glue
+        area on that side and peels off.
+
+        The opening lip is ignored because :meth:`flexBookCover` shifts both
+        features inboard by it, so it cancels out of the comparison.
+        """
+        if self.latch_tab_count <= 0 or self.latch_tab_width <= 0:
+            return  # No tabs, therefore no slots to collide with.
+
+        t = self.thickness
+        clearance = self.latch_tab_clearance
+
+        # Slot half-extents, mirroring flexBookCover's own sizing.
+        slot_half_along = (self.latch_tab_width + 2 * clearance) / 2
+        tab_thickness = 2 * t if self.latch_doubler else t
+        slot_centre_into = 2 * t if self.latch_doubler else 1.5 * t
+        slot_half_into = (tab_thickness + 2 * clearance) / 2
+
+        magnet_r = self.magnet_diameter / 2
+        magnet_into = self.magnet_edge_inset
+        # Required rim between the magnet's rim and the slot's lip.
+        needed = magnet_r + t
+
+        for k in range(self.latch_tab_count):
+            slot_along = (k - (self.latch_tab_count - 1) / 2) * self.latch_tab_spacing
+            for sign in (+1, -1):
+                magnet_along = sign * self.magnet_pair_spacing / 2
+                # Distance from the magnet centre to the slot rectangle,
+                # per axis: 0 when the centre is inside the slot's band on
+                # that axis, otherwise the gap to the nearest lip.
+                gap_along = max(0.0, abs(magnet_along - slot_along) - slot_half_along)
+                gap_into = max(0.0, abs(magnet_into - slot_centre_into) - slot_half_into)
+                if math.hypot(gap_along, gap_into) < needed:
+                    self._warn(
+                        "a latch tab slot lands on a magnet alignment mark on "
+                        "the front cover: the slot at %.1f mm along the latch "
+                        "edge is %.1f mm from the magnet at %.1f mm, which "
+                        "does not leave the %.1f mm of wood the magnet needs "
+                        "to glue to. Move the magnets along the edge "
+                        "(magnet_pair_spacing), push them deeper into the "
+                        "panel (magnet_edge_inset), or narrow/respace the "
+                        "tabs (latch_tab_width, latch_tab_spacing).",
+                        slot_along, math.hypot(gap_along, gap_into),
+                        magnet_along, needed,
+                    )
 
     # -----------------------------------------------------------------
     # Spine-depth axis budget
@@ -2228,6 +2508,9 @@ automatically. Set either to a positive value to pin it instead.
         self._resolve_cavity_heights(spine_depth)
         self._resolve_dice_hole_radius(spine_depth)
         self._resolve_ramp_geometry(spine_depth)
+        # Pure check, no geometry resolved — run it after the resolvers so a
+        # warning about the latch reads below theirs in the warning block.
+        self._check_latch_magnet_clearance()
 
         # The latch doubler laminates t mm onto the latch wall's INNER
         # (cavity-facing) face, stealing that much from the cavity's
