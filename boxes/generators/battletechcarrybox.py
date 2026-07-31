@@ -60,7 +60,7 @@ NAMED_CELL_WIDTHS = {
 # though each row holds a different mix of mech sizes.
 DEFAULT_ROW_CELLS = (
     "Heavy+Heavy+Heavy+Heavy",                          # 4 heavies — a heavy lance
-    "Heavy+Medium+Medium+Medium+Medium",                # 1 heavy + 4 mediums
+    "Medium+Medium+Heavy+Medium+Medium",                # 1 heavy, centred, + 4 mediums
     "Medium+Medium+Medium+Medium+Medium+Medium",        # 6 mediums
 )
 
@@ -589,9 +589,14 @@ automatically. Set either to a positive value to pin it instead.
             help="Diameter (mm) of the disc magnets the user will glue at "
                  "assembly time — etched alignment circles are sized to match")
         self.argparser.add_argument(
-            "--magnet_pair_spacing", action="store", type=float, default=120.0,
+            "--magnet_pair_spacing", action="store", type=float, default=220.0,
             help="Distance (mm) between the two magnet pairs along the latch "
-                 "edge of the cover — larger = more grip across a heavier book")
+                 "edge of the cover — larger = more grip across a heavier "
+                 "book. Must also stay clear of the latch tab slots, which "
+                 "sit at ±latch_tab_spacing/2 along the same edge: the "
+                 "default 220 puts the magnets at ±110, well outside the "
+                 "±60 slots. See _check_latch_magnet_clearance, which warns "
+                 "if a combination overlaps.")
         self.argparser.add_argument(
             "--magnet_edge_inset", action="store", type=float, default=10.0,
             help="Distance (mm) from the panel's outer edge to the magnet "
@@ -612,12 +617,12 @@ automatically. Set either to a positive value to pin it instead.
                  "of the latch wall. 2 is enough to prevent rotation; 1 "
                  "allows the cover to pivot. 0 disables tabs entirely.")
         self.argparser.add_argument(
-            "--latch_tab_width", action="store", type=float, default=10.0,
+            "--latch_tab_width", action="store", type=float, default=60.0,
             help="Width (mm) of each latch tab along the closing seam. "
                  "Wider tabs are easier to align but more visible from "
                  "outside the cover.")
         self.argparser.add_argument(
-            "--latch_tab_spacing", action="store", type=float, default=60.0,
+            "--latch_tab_spacing", action="store", type=float, default=120.0,
             help="Distance (mm) between adjacent latch tab centres. "
                  "Pick a value smaller than magnet_pair_spacing so the tab "
                  "slots and magnet etchings don't collide on the cover.")
@@ -2164,6 +2169,77 @@ automatically. Set either to a positive value to pin it instead.
         self.move(width, height, "up")
 
     # -----------------------------------------------------------------
+    # Cross-parameter geometry checks
+    # -----------------------------------------------------------------
+
+    def _check_latch_magnet_clearance(self):
+        """Warn if a latch tab slot would collide with a magnet mark.
+
+        Four independent settings decide where two different features land on
+        the front cover's latch edge, and nothing stops them being put on top
+        of each other:
+
+        * the magnet alignment circles, at ``±magnet_pair_spacing / 2`` along
+          the edge and ``magnet_edge_inset`` into the panel, with radius
+          ``magnet_diameter / 2``;
+        * the tab through-slots, at ``±latch_tab_spacing / 2`` along the edge
+          and ``latch_tab_width`` wide, sized and positioned exactly as
+          :meth:`flexBookCover` cuts them.
+
+        Overlap is a quiet but real defect: the slot cuts away part of the
+        etched circle, so the mark it is meant to align a magnet against is
+        incomplete, and the magnet loses the wood under its outer edge that it
+        needs to glue to. Nothing downstream notices, which is why this check
+        exists — the geometry is legal, just wrong.
+
+        A rim of one thickness is required rather than bare contact: a magnet
+        glued right up against the lip of a through-slot has almost no glue
+        area on that side and peels off.
+
+        The opening lip is ignored because :meth:`flexBookCover` shifts both
+        features inboard by it, so it cancels out of the comparison.
+        """
+        if self.latch_tab_count <= 0 or self.latch_tab_width <= 0:
+            return  # No tabs, therefore no slots to collide with.
+
+        t = self.thickness
+        clearance = self.latch_tab_clearance
+
+        # Slot half-extents, mirroring flexBookCover's own sizing.
+        slot_half_along = (self.latch_tab_width + 2 * clearance) / 2
+        tab_thickness = 2 * t if self.latch_doubler else t
+        slot_centre_into = 2 * t if self.latch_doubler else 1.5 * t
+        slot_half_into = (tab_thickness + 2 * clearance) / 2
+
+        magnet_r = self.magnet_diameter / 2
+        magnet_into = self.magnet_edge_inset
+        # Required rim between the magnet's rim and the slot's lip.
+        needed = magnet_r + t
+
+        for k in range(self.latch_tab_count):
+            slot_along = (k - (self.latch_tab_count - 1) / 2) * self.latch_tab_spacing
+            for sign in (+1, -1):
+                magnet_along = sign * self.magnet_pair_spacing / 2
+                # Distance from the magnet centre to the slot rectangle,
+                # per axis: 0 when the centre is inside the slot's band on
+                # that axis, otherwise the gap to the nearest lip.
+                gap_along = max(0.0, abs(magnet_along - slot_along) - slot_half_along)
+                gap_into = max(0.0, abs(magnet_into - slot_centre_into) - slot_half_into)
+                if math.hypot(gap_along, gap_into) < needed:
+                    self._warn(
+                        "a latch tab slot lands on a magnet alignment mark on "
+                        "the front cover: the slot at %.1f mm along the latch "
+                        "edge is %.1f mm from the magnet at %.1f mm, which "
+                        "does not leave the %.1f mm of wood the magnet needs "
+                        "to glue to. Move the magnets along the edge "
+                        "(magnet_pair_spacing), push them deeper into the "
+                        "panel (magnet_edge_inset), or narrow/respace the "
+                        "tabs (latch_tab_width, latch_tab_spacing).",
+                        slot_along, math.hypot(gap_along, gap_into),
+                        magnet_along, needed,
+                    )
+
+    # -----------------------------------------------------------------
     # Spine-depth axis budget
     # -----------------------------------------------------------------
 
@@ -2432,6 +2508,9 @@ automatically. Set either to a positive value to pin it instead.
         self._resolve_cavity_heights(spine_depth)
         self._resolve_dice_hole_radius(spine_depth)
         self._resolve_ramp_geometry(spine_depth)
+        # Pure check, no geometry resolved — run it after the resolvers so a
+        # warning about the latch reads below theirs in the warning block.
+        self._check_latch_magnet_clearance()
 
         # The latch doubler laminates t mm onto the latch wall's INNER
         # (cavity-facing) face, stealing that much from the cavity's
