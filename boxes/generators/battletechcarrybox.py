@@ -401,7 +401,7 @@ Sizes come from `utility_tray_finger_hole_r` and `map_sleeve_finger_hole_r`
 edge.
 
 Override `inner depth in mm` (the `y` parameter) if your tallest mech is taller
-than the default 70 mm row height. The tray heights are derived from `y`, so
+than the default 55 mm row height. The tray heights are derived from `y`, so
 that is the only number you need to change: `row_height` and `utility_tray_h`
 both default to 0 = "work it out from the cavity", and grow or shrink with `y`
 automatically. Set either to a positive value to pin it instead.
@@ -453,12 +453,16 @@ automatically. Set either to a positive value to pin it instead.
         # vs the 261 × 309 mm tray stack, giving ~2 mm × ~2 mm play.
         # Map sleeve (230 × 280 mm internal) gets ~18 mm bezel along the
         # cover-width axis and ~15 mm along the cover-height axis.
-        # Spine depth = 90 mm so the closed cavity (84 mm interior) holds a
-        # 10 mm map sleeve plus a 73 mm tray stack with 1 mm of slack. The
-        # tray heights are DERIVED from this y — see
+        # Spine depth = 75 mm so the closed cavity (69 mm interior) holds a
+        # 10 mm map sleeve plus a 58 mm tray stack with 1 mm of slack. That
+        # gives 55 mm of clearance above each tray floor, measured off the
+        # tallest mech in a BattleTech box rather than guessed — the earlier
+        # 90 mm spine carried 70 mm of clearance, i.e. 15 mm of dead air the
+        # minis never used and the carrier had to be thick enough to hold.
+        # The tray heights are DERIVED from this y — see
         # :meth:`_resolve_cavity_heights` — so changing y here (or in the UI)
         # resizes the rows and the utility tray to match.
-        self.buildArgParser(x=266.0, y=90.0, h=311.0)
+        self.buildArgParser(x=266.0, y=75.0, h=311.0)
 
         # FlexBook's own per-instance args — duplicated here because we
         # bypassed its __init__. Keep the help strings identical so the UI
@@ -522,7 +526,7 @@ automatically. Set either to a positive value to pin it instead.
                  "Internal dividers stop at this height. Leave at 0 to "
                  "derive it from the spine cavity: "
                  "`y - 2*thickness - map_sleeve_depth - thickness - "
-                 "cavity_slack`, which is 70 mm at the default y = 90. "
+                 "cavity_slack`, which is 55 mm at the default y = 75. "
                  "Deriving it means a change to `inner depth in mm` (y) "
                  "automatically resizes the trays to match. Set a positive "
                  "value to pin the height and ignore the cavity (a warning "
@@ -812,10 +816,10 @@ automatically. Set either to a positive value to pin it instead.
             help="Width (mm) of each ramp perpendicular to the tab edge — "
                  "how far the ramp protrudes into the spine cavity from "
                  "the recess wall. Should be less than spine radius "
-                 "(y_spine / 2 = 45 mm by default) so the ramp doesn't "
+                 "(y_spine / 2 = 37.5 mm by default) so the ramp doesn't "
                  "touch the flex.")
         self.argparser.add_argument(
-            "--dice_tower_ramp_offset", action="store", type=float, default=15.0,
+            "--dice_tower_ramp_offset", action="store", type=float, default=10.0,
             help="Alternating offset (mm) of each ramp's centre from the "
                  "midline of the recess wall's short axis (spine depth "
                  "direction). The first ramp shifts by +offset toward "
@@ -823,7 +827,13 @@ automatically. Set either to a positive value to pin it instead.
                  "and so on. A non-zero value creates a 3D zig-zag fall "
                  "path: dice deflect both in height (from the alternating "
                  "ramp angle) and in depth (from this offset). Set to 0 "
-                 "to centre every ramp on the spine midline.")
+                 "to centre every ramp on the spine midline. The usable "
+                 "maximum is `y/2 - (ramp_length/2)*cos(ramp_angle)` = "
+                 "15.8 mm at the defaults; the offset is clamped there, "
+                 "but a value near the cap puts the outermost ramp's tip "
+                 "within a millimetre of the cavity wall, which paint "
+                 "film and kerf can close up. The default 10 leaves "
+                 "~5.8 mm.")
         self.argparser.add_argument(
             "--dice_tower_ramp_end_clearance", action="store", type=float, default=50.0,
             help="Minimum distance (mm) from the recess wall's short "
@@ -911,7 +921,7 @@ automatically. Set either to a positive value to pin it instead.
         """Drill angled finger-hole rows on the recess wall for dice-tower ramps.
 
         ``wall_h`` is the recess wall's short dimension (= spine depth,
-        90 mm by default). ``wall_y`` is the wall's long dimension (=
+        75 mm by default). ``wall_y`` is the wall's long dimension (=
         cover-height direction, 311 mm by default). Ramps are positioned
         along the long axis at evenly-spaced intervals; their tab rows are
         drilled at ``±dice_tower_ramp_angle`` degrees, alternating, so
@@ -2458,16 +2468,19 @@ automatically. Set either to a positive value to pin it instead.
 
         **Protrusion.** A ramp sticks ``dice_tower_ramp_width`` out from the
         recess wall into a half-cylindrical cavity of radius
-        ``spine_depth / 2``. At the default ``y = 90`` that is 30 mm into a
-        45 mm radius, comfortable; by ``y = 60`` the radius IS 30 mm, so the
-        ramp touches the living-hinge flex, and below that it passes through
-        it. Capped at ``radius - DICE_RAMP_FLEX_CLEARANCE``.
+        ``spine_depth / 2``. At the default ``y = 75`` that is 30 mm into a
+        37.5 mm radius, leaving a 7.5 mm bypass gap — narrower than a d6, so
+        every die has to strike a ramp rather than drop straight past (the
+        old 90 mm spine left 15 mm, wide enough for a die to miss entirely).
+        By ``y = 60`` the radius IS 30 mm, so the ramp touches the
+        living-hinge flex, and below that it passes through it. Capped at
+        ``radius - DICE_RAMP_FLEX_CLEARANCE``.
 
         **Span along the spine depth.** A ramp's tab row is drilled at
         ``dice_tower_ramp_angle``, so it occupies
         ``ramp_length * cos(angle)`` of the recess wall's SHORT axis — which
         is the spine depth. At the defaults that is ``50 * cos(30) = 43.3``
-        mm out of 90, fine; but below about ``y = 44`` the row is longer than
+        mm out of 75, fine; but below about ``y = 44`` the row is longer than
         the wall is deep and its finger holes fall off the panel. Capped so
         the row fits with one ``thickness`` of wood at each end.
 
