@@ -155,6 +155,16 @@ class HexmoHexagon(Boxes):
                  "guaranteeing no track is tighter than the centreline.  No "
                  "effect when --track_line_count is 1.")
         self.argparser.add_argument(
+            "--track_center_offset", action="store", type=float, default=0.0,
+            help="Signed radial shift (mm) applied to the reference centreline "
+                 "itself before the per-track --track_offset spacing is added.  "
+                 "0 (default) is the true geometric centreline.  Positive moves "
+                 "it outward (larger radius); negative moves it inward (smaller "
+                 "radius).  The whole track family (and its --track_offset "
+                 "spacing) shifts with it, so a value of +10 puts the centreline "
+                 "10 mm further out.  With --track_line_count 1 this simply "
+                 "relocates the single centreline.")
+        self.argparser.add_argument(
             "--track_width", action="store", type=float, default=30.0,
             help="Physical width (mm) of the actual model-railway track laid on "
                  "the deck (the roadbed/tie footprint).  Used by --draw_track to "
@@ -1061,6 +1071,13 @@ class HexmoHexagon(Boxes):
             offsets = [i * spacing for i in range(n_lines)]
         else:
             offsets = [(i - (n_lines - 1) / 2.0) * spacing for i in range(n_lines)]
+
+        # Bias the whole family by the reference-centreline shift.  Folding it in
+        # here (rather than at the rho = rho_center + off site) means the arc,
+        # radius labels and crossing ticks all inherit the shift for free, and it
+        # composes with either --track_offset mode.  Positive = outward (larger
+        # rho); with track_line_count == 1 this is the sole placement control.
+        offsets = [self.track_center_offset + o for o in offsets]
 
         def draw_curve(bisector_deg):
             """Draw the full track family for a 120°-edge-pair with the given

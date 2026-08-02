@@ -330,6 +330,17 @@ class HexmoRectangle(Boxes):
                  "when modules share the same track settings.  No effect when "
                  "--track_line_count is 1.")
         self.argparser.add_argument(
+            "--track_center_offset", action="store", type=float, default=0.0,
+            help="Signed lateral shift (mm) applied to the reference centreline "
+                 "itself before the per-track --track_offset spacing is added.  "
+                 "0 (default) is the true panel centre.  Positive moves it toward "
+                 "+y (the counterpart of the HexmoHexagon 'outer'/larger-radius "
+                 "side, so a shifted straight still matches a shifted hex curve "
+                 "across a joint); negative moves it toward -y.  The whole track "
+                 "family (and its --track_offset spacing) shifts with it.  With "
+                 "--track_line_count 1 this simply relocates the single "
+                 "centreline off the panel centre.")
+        self.argparser.add_argument(
             "--draw_center", action="store", type=boolarg, default=False,
             help="Etch the track centreline(s) themselves.  On by default.")
         self.argparser.add_argument(
@@ -915,6 +926,15 @@ class HexmoRectangle(Boxes):
             offsets = [i * spacing for i in range(n_lines)]
         else:
             offsets = [(i - (n_lines - 1) / 2.0) * spacing for i in range(n_lines)]
+
+        # Bias the whole family by the reference-centreline shift.  Folding it in
+        # here (rather than at the cy = y_centre + off site) means the centre
+        # line, footprint edges, labels and crossing ticks all inherit the shift
+        # for free, and it composes with either --track_offset mode.  Positive =
+        # +y (matches the hexagon 'outer'/larger-radius direction); with
+        # track_line_count == 1 this is the sole placement control.  The hline
+        # guard still clips anything the shift pushes past 0/width.
+        offsets = [self.track_center_offset + o for o in offsets]
 
         def hline(y):
             """Draw one full-length line at lateral position y (skip if off-panel)."""

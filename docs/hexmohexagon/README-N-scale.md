@@ -158,6 +158,7 @@ full hexagon — see **Trapezoid vs. full hexagon** below.
 | `--track_line_count` | number of parallel track centrelines | `1`, or `2` for a double-track module |
 | `--track_spacing` | radial spacing between adjacent centrelines (mm) | `80` (track-centre to track-centre) |
 | `--track_offset` | `centred` (extras straddle the centreline) or `outer` (centreline = minimum radius, extras step outward only) | `outer` to guarantee no track tighter than the centreline |
+| `--track_center_offset` | signed shift (mm) of the reference centreline itself: `+` = outward (larger radius), `−` = inward | `0` (true centreline); `+15` to bias the whole family 15 mm out |
 | `--draw_center` | etch the centreline arc(s) themselves | `1` (on by default) |
 | `--draw_track` | etch the two track-footprint edges at ± `track_width`/2 | `1` |
 | `--track_width` | physical width of the laid track/roadbed (mm) | `~20` (N) |
@@ -180,6 +181,18 @@ radius) only, so no track is ever drawn tighter than the centreline. Use this
 when the centreline is your minimum-radius constraint and additional tracks may
 only bow out — it also keeps the hexagon's outward tracks on the same side as a
 mating straight (HexmoRectangle) module's outward tracks.
+
+`--track_center_offset` is a separate, additive knob that moves the *reference
+centreline itself* by a signed millimetre amount before the `--track_offset`
+spacing is applied. `0` (default) is the true geometric centreline; a positive
+value shifts the whole family outward (larger radius) and a negative value inward.
+It composes with `--track_offset` — in `outer` mode the *shifted* centreline
+becomes the minimum-radius track — and it works with a single track
+(`--track_line_count 1`) to place one centreline off the geometric centre. The
+same sign convention as `outer` (positive = larger radius, matching
+HexmoRectangle's `+y`) keeps a shifted hex curve aligned with a shifted straight
+across a joint. Note the hexagon arc is not clipped to the deck, so keep the
+shift (plus any `outer` spread) within the deck depth.
 
 **Trapezoid vs. full hexagon.** In trapezoid (half-hexagon) mode the guide is the
 single lower curve. On the **full hexagon** you choose which route(s) to draw
