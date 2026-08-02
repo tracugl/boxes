@@ -157,6 +157,7 @@ full hexagon — see **Trapezoid vs. full hexagon** below.
 | `--track_lines` | master switch: turn the guide on | `1` |
 | `--track_line_count` | number of parallel track centrelines | `1`, or `2` for a double-track module |
 | `--track_spacing` | radial spacing between adjacent centrelines (mm) | `80` (track-centre to track-centre) |
+| `--track_offset` | `centred` (extras straddle the centreline) or `outer` (centreline = minimum radius, extras step outward only) | `outer` to guarantee no track tighter than the centreline |
 | `--draw_center` | etch the centreline arc(s) themselves | `1` (on by default) |
 | `--draw_track` | etch the two track-footprint edges at ± `track_width`/2 | `1` |
 | `--track_width` | physical width of the laid track/roadbed (mm) | `~40` (HO) |
@@ -172,8 +173,14 @@ full hexagon — see **Trapezoid vs. full hexagon** below.
 `--track_lines` is the master switch. With it on, `--draw_center` etches the bare
 centreline(s) and `--draw_track` etches where the actual track footprint sits
 (centreline ± `track_width`/2); enable both to see the centreline *and* its
-edges. For an odd `--track_line_count` one centreline lands on the exact curve
-with the rest paired either side; an even count straddles it.
+edges. With the default `--track_offset centred`, an odd `--track_line_count`
+lands one centreline on the exact curve with the rest paired either side, and an
+even count straddles it. Switch to `--track_offset outer` and the design
+centreline becomes the *minimum* radius: every extra track steps outward (larger
+radius) only, so no track is ever drawn tighter than the centreline. Use this
+when the centreline is your minimum-radius constraint and additional tracks may
+only bow out — it also keeps the hexagon's outward tracks on the same side as a
+mating straight (HexmoRectangle) module's outward tracks.
 
 **Trapezoid vs. full hexagon.** In trapezoid (half-hexagon) mode the guide is the
 single lower curve. On the **full hexagon** you choose which route(s) to draw

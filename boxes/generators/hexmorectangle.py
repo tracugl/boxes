@@ -319,6 +319,17 @@ class HexmoRectangle(Boxes):
             help="Lateral spacing (mm) between adjacent track centrelines when "
                  "--track_line_count > 1.  Defaults to 80 mm.")
         self.argparser.add_argument(
+            "--track_offset", action="store", type=str, default="centred",
+            choices=["centred", "outer"],
+            help="How multiple track lines (--track_line_count > 1) are placed "
+                 "relative to the centreline.  'centred' (default) straddles the "
+                 "centreline symmetrically.  'outer' keeps the centreline as the "
+                 "base line and steps every additional line to one side only — "
+                 "the counterpart of the HexmoHexagon 'outer' (larger-radius) "
+                 "side, so parallel tracks line up across a hex↔straight joint "
+                 "when modules share the same track settings.  No effect when "
+                 "--track_line_count is 1.")
+        self.argparser.add_argument(
             "--draw_center", action="store", type=boolarg, default=False,
             help="Etch the track centreline(s) themselves.  On by default.")
         self.argparser.add_argument(
@@ -894,9 +905,16 @@ class HexmoRectangle(Boxes):
         cross_half = (half_width if self.draw_track else 0.0) + 6.0
 
         y_centre = width / 2.0
-        # Lateral offsets, symmetric about the centre: odd counts land a track on
-        # the centre, even counts straddle it.
-        offsets = [(i - (n_lines - 1) / 2.0) * spacing for i in range(n_lines)]
+        # Lateral offsets.  'centred' (default): symmetric about the centre, so
+        # odd counts land a track on the centre and even counts straddle it.
+        # 'outer': one-sided (0, +spacing, +2·spacing, …) so the centreline is the
+        # base line and every extra line steps to the same side — matching the
+        # HexmoHexagon 'outer' (larger-radius) direction so tracks line up across
+        # a hex↔straight joint.
+        if self.track_offset == "outer":
+            offsets = [i * spacing for i in range(n_lines)]
+        else:
+            offsets = [(i - (n_lines - 1) / 2.0) * spacing for i in range(n_lines)]
 
         def hline(y):
             """Draw one full-length line at lateral position y (skip if off-panel)."""
