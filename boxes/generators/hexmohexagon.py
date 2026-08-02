@@ -144,6 +144,17 @@ class HexmoHexagon(Boxes):
                  "--track_line_count > 1.  Defaults to 80 mm.  Ignored when only "
                  "one line is drawn.")
         self.argparser.add_argument(
+            "--track_offset", action="store", type=str, default="centred",
+            choices=["centred", "outer"],
+            help="How multiple track lines (--track_line_count > 1) are placed "
+                 "relative to the centreline.  'centred' (default) spaces them "
+                 "symmetrically about the centreline, so the inner lines have a "
+                 "tighter radius than the centreline and the outer lines a wider "
+                 "one.  'outer' keeps the centreline as the minimum-radius line "
+                 "and steps every additional line outward only (larger radius), "
+                 "guaranteeing no track is tighter than the centreline.  No "
+                 "effect when --track_line_count is 1.")
+        self.argparser.add_argument(
             "--track_width", action="store", type=float, default=30.0,
             help="Physical width (mm) of the actual model-railway track laid on "
                  "the deck (the roadbed/tie footprint).  Used by --draw_track to "
@@ -1042,9 +1053,14 @@ class HexmoHexagon(Boxes):
         label_fontsize = self.track_width * 0.35
         label_band = self.track_width / 4.0  # centre of each half of the width band
 
-        # Per-track radial offsets, symmetric about 0 so odd counts land a line on
-        # the centreline and even counts straddle it.
-        offsets = [(i - (n_lines - 1) / 2.0) * spacing for i in range(n_lines)]
+        # Per-track radial offsets.  'centred' (default): symmetric about 0, so
+        # odd counts land a line on the centreline and even counts straddle it.
+        # 'outer': one-sided (0, +spacing, +2·spacing, …) so the centreline is the
+        # minimum radius and every extra line steps outward (larger rho) only.
+        if self.track_offset == "outer":
+            offsets = [i * spacing for i in range(n_lines)]
+        else:
+            offsets = [(i - (n_lines - 1) / 2.0) * spacing for i in range(n_lines)]
 
         def draw_curve(bisector_deg):
             """Draw the full track family for a 120°-edge-pair with the given
