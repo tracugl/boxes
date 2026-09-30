@@ -324,6 +324,24 @@ curl "http://localhost:4455/HexmoRectangle?render=1\
 &track_guide=1" -o hexmo_rect_guide.svg
 ```
 
+**Internal layout.** Two options set the rectangle's internal grid:
+
+| Parameter | Meaning | N suggestion |
+|---|---|---|
+| `--num_columns` | compartments along the long axis; N compartments need N−1 short dividers. `0` = auto from radius | `0` (auto) or `2` |
+| `--num_rows` | lanes across the short axis; N lanes need N−1 long internal supports running the full length. Default `3` | `1` |
+
+At N scale use `num_rows=1`. It leaves out the two long supports, and with them
+their slots in the end walls, so the end wall keeps its centre big hole (at around
+`radius=220`). The centre spoke runs down the middle lane, so an even `num_rows`
+needs `spoke_width=0`; otherwise the generator stops with an error.
+
+The short internal dividers cut **the same big holes as the end walls**, at the
+same positions and height, so they line up along the module (handy as a wiring
+run). A big hole that would cross a long-support slot is left out of both, so
+with 3 rows at `radius=220` the centre hole is dropped rather than cut through
+the joint.
+
 ---
 
 ## Reducing laser cut time
