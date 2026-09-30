@@ -37,24 +37,36 @@ except ImportError:
 from boxes.generators.hexmohexagon import HexmoHexagon
 from boxes.generators.hexmorectangle import HexmoRectangle
 
-SMALL, MEDIUM, BIG = 3.0, 12.5, 35.0   # hole radii shared by both (BIG at h=100)
-TRACKED = (SMALL, MEDIUM, BIG)
+SMALL, MEDIUM = 3.0, 12.5   # registration hole radii shared by both generators
 
-# (radius, thickness, outside): the N-scale build, the HO default, and both
-# --outside modes.  The original bug is 1.8 mm at N scale and 0.2 mm at HO.
+
+def _is_big(r):
+    """Big holes are anything larger than a medium; their radius follows --h."""
+    return r > MEDIUM
+
+
+def _tracked(r):
+    """True for the holes the alignment checks compare (small, medium, big)."""
+    return r in (SMALL, MEDIUM) or _is_big(r)
+
+# (radius, thickness, outside, h): the N-scale build, the HO default, both
+# --outside modes, and heights other than 100 mm.  The big-hole radius follows
+# h, so only h=100 matched before BOX-33.
 BUILDS = [
-    (190, 3, 1), (190, 3, 0),
-    (500, 6, 1), (500, 6, 0),
-    (300, 4, 1),
+    (190, 3, 1, 100), (190, 3, 0, 100),
+    (500, 6, 1, 100), (500, 6, 0, 100),
+    (300, 4, 1, 100),
+    (500, 6, 1, 60), (500, 6, 1, 150), (300, 4, 0, 150), (220, 3, 1, 80),
 ]
 
 
-def _args(radius, thickness, outside):
+def _args(radius, thickness, outside, h=100):
     """CLI args shared by both generators for one build."""
-    return [f"--radius={radius}", f"--thickness={thickness}", f"--outside={outside}"]
+    return [f"--radius={radius}", f"--thickness={thickness}",
+            f"--outside={outside}", f"--h={h}"]
 
 
-def hex_wall_holes(radius, thickness, outside):
+def hex_wall_holes(radius, thickness, outside, h=100):
     """Registration holes on a HexmoHexagon side wall.
 
     @returns Sorted ``(along, from_deck, radius)`` tuples for the small,
@@ -63,7 +75,7 @@ def hex_wall_holes(radius, thickness, outside):
              body.
     """
     box = HexmoHexagon()
-    box.parseArgs(_args(radius, thickness, outside))
+    box.parseArgs(_args(radius, thickness, outside, h))
     box.open()
     frames: list[tuple[float, float]] = []
     holes: list[tuple[float, float, float]] = []
@@ -71,7 +83,7 @@ def hex_wall_holes(radius, thickness, outside):
     orig_hole, orig_align = box.hole, box.drawAlignmentHoles
 
     def hole(x, y, r=0.0, d=0.0, **kw):
-        if inside[0] and len(frames) == 1 and r in TRACKED:
+        if inside[0] and len(frames) == 1 and _tracked(r):
             holes.append((x, y, r))
         return orig_hole(x, y, r=r, d=d, **kw)
 
@@ -86,24 +98,24 @@ def hex_wall_holes(radius, thickness, outside):
     box.hole, box.drawAlignmentHoles = hole, align
     box.render()
     s, l = frames[0]
-    return sorted((round(y - s / 2, 3), round(l - x, 3), r) for x, y, r in holes)
+    return sorted((round(y - s / 2, 3), round(l - x, 3), round(r, 3)) for x, y, r in holes)
 
 
-def rect_end_wall_holes(radius, thickness, outside):
+def rect_end_wall_holes(radius, thickness, outside, h=100):
     """Registration holes on a HexmoRectangle short (end) wall.
 
     @returns Sorted ``(along, from_deck, radius)`` tuples, as for
              :func:`hex_wall_holes`.
     """
     box = HexmoRectangle()
-    box.parseArgs(_args(radius, thickness, outside))
+    box.parseArgs(_args(radius, thickness, outside, h))
     box.open()
     holes: list[tuple[float, float, float]] = []
     state = {"origin": None, "length": None, "calls": 0}
     orig_hole, orig_wall = box.hole, box.rectangularWall
 
     def hole(x, y, r=0.0, d=0.0, **kw):
-        if state["origin"] is not None and r in TRACKED:
+        if state["origin"] is not None and _tracked(r):
             px, py = (~state["origin"]) * (box.ctx._m * (x, y))
             holes.append((px, py, r))
         return orig_hole(x, y, r=r, d=d, **kw)
@@ -129,7 +141,7 @@ def rect_end_wall_holes(radius, thickness, outside):
     box.hole, box.rectangularWall = hole, wall
     box.render()
     half = state["length"] / 2
-    return sorted((round(px - half, 3), round(py, 3), r) for px, py, r in holes)
+    return sorted((round(px - half, 3), round(py, 3), round(r, 3)) for px, py, r in holes)
 
 
 def _key(holes):
@@ -137,7 +149,7 @@ def _key(holes):
     return {(round(a, 2), round(fd, 2), r) for a, fd, r in holes}
 
 
-@pytest.mark.parametrize("build", BUILDS, ids=lambda b: "r{}-t{}-outside{}".format(*b))
+@pytest.mark.parametrize("build", BUILDS, ids=lambda b: "r{}-t{}-outside{}-h{}".format(*b))
 class TestRectEndWallMatchesHexWall:
 
     def test_every_rect_hole_has_a_hex_counterpart(self, build) -> None:
@@ -161,3 +173,18 @@ class TestRectEndWallMatchesHexWall:
     def test_holes_symmetric_about_wall_centre(self, build) -> None:
         rect = _key(rect_end_wall_holes(*build))
         assert rect == {(round(-a, 2) + 0.0, fd, r) for a, fd, r in rect}
+
+
+# Builds where at least one end-wall big hole clears the long-support slots
+# (others, e.g. r300/h150, correctly drop every big hole; see BOX-34).
+BIG_HOLE_BUILDS = [(500, 6, 1, 100), (500, 6, 0, 100), (500, 6, 1, 60), (500, 6, 1, 150)]
+
+
+@pytest.mark.parametrize("build", BIG_HOLE_BUILDS,
+                         ids=lambda b: "r{}-t{}-outside{}-h{}".format(*b))
+def test_end_wall_has_the_hex_big_holes(build) -> None:
+    """Guard against a vacuous subset check: big walls really cut big holes,
+    and the rect's are the same size as the hex's."""
+    rect_bigs = {r for _, _, r in rect_end_wall_holes(*build) if _is_big(r)}
+    hex_bigs = {r for _, _, r in hex_wall_holes(*build) if _is_big(r)}
+    assert rect_bigs and rect_bigs == hex_bigs

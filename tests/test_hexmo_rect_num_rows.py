@@ -31,6 +31,10 @@ except ImportError:
 from boxes import edges as box_edges
 from boxes.generators.hexmorectangle import HexmoRectangle
 
+# Big holes are anything larger than a medium registration hole (12.5 mm);
+# their radius follows --h (see HexmoRectangle._bigHoleRadius).
+BIG_MIN = 12.5
+
 # The user's N-scale build that exposed the clash.
 USER_N = ["--radius=220", "--h=100", "--thickness=3", "--spoke_width=45",
           "--corner_holes=g2", "--big_hole_shape=rounded_rect", "--outside=1"]
@@ -89,13 +93,13 @@ def render_recorded(args, monkeypatch):
             cur["kind"] = prev
 
     def hole(x, y, r=0.0, d=0.0, **kw):
-        if cur["kind"] and r >= 30:
+        if cur["kind"] and r > BIG_MIN:
             cx, cy = page(x, y)
             rec["big"].append((cur["kind"], (cx - r, cy - r, cx + r, cy + r)))
         return o_hole(x, y, r=r, d=d, **kw)
 
     def rhole(x, y, dx, dy, r=0, center_x=True, center_y=True):
-        if cur["kind"] and dx >= 60 and dy >= 60:
+        if cur["kind"] and dx > 2 * BIG_MIN and dy > 2 * BIG_MIN:
             x0 = x - dx / 2 if center_x else x
             y0 = y - dy / 2 if center_y else y
             (ax, ay), (bx, by) = page(x0, y0), page(x0 + dx, y0 + dy)
@@ -284,12 +288,12 @@ def big_holes_by_panel(args):
         return o_wall(x, y, edges, *a, callback=cbs, **kw)
 
     def hole(x, y, r=0.0, d=0.0, **kw):
-        if cur["kind"] and r >= 30:
+        if cur["kind"] and r > BIG_MIN:
             found[cur["kind"]].append(local(x, y))
         return o_hole(x, y, r=r, d=d, **kw)
 
     def rhole(x, y, dx, dy, r=0, center_x=True, center_y=True):
-        if cur["kind"] and dx >= 60 and dy >= 60:
+        if cur["kind"] and dx > 2 * BIG_MIN and dy > 2 * BIG_MIN:
             found[cur["kind"]].append(local(x if center_x else x + dx / 2,
                                             y if center_y else y + dy / 2))
         return o_rhole(x, y, dx, dy, r=r, center_x=center_x, center_y=center_y)
@@ -327,7 +331,7 @@ class TestDividerBigHolesAlignWithEndWall:
     def test_divider_big_holes_clear_crossing_slots(self) -> None:
         box = HexmoRectangle()
         box.parseArgs(["--radius=500"])
-        t, r4 = 6.0, HexmoRectangle._R4
+        t, r4 = 6.0, box._bigHoleRadius()
         holes = big_holes_by_panel(["--radius=500"])["horiz_div"]
         W = 500 - 2 * t
         col_w = (W - 2 * t - 2 * t) / 3

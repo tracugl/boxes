@@ -303,10 +303,15 @@ choice, applied to every big hole on both generators.
   diameter), so every hole-fit and clearance check is unaffected and the count
   and positions are identical. The small registration and medium fallback holes
   are never changed.
-- `--big_hole_roundness` (default `0.5`) — corner rounding for `rounded_rect`, as
+- `--big_hole_roundness` (default `0.3`) — corner rounding for `rounded_rect`, as
   a fraction of the hole's half-width: `0` = square corners, `1` = fully round
-  (back to a circle). At the default `0.5`, the Ø70 mm big holes get a 17.5 mm
-  corner radius. Out-of-range values are clamped, so they never error.
+  (back to a circle). At the default `0.3`, the Ø70 mm big holes of a `h=100`
+  box get a 10.5 mm corner radius. Out-of-range values are clamped, so they never
+  error.
+
+The big-hole **size** follows the box height: diameter = `h − 30` mm (Ø70 at the
+default `h=100`), identical on HexmoHexagon and HexmoRectangle, so the holes on
+mating walls line up at any height.
 
 ---
 

@@ -235,9 +235,6 @@ class HexmoRectangle(HexmoTrackGuideMixin, Boxes):
     # Alignment-hole geometry constants — identical values to HexmoHexagon so
     # that pins and holes from both box types are interchangeable during assembly.
     _SPACER = 15    # minimum edge-to-hole-centre clearance (mm)
-    _R4     = 35    # radius of large weight-reduction through-holes (mm) — equals
-                    # (h − 2·_SPACER) / 2 for the default h=100, matching the 70 mm
-                    # diameter produced by HexmoHexagon at the same height.
     _R2     = 12.5  # radius of medium alignment-pin receiver holes (mm)
     _R3     = 3     # radius of small registration pilot holes (mm)
     _MIN_CLEAR = 5.0  # minimum clearance between adjacent hole edges (mm)
@@ -411,7 +408,7 @@ class HexmoRectangle(HexmoTrackGuideMixin, Boxes):
             help="Corner rounding for --big_hole_shape=rounded_rect, as a "
                  "fraction of the hole's half-width (0 = square corners, "
                  "1 = fully round, i.e. back to a circle).  Default 0.3 — on the "
-                 "Ø70 mm big holes that is a 10.5 mm corner radius.  Values are "
+                 "Ø70 mm big holes of the default h=100 that is a 10.5 mm corner radius.  Values are "
                  "clamped by rectangularHole, so out-of-range numbers are safe.")
 
     def _drawBigHole(self, x, y, r):
@@ -429,6 +426,9 @@ class HexmoRectangle(HexmoTrackGuideMixin, Boxes):
         :param y: hole centre y (mm, callback frame).
         :param r: radius of the equivalent circular hole (mm).
         """
+        if r <= 0:
+            # A box too short for big holes (--h ≤ 2·_SPACER) gets none.
+            return
         if self.big_hole_shape == "rounded_rect":
             corner = max(0.0, self.big_hole_roundness) * r
             self.rectangularHole(x, y, 2 * r, 2 * r, r=corner,
@@ -470,6 +470,24 @@ class HexmoRectangle(HexmoTrackGuideMixin, Boxes):
         if self.outside:
             return self.h - 2 * self.thickness
         return self.h
+
+    def _bigHoleRadius(self):
+        """Radius of the big weight-reduction / pass-through holes.
+
+        Uses the same formula as HexmoHexagon, ``(h − 2·_SPACER) / 2`` on the raw
+        ``--h``, so the big holes are the same size as the hex's at every height
+        (35 mm at the default h = 100), not only at h = 100.  Because the
+        registration layout (_alignmentBigXs) spaces its holes by this radius
+        exactly as the hex does, the end-wall big holes also sit where the hex
+        wall's do.  Raw ``--h`` (not the outside-adjusted height) matches the hex.
+
+        @returns Radius in mm; ≤ 0 on very short boxes, meaning no big holes.
+        """
+        return (self.h - 2 * self._SPACER) / 2
+
+    def _bigPitch(self):
+        """Target centre-to-centre spacing of packed big holes (mm): 2·r + _BIG_GAP."""
+        return 2 * self._bigHoleRadius() + self._BIG_GAP
 
     def _drawCornerGroup8Rect(self, s):
         """Draw the end-column alignment cluster for a rectangularWall panel.
@@ -600,7 +618,7 @@ class HexmoRectangle(HexmoTrackGuideMixin, Boxes):
             medium pair  |  small pair  |  BIG  |  small pair  |  medium pair
 
         Each "pair" is one hole at the top edge and one at the bottom edge of the
-        panel, at the same x position.  The central big hole (radius _R4) is a
+        panel, at the same x position.  The central big hole (radius _bigHoleRadius()) is a
         single vertically-centred hole, matching the outer-wall big-hole style.
 
         Spacings are computed so that every adjacent pair of hole edges is exactly
@@ -617,7 +635,7 @@ class HexmoRectangle(HexmoTrackGuideMixin, Boxes):
         """
         r2 = self._R2
         r3 = self._R3
-        r4 = self._R4
+        r4 = self._bigHoleRadius()
         sp = self._SPACER
         mc = self._MIN_CLEAR
 
@@ -660,9 +678,9 @@ class HexmoRectangle(HexmoTrackGuideMixin, Boxes):
 
         Used on internal divider panels (vertical and horizontal) to provide one
         large weight-reduction aperture per cell, matching the visual language of
-        the big holes on the outer walls.  The hole radius is ``_R4`` — the same
-        constant used by ``drawAlignmentHolesRect`` for the outer-wall big holes —
-        so all large apertures in the assembled box share the same diameter.
+        the big holes on the outer walls.  The hole radius is ``_bigHoleRadius()``,
+        the same radius ``drawAlignmentHolesRect`` uses for the outer-wall big
+        holes, so all large apertures in the assembled box share one diameter.
 
         The vertical centre is placed at ``l_eff / 2`` (half the matching hex
         wall height, see _hexWallHeight), identical to the outer-wall big-hole
@@ -670,12 +688,12 @@ class HexmoRectangle(HexmoTrackGuideMixin, Boxes):
         so the holes align across mating faces.
 
         A hole is skipped if it would not fit: the segment width must be at least
-        ``2 · _R4`` and the effective panel height must be at least ``2 · _R4``.
+        twice the big-hole radius, and so must the effective panel height.
 
         @param x_lo - Inner left boundary of the segment (mm, callback frame x).
         @param x_hi - Inner right boundary of the segment (mm, callback frame x).
         """
-        r4 = self._R4
+        r4 = self._bigHoleRadius()
         l_eff = self._hexWallHeight()
         # Guard: skip if the hole diameter exceeds the segment or panel height.
         if (x_hi - x_lo) < 2 * r4 or l_eff < 2 * r4:
@@ -684,11 +702,12 @@ class HexmoRectangle(HexmoTrackGuideMixin, Boxes):
         y_mid = l_eff / 2
         self._drawBigHole(x_mid, y_mid, r4)
 
-    # Target centre-to-centre spacing of the packed big weight-reduction holes
-    # along a panel's long axis (mm).  Kept just above the minimum that still
-    # leaves a gap wide enough for one full G4 cluster (2 medium + 4 small), so
-    # big holes are preferred and packed fairly densely.
-    _BIG_PITCH = 140.0
+    # Edge-to-edge gap targeted between packed big weight-reduction holes (mm):
+    # just above the minimum that still fits one full G4 cluster (2 medium +
+    # 4 small), so big holes are preferred and packed fairly densely.  The
+    # centre-to-centre pitch is 2·r + this (see _bigPitch), so the gap stays
+    # the same whatever size --h makes the big holes; 140 mm at the default h=100.
+    _BIG_GAP = 70.0
 
     # Minimum clearance from a big hole's *edge* to a span boundary — a divider
     # finger slot or a corner cluster.  Deliberately larger than _MIN_CLEAR so
@@ -701,7 +720,7 @@ class HexmoRectangle(HexmoTrackGuideMixin, Boxes):
         """Weight-reduction fill for one panel span, mirroring HexmoHexagon.
 
         Big weight-reduction holes come **first**: as many as fit are packed
-        (one per :attr:`_BIG_PITCH`, shaped by ``--big_hole_shape``) along the
+        (one per :meth:`_bigPitch`, shaped by ``--big_hole_shape``) along the
         span centre line, then every leftover gap — including the two end gaps —
         is filled with **one** small/medium cluster via
         :meth:`_drawSupportGapFeatures` (copied verbatim from HexmoHexagon:
@@ -709,7 +728,7 @@ class HexmoRectangle(HexmoTrackGuideMixin, Boxes):
         The big-hole packing is identical for g4 and g2.
 
         ``edge_lo`` / ``edge_hi`` are the clearances a big-hole *centre* must keep
-        from each boundary.  Default (``None``) is ``_R4 + _BIG_EDGE`` — used for
+        from each boundary.  Default (``None``) is big-hole radius + ``_BIG_EDGE``, used for
         a divider finger slot, where a big must stay well clear.  Pass ``0`` when
         the boundary is already a safe big-centre position (a corner-cluster
         ``x_floor``), so a big hole is placed there instead of a cluster.
@@ -717,7 +736,7 @@ class HexmoRectangle(HexmoTrackGuideMixin, Boxes):
         @param x_lo - Inner left boundary of the span (mm, callback frame x).
         @param x_hi - Inner right boundary of the span (mm, callback frame x).
         """
-        r4, mc = self._R4, self._MIN_CLEAR
+        r4, mc = self._bigHoleRadius(), self._MIN_CLEAR
         slot_edge = r4 + self._BIG_EDGE
         if edge_lo is None:
             edge_lo = slot_edge
@@ -732,7 +751,7 @@ class HexmoRectangle(HexmoTrackGuideMixin, Boxes):
         # and draws no small/medium gap features at all.
         y_big = self._hexWallHeight() / 2.0 if y_centre is None else y_centre
         # Range in which a big-hole *centre* may sit, given the per-side edge
-        # clearances (divider slots inset by _R4+_BIG_EDGE, corner sides by 0).
+        # clearances (divider slots inset by r4 + _BIG_EDGE, corner sides by 0).
         c_lo, c_hi = x_lo + edge_lo, x_hi - edge_hi
         if c_hi <= c_lo:
             # The per-side edge clearances can't both be met (a short end cell).
@@ -750,9 +769,9 @@ class HexmoRectangle(HexmoTrackGuideMixin, Boxes):
                 self._drawSupportGapFeatures(x_lo, x_hi, pilots=pilots)
             return
         c_span = c_hi - c_lo
-        # Big holes ~_BIG_PITCH apart, spread across the centre range (endpoints
+        # Big holes ~_bigPitch() apart, spread across the centre range (endpoints
         # included for n ≥ 2 so the outermost bigs hug the boundaries).
-        n_big = max(1, round(1 + c_span / self._BIG_PITCH))
+        n_big = max(1, round(1 + c_span / self._bigPitch()))
         if n_big == 1:
             centres = [(c_lo + c_hi) / 2.0]
         else:
@@ -777,7 +796,7 @@ class HexmoRectangle(HexmoTrackGuideMixin, Boxes):
         @param s - Pattern length (mm), in the alignment-pattern frame.
         @returns Big-hole centre x-positions (mm) in that frame.
         """
-        sp, r2, r4, mc = self._SPACER, self._R2, self._R4, self._MIN_CLEAR
+        sp, r2, r4, mc = self._SPACER, self._R2, self._bigHoleRadius(), self._MIN_CLEAR
         # Minimum x-distance from either end where a big hole centre can sit
         # without its edge overlapping the corner cluster's medium hole.  This is
         # registration-critical: it co-locates the outer-wall big holes with the
@@ -822,11 +841,9 @@ class HexmoRectangle(HexmoTrackGuideMixin, Boxes):
           3. Gap filling between adjacent features (via _drawGapBandFeatures),
              controlled by the ``gap_features`` flag.
 
-        The big-hole radius uses the fixed class constant _R4, matching the radius
-        produced by HexmoHexagon for the same h value (r4 = (h − 2·_SPACER) / 2
-        for the default h=100, giving r4=35 = diameter 70 mm).  Using a constant
-        rather than re-deriving from l ensures identical hole sizes regardless of
-        outside mode.
+        The big-hole radius is ``_bigHoleRadius()``, HexmoHexagon's
+        ``(h − 2·_SPACER) / 2`` on the raw ``--h``, so the sizes match the hex at
+        every height and in both --outside modes (35 mm at the default h = 100).
 
         @param s            - Wall length (x-axis of rectangularWall callback).
         @param gap_features - When True (default) the gaps between big holes and
@@ -845,9 +862,8 @@ class HexmoRectangle(HexmoTrackGuideMixin, Boxes):
         sp = self._SPACER
         r2 = self._R2
 
-        # Large through-hole radius — fixed class constant matching HexmoHexagon's
-        # (h − 2·_SPACER) / 2 formula at the default h=100, giving diameter 70 mm.
-        r4 = self._R4
+        # Large through-hole radius, the same as HexmoHexagon's at this --h.
+        r4 = self._bigHoleRadius()
 
         # Big-hole x-positions: the registration layout (see _alignmentBigXs),
         # unless the caller supplies a filtered set in this same frame.
@@ -1215,7 +1231,7 @@ class HexmoRectangle(HexmoTrackGuideMixin, Boxes):
         # through a joint weakens it.  The survivors are still a subset of the
         # hex wall's big holes, so registration is unaffected.  Both panels cut
         # exactly this list, so their big holes line up along the module.
-        big_keepout = self._R4 + t / 2 + self._MIN_CLEAR
+        big_keepout = self._bigHoleRadius() + t / 2 + self._MIN_CLEAR
         end_big_xs = [x - dx for x in self._alignmentBigXs(s_hex)
                       if all(abs(x - dx - lane_pos(i)) >= big_keepout
                              for i in range(n_div_v))]
@@ -1406,7 +1422,7 @@ class HexmoRectangle(HexmoTrackGuideMixin, Boxes):
             Captures from enclosing scope: ``n_rows``, ``col_w``, ``t``,
             ``end_big_xs``.
             """
-            r4, mc = self._R4, self._MIN_CLEAR
+            r4, mc = self._bigHoleRadius(), self._MIN_CLEAR
             y_big = self._hexWallHeight() / 2.0
             for j in range(n_rows):
                 x_lo = j * (col_w + t)
@@ -1605,7 +1621,7 @@ class HexmoRectangle(HexmoTrackGuideMixin, Boxes):
             # registers to nothing, so it needs no medium/small holes — centred
             # across the spoke's sw width and packed clear of the finger slots and
             # the finger-tabbed ends (_fillWeightSpan keeps _BIG_EDGE clearance).
-            if sw >= 2 * self._R4 + 2 * self._MIN_CLEAR:
+            if sw >= 2 * self._bigHoleRadius() + 2 * self._MIN_CLEAR:
                 bounds = [0.0] + [div_pos(i) for i in range(n_div_h)] + [H]
                 for g_lo, g_hi in zip(bounds[:-1], bounds[1:]):
                     self._fillWeightSpan(g_lo, g_hi, clusters=False, y_centre=sw / 2)
