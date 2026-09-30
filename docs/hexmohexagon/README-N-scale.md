@@ -310,6 +310,20 @@ curl "http://localhost:4455/HexmoRectangle?render=1\
 &track_lines=1&draw_center=1&draw_track=1&track_width=20&track_lead_in=30" -o hexmo_rect_track.svg
 ```
 
+`--track_guide=1` (and `--track_guide_clearance`) works here too, for the two
+short end walls. The rectangle cuts **exactly the same plate** as HexmoHexagon
+with the same settings, so one guide fits a hex side wall, a trapezoid side wall
+or a rectangle end wall. It holds the track at the same place on either side
+of a joint. (Its end-wall pins are placed from the hexagon's wall geometry, so
+the dowels line up.)
+
+```bash
+curl "http://localhost:4455/HexmoRectangle?render=1\
+&radius=190&thickness=3\
+&track_lines=1&draw_center=1&draw_track=1&track_width=20&track_lead_in=30\
+&track_guide=1" -o hexmo_rect_guide.svg
+```
+
 **Internal layout.** Two options set the rectangle's internal grid:
 
 | Parameter | Meaning | N suggestion |

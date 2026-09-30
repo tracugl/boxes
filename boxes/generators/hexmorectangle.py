@@ -28,6 +28,7 @@ import math
 
 from boxes import Boxes, edges, boolarg
 from boxes.Color import Color
+from boxes.generators._hexmo_track_guide import HexmoTrackGuideMixin
 
 
 class _HorizDivSpokeEdge(edges.BaseEdge):
@@ -192,7 +193,7 @@ class _ShortWallTopEdge(edges.BaseEdge):
         e_edge(self._side_gap)
 
 
-class HexmoRectangle(Boxes):
+class HexmoRectangle(HexmoTrackGuideMixin, Boxes):
     """Rectangular tray with a 3×N internal grid, compatible with HexmoHexagon stacking.
 
     The number of column compartments N is controlled by ``--num_columns`` (default 0 = auto).
@@ -374,6 +375,9 @@ class HexmoRectangle(Boxes):
             help="Etch a crossing tick perpendicular to the track at each end "
                  "(offset inward by --track_lead_in) marking where the track "
                  "enters/leaves the module.  Only drawn when --track_lead_in > 0.")
+        # --track_guide / --track_guide_clearance, shared with HexmoHexagon so
+        # both generators cut the same guide plate.
+        self._addTrackGuideArgs()
         self.argparser.add_argument(
             "--corner_holes", action="store", type=str, default="g6",
             choices=["g6", "g2"],
@@ -973,7 +977,6 @@ class HexmoRectangle(Boxes):
         if n_lines < 1:
             return
 
-        spacing = self.track_spacing
         half_width = self.track_width / 2.0
         lead_in = self.track_lead_in
         # Tick half-length: spans the track (rail to rail) when the footprint
@@ -982,25 +985,12 @@ class HexmoRectangle(Boxes):
         cross_half = (half_width if self.draw_track else 0.0) + 6.0
 
         y_centre = width / 2.0
-        # Lateral offsets.  'centred' (default): symmetric about the centre, so
-        # odd counts land a track on the centre and even counts straddle it.
-        # 'outer': one-sided (0, +spacing, +2·spacing, …) so the centreline is the
-        # base line and every extra line steps to the same side — matching the
-        # HexmoHexagon 'outer' (larger-radius) direction so tracks line up across
-        # a hex↔straight joint.
-        if self.track_offset == "outer":
-            offsets = [i * spacing for i in range(n_lines)]
-        else:
-            offsets = [(i - (n_lines - 1) / 2.0) * spacing for i in range(n_lines)]
-
-        # Bias the whole family by the reference-centreline shift.  Folding it in
-        # here (rather than at the cy = y_centre + off site) means the centre
-        # line, footprint edges, labels and crossing ticks all inherit the shift
-        # for free, and it composes with either --track_offset mode.  Positive =
-        # +y (matches the hexagon 'outer'/larger-radius direction); with
-        # track_line_count == 1 this is the sole placement control.  The hline
-        # guard still clips anything the shift pushes past 0/width.
-        offsets = [self.track_center_offset + o for o in offsets]
+        # Lateral offsets, from the helper shared with HexmoHexagon and the guide
+        # plate (see HexmoTrackGuideMixin._trackOffsets).  Positive = +y, which
+        # matches the hexagon's 'outer' (larger-radius) direction, so tracks line
+        # up across a hex↔straight joint.  The hline guard clips anything the
+        # offsets push past 0/width.
+        offsets = self._trackOffsets()
 
         def hline(y):
             """Draw one full-length line at lateral position y (skip if off-panel)."""
@@ -1680,5 +1670,12 @@ class HexmoRectangle(Boxes):
             self.rectangularWall(W - 2 * t, h - t,
                                  [e_horiz_bot, 'f', e_horiz_top, 'f'],
                                  callback=[horiz_div_cb], move="up")
+
+        # Optional track-laying jig for the end walls.  It is drawn in the
+        # frame of the hex wall these end walls mate with, so it is the same
+        # plate HexmoHexagon cuts and fits either module.
+        if self.track_guide:
+            self.drawTrackGuide(self._hexWallLength(), self._hexWallHeight(),
+                                move="right")
 
         self.drawReferencePanel(move="right")
