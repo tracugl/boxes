@@ -10,7 +10,6 @@ the Docker image, which ships without the SVG test extras.
 """
 from __future__ import annotations
 
-import math
 import sys
 from pathlib import Path
 
@@ -44,30 +43,6 @@ def make_box(extra_args: list[str]) -> HexmoHexagon:
     return box
 
 
-def render_counting_corner_groups(box: HexmoHexagon) -> list[tuple[float, float]]:
-    """Render ``box`` and record every ``_drawCornerGroup8(s, l)`` call.
-
-    The guide must reuse the wall's own corner-group routine so its dowel
-    holes are identical by construction; counting the calls (and comparing
-    their arguments) is how the tests check that without parsing SVG paths.
-
-    @param box - A parsed generator instance.
-    @returns The ``(s, l)`` argument pairs, in call order.
-    """
-    calls: list[tuple[float, float]] = []
-    original = box._drawCornerGroup8
-
-    def spy(s, l):
-        calls.append((s, l))
-        return original(s, l)
-
-    box._drawCornerGroup8 = spy
-    box.open()
-    box.render()
-    box.close()
-    return calls
-
-
 class TestTrackOffsets:
     """``_trackOffsets`` is shared by the etched lines and the guide windows."""
 
@@ -86,22 +61,55 @@ class TestTrackOffsets:
         assert box._trackOffsets() == [-10.0, 30.0]
 
 
-class TestTrackGuideWindows:
-    """Window geometry, in the guide's own frame (box underside at y = 0)."""
+def guide_holes(box: HexmoHexagon) -> list[float]:
+    """Render ``box`` and return the radius of every hole the guide plate cuts.
 
-    S = 190.0   # wall reference length (hex side) for radius=190
-    L = 100.0   # wall body height (== --h)
+    ``hole`` is spied on only while ``drawTrackGuide`` runs, so the wall and
+    panel holes are excluded.
+
+    @param box - A parsed generator instance with ``--track_guide=1``.
+    @returns Hole radii, in drawing order.
+    """
+    radii: list[float] = []
+    inside = [False]
+    original_hole, original_guide = box.hole, box.drawTrackGuide
+
+    def hole_spy(x, y, r=0.0, d=0.0, **kw):
+        if inside[0]:
+            radii.append(r)
+        return original_hole(x, y, r=r, d=d, **kw)
+
+    def guide_spy(*args, **kw):
+        inside[0] = True
+        try:
+            return original_guide(*args, **kw)
+        finally:
+            inside[0] = False
+
+    box.hole, box.drawTrackGuide = hole_spy, guide_spy
+    box.open()
+    box.render()
+    box.close()
+    return radii
+
+
+class TestTrackGuideWindows:
+    """Window and plate geometry, in the guide frame (plate bottom at y = 0)."""
+
+    S = 190.0   # wall reference length (hex side)
+    L = 100.0   # wall body height
+    SP = HexmoHexagon._SPACER
+    T = 3.0
 
     def test_one_window_per_track_exact_width(self) -> None:
         box = make_box(["--track_line_count=3", "--track_spacing=50",
                         "--track_guide_clearance=30"])
         windows = box._trackGuideWindows(self.S, self.L)
         assert [w[0] for w in windows] == [45.0, 95.0, 145.0]
+        deck_y = box._trackGuideDeckY(self.S, self.L)
         for cx, y0, width, height in windows:
             assert width == 20.0
-            # Window floor is the deck top surface: bottom panel (t) + wall
-            # body (l) + deck panel (t) above the box underside.
-            assert y0 == pytest.approx(self.L + 2 * 3.0)
+            assert y0 == pytest.approx(deck_y)
             assert height == 30.0
 
     def test_single_track_is_centred(self) -> None:
@@ -119,32 +127,52 @@ class TestTrackGuideWindows:
         with pytest.raises(ValueError, match="clearance"):
             box._trackGuideWindows(self.S, self.L)
 
-    def test_plate_size(self) -> None:
-        box = make_box(["--track_guide_clearance=30"])
+    @pytest.mark.parametrize("corner_holes, lowest_pin", [
+        ("g6", 100.0 - 2 * 15),   # top L-cluster inner leg at l - 2·sp
+        ("g2", 100.0 - 15),       # centre-line pins only, at l - sp
+    ])
+    def test_plate_starts_one_spacer_below_lowest_pin(self, corner_holes, lowest_pin) -> None:
+        box = make_box([f"--corner_holes={corner_holes}", "--track_guide_clearance=30"])
+        base = lowest_pin - self.SP
+        assert box._trackGuideBase(self.S, self.L) == pytest.approx(base)
+        # Deck top is wall-frame l + t, measured up from the plate bottom.
+        deck_y = self.L + self.T - base
+        assert box._trackGuideDeckY(self.S, self.L) == pytest.approx(deck_y)
         width, height = box._trackGuideSize(self.S, self.L)
         assert width == self.S
-        # Deck surface + window clearance + one spacer of material above.
-        assert height == pytest.approx(self.L + 2 * 3.0 + 30.0 + HexmoHexagon._SPACER)
+        assert height == pytest.approx(deck_y + 30.0 + self.SP)
+
+
+class TestTrackGuidePins:
+    """The guide dowels through the small pilot holes nearest the deck only."""
+
+    S, L = 190.0, 100.0
+
+    @pytest.mark.parametrize("corner_holes, count", [("g6", 8), ("g2", 2)])
+    def test_top_row_small_holes_only(self, corner_holes, count) -> None:
+        box = make_box([f"--corner_holes={corner_holes}"])
+        pins = box._trackGuidePins(self.S, self.L)
+        wall = box._cornerGroupHoles(self.S, self.L)
+        assert len(pins) == count
+        assert all(p in wall for p in pins)                 # same holes as the wall
+        assert all(r == HexmoHexagon._R3 for _, _, r in pins)  # no mediums
+        assert all(x > self.L / 2 for x, _, _ in pins)      # deck-side row only
+
+    def test_pins_symmetric_along_wall(self) -> None:
+        # Symmetry is what lets the plate be flipped for the other curve end.
+        box = make_box([])
+        ys = sorted(y for _, y, _ in box._trackGuidePins(self.S, self.L))
+        assert ys == pytest.approx(sorted(self.S - y for y in ys))
 
 
 class TestTrackGuideRender:
-    """The guide is an optional extra part that reuses the wall hole pattern."""
+    """The guide is an optional extra part, cut with small holes only."""
 
-    @pytest.mark.parametrize("trapezoid, walls", [("0", 6), ("1", 4)])
-    def test_flag_off_adds_nothing(self, trapezoid: str, walls: int) -> None:
-        calls = render_counting_corner_groups(make_box([f"--trapezoid={trapezoid}"]))
-        assert len(calls) == walls
+    @pytest.mark.parametrize("trapezoid", ["0", "1"])
+    def test_guide_cuts_only_small_pins(self, trapezoid: str) -> None:
+        radii = guide_holes(make_box([f"--trapezoid={trapezoid}", "--track_guide=1"]))
+        assert radii == [HexmoHexagon._R3] * 8
 
-    @pytest.mark.parametrize("trapezoid, walls", [("0", 6), ("1", 4)])
-    def test_guide_reuses_standard_wall_corner_groups(self, trapezoid: str, walls: int) -> None:
-        calls = render_counting_corner_groups(
-            make_box([f"--trapezoid={trapezoid}", "--track_guide=1"]))
-        assert len(calls) == walls + 1
-        # Every standard wall is drawn with (side_orig, l); the guide must
-        # match those exactly.  (The trapezoid's long wall uses 2·side_orig.)
-        standard = calls[-2]
-        assert calls[-1] == standard
-        # Never the long-wall frame: every wall call is either s or 2·s.
-        assert all(math.isclose(c[0], standard[0]) or math.isclose(c[0], 2 * standard[0])
-                   for c in calls)
-        assert not math.isclose(calls[-1][0], 2 * standard[0])
+    @pytest.mark.parametrize("trapezoid", ["0", "1"])
+    def test_flag_off_draws_no_guide(self, trapezoid: str) -> None:
+        assert guide_holes(make_box([f"--trapezoid={trapezoid}"])) == []

@@ -456,6 +456,18 @@ class HexmoHexagon(Boxes):
     def _drawCornerGroup8(self, s, l):
         """Draw the corner registration clusters shared by all side-panel variants.
 
+        Thin wrapper over :meth:`_cornerGroupHoles`, which holds the layout
+        (documented there) so the track guide can reuse a subset of it.
+
+        @param s - Panel height (pre-shrink side0 value), used for y-axis positions.
+        @param l - Panel width (slant length), used for x-axis positions.
+        """
+        for x, y, r in self._cornerGroupHoles(s, l):
+            self.hole(x, y, r)
+
+    def _cornerGroupHoles(self, s, l):
+        """List the corner registration holes shared by all side-panel variants.
+
         Each end of a side panel (top and bottom edges) carries an L-shaped cluster
         of small pilot holes at its two corners, plus one medium hole centred on the
         panel's x-midpoint at 3 × _SPACER from the edge.  Together these form the
@@ -465,11 +477,17 @@ class HexmoHexagon(Boxes):
 
         All positions use fixed _SPACER offsets so the clusters sit the same physical
         distance from the panel edges regardless of how wide or tall the panel is.
-        This method is called by both drawAlignmentHoles and drawAlignmentHolesLong
-        to eliminate 18 lines of verbatim duplication.
+        Used (via :meth:`_drawCornerGroup8`) by both drawAlignmentHoles and
+        drawAlignmentHolesLong, and filtered by :meth:`_trackGuidePins`.
+
+        **Frame.**  The side-wall hole frame: x runs up the wall from the
+        wall-body bottom (x = 0) to its top under the deck (x = l); y runs
+        along the wall (0 … s).
 
         @param s - Panel height (pre-shrink side0 value), used for y-axis positions.
         @param l - Panel width (slant length), used for x-axis positions.
+        @returns ``(x, y, radius)`` tuples in drawing order (the order is kept
+                 stable so the SVG output does not change).
         """
         sp = self._SPACER
         r2 = self._R2
@@ -479,33 +497,36 @@ class HexmoHexagon(Boxes):
         # on the panel centre line) plus the pilot holes directly above and
         # below each medium (the "centre-line pins" at x = sp and x = l − sp,
         # y = 3·sp / s − 3·sp).  These give registration with minimal pierces.
-        self.hole(l - sp, s - 3 * sp, r3)  # top medium: pin above
-        self.hole(l / 2,  s - 3 * sp, r2)  # top-centre medium hole
-        self.hole(l - sp, 3 * sp,     r3)  # bottom medium: pin above
-        self.hole(l / 2,  3 * sp,     r2)  # bottom-centre medium hole
-        self.hole(sp,     s - 3 * sp, r3)  # top medium: pin below
-        self.hole(sp,     3 * sp,     r3)  # bottom medium: pin below
+        holes = [
+            (l - sp, s - 3 * sp, r3),  # top medium: pin above
+            (l / 2,  s - 3 * sp, r2),  # top-centre medium hole
+            (l - sp, 3 * sp,     r3),  # bottom medium: pin above
+            (l / 2,  3 * sp,     r2),  # bottom-centre medium hole
+            (sp,     s - 3 * sp, r3),  # top medium: pin below
+            (sp,     3 * sp,     r3),  # bottom medium: pin below
+        ]
 
         # The six surrounding pilot holes per end (four corner L-clusters) are
         # only drawn in the full 'g6' pattern; 'g2' omits them to save pierces.
         if self.corner_holes != "g6":
-            return
+            return holes
 
-        # Top-right and top-left corner L-clusters.
-        self.hole(l - sp,     s - sp,     r3)
-        self.hole(l - sp,     s - 2 * sp, r3)
-        self.hole(l - 2 * sp, s - sp,     r3)
-        self.hole(sp,         s - sp,     r3)
-        self.hole(sp,         s - 2 * sp, r3)
-        self.hole(2 * sp,     s - sp,     r3)
-
-        # Bottom-right and bottom-left corner L-clusters.
-        self.hole(l - sp,     sp,         r3)
-        self.hole(l - sp,     2 * sp,     r3)
-        self.hole(l - 2 * sp, sp,         r3)
-        self.hole(sp,         sp,         r3)
-        self.hole(sp,         2 * sp,     r3)
-        self.hole(2 * sp,     sp,         r3)
+        return holes + [
+            # Top-right and top-left corner L-clusters.
+            (l - sp,     s - sp,     r3),
+            (l - sp,     s - 2 * sp, r3),
+            (l - 2 * sp, s - sp,     r3),
+            (sp,         s - sp,     r3),
+            (sp,         s - 2 * sp, r3),
+            (2 * sp,     s - sp,     r3),
+            # Bottom-right and bottom-left corner L-clusters.
+            (l - sp,     sp,         r3),
+            (l - sp,     2 * sp,     r3),
+            (l - 2 * sp, sp,         r3),
+            (sp,         sp,         r3),
+            (sp,         2 * sp,     r3),
+            (2 * sp,     sp,         r3),
+        ]
 
     def _drawGapFeatures(self, l, y_lo, y_hi):
         """Fill the space between two adjacent features with G6 sub-groups.
@@ -983,28 +1004,70 @@ class HexmoHexagon(Boxes):
             offsets = [(i - (n_lines - 1) / 2.0) * spacing for i in range(n_lines)]
         return [self.track_center_offset + o for o in offsets]
 
-    def _trackGuideSize(self, s, l):
-        """Outer size of the track-guide plate, in the guide's own frame.
+    def _trackGuidePins(self, s, l):
+        """The wall holes the track guide dowels through.
 
-        The frame has x along the wall (0 … s) and y up from the box
-        underside.  Starting the plate at the underside (rather than at the
-        wall body) gives a free physical reference: its bottom edge sits flush
-        with the bench when the module is standing on it.
+        Only the small Ø(2·_R3) pilot holes of the corner-group row nearest
+        the deck (wall-frame ``x > l/2``) are used.  Dowel pins only need the
+        small holes, and staying close to the deck keeps the plate short.  The
+        holes are taken from :meth:`_cornerGroupHoles` itself, so they match
+        the wall exactly and follow --corner_holes: g2 gives the two
+        centre-line pins, and g6 adds the top corner L-clusters.
 
         @param s - Wall reference length (``side_orig``), the same ``s`` the
                    side walls pass to :meth:`_drawCornerGroup8`.
         @param l - Wall body height (the ``l`` passed to the same method).
+        @returns ``(x, y, radius)`` tuples in the wall hole frame.
+        """
+        return [(x, y, r) for x, y, r in self._cornerGroupHoles(s, l)
+                if r == self._R3 and x > l / 2.0]
+
+    def _trackGuideBase(self, s, l):
+        """Wall-frame height (x) of the guide plate's bottom edge.
+
+        One _SPACER below the lowest pin, the same edge margin the wall itself
+        gives its holes.
+
+        @param s - Wall reference length (``side_orig``).
+        @param l - Wall body height.
+        @returns The wall-frame x that maps to guide-frame y = 0.
+        """
+        return min(x for x, _, _ in self._trackGuidePins(s, l)) - self._SPACER
+
+    def _trackGuideDeckY(self, s, l):
+        """Guide-frame height of the deck top surface.
+
+        In the wall frame the deck top is ``x = l + t``: the wall body ends at
+        ``l``, and the deck panel's thickness ``t`` sits on top of it (the
+        wall's top fingers fill the deck's edge slots).
+
+        @param s - Wall reference length (``side_orig``).
+        @param l - Wall body height.
+        @returns y (mm) measured up from the plate's bottom edge.
+        """
+        return l + self.thickness - self._trackGuideBase(s, l)
+
+    def _trackGuideSize(self, s, l):
+        """Outer size of the track-guide plate, in the guide's own frame.
+
+        The frame has x along the wall (0 … s) and y up from the plate's
+        bottom edge (see :meth:`_trackGuideBase`).  The plate runs from just
+        below the pins, past the deck surface and the window clearance, to one
+        _SPACER of solid material above the windows.
+
+        @param s - Wall reference length (``side_orig``).
+        @param l - Wall body height.
         @returns ``(width, height)`` in mm.
         """
-        deck_y = l + 2 * self.thickness
-        return s, deck_y + self.track_guide_clearance + self._SPACER
+        height = (self._trackGuideDeckY(s, l) + self.track_guide_clearance
+                  + self._SPACER)
+        return s, height
 
     def _trackGuideWindows(self, s, l):
         """Compute the track-guide windows, one per track.
 
-        In the guide frame (see :meth:`_trackGuideSize`) the deck top surface
-        is at ``y = l + 2t``: bottom panel ``t`` + wall body ``l`` + deck
-        panel ``t``.  Each window starts there and rises by
+        Each window starts at the deck top surface
+        (:meth:`_trackGuideDeckY`) and rises by
         --track_guide_clearance, leaving room for roadbed and scenery.  Its
         width is exactly --track_width (rectangularHole compensates for laser
         burn), so the track cannot shift sideways.  Tracks cross every wall
@@ -1028,7 +1091,7 @@ class HexmoHexagon(Boxes):
             raise ValueError(
                 f"--track_width must be positive for the track guide (got {width}).")
 
-        deck_y = l + 2 * self.thickness
+        deck_y = self._trackGuideDeckY(s, l)
         windows = []
         for off in self._trackOffsets():
             cx = s / 2.0 + off
@@ -1047,19 +1110,17 @@ class HexmoHexagon(Boxes):
     def drawTrackGuide(self, s, l, move="right"):
         """Draw the track-laying guide plate.
 
-        The plate is dowelled to the outer face of any standard side wall.
-        Its dowel holes come from the wall's own :meth:`_drawCornerGroup8`,
-        called with the same ``(s, l)`` in the same frame, so they match the
-        wall exactly: same positions, same diameters, and --corner_holes is
-        honoured.  The pattern is symmetric along and across the wall, so the
-        plate fits either way round and can be flipped face-down.
+        The plate is dowelled to the outer face of any standard side wall
+        through the small pilot holes nearest the deck (:meth:`_trackGuidePins`).
+        No medium holes are cut.  Those pins are symmetric along the wall, so
+        the plate fits either way round and can be flipped face-down.
 
-        **Frame mapping.**  The wall's hole frame has x up from the wall body
-        bottom and y along the wall.  The guide frame has x along the wall
-        and y up from the box underside, one ``t`` below the wall body.
-        ``moveTo(s, t, 90)`` maps one onto the other: it puts the origin at
-        the wall-body bottom of the far plate end and rotates by 90°, so that
-        wall-x points up the plate and wall-y runs back along it.
+        **Frame mapping.**  The wall's hole frame has x up the wall and y
+        along it.  The guide frame has x along the wall and y up from the
+        plate's bottom edge, which sits at wall-frame height
+        :meth:`_trackGuideBase`.  A pin at wall ``(x, y)`` is therefore drawn
+        at guide ``(y, x − base)``.  This mirrors the along-wall axis, which is
+        harmless because the pin pattern is symmetric about the wall centre.
 
         When the tracks are not symmetric about the centre (--track_offset
         outer, or a --track_center_offset), an arrow is etched pointing to the
@@ -1071,18 +1132,18 @@ class HexmoHexagon(Boxes):
         @param move - Layout direction passed to rectangularWall.
         @throws ValueError - Propagated from :meth:`_trackGuideWindows`.
         """
-        t = self.thickness
         width, height = self._trackGuideSize(s, l)
         # Compute (and validate) before drawing, so an error never leaves
         # half a part in the layout.
         windows = self._trackGuideWindows(s, l)
+        pins = self._trackGuidePins(s, l)
+        base = self._trackGuideBase(s, l)
         offsets = self._trackOffsets()
         asymmetric = sorted(offsets) != sorted(-o for o in offsets)
 
         def features():
-            with self.saved_context():
-                self.moveTo(s, t, 90)
-                self._drawCornerGroup8(s, l)
+            for x, y, r in pins:
+                self.hole(y, x - base, r)
             for cx, y0, w, h in windows:
                 self.rectangularHole(cx, y0, w, h, center_x=True, center_y=False)
             if asymmetric:

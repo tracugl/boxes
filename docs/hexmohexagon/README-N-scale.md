@@ -252,9 +252,10 @@ curl "http://localhost:4455/HexmoHexagon?render=1\
 
 The etching shows where the track goes; `--track_guide=1` adds a jig that
 **holds** it there while you mark and cut. It is one extra flat plate that you
-dowel to the outer face of any side wall, through the wall's corner-hole groups.
-Its bottom edge sits flush with the underside of the box, and it stands above the
-deck with one rectangular window per track:
+dowel to the outer face of any side wall, using only the small pilot holes in
+the top row of the wall's corner groups (the row nearest the deck). No medium
+holes are cut. The plate starts 15 mm below those pins and stands above the deck
+with one rectangular window per track:
 
 - **Width:** exactly `--track_width`, so the track can't move sideways.
 - **Height:** `--track_guide_clearance` (default 30 mm) above the deck surface,
@@ -263,8 +264,10 @@ deck with one rectangular window per track:
 Every track crosses a wall at a right angle, at the wall's centre, offset along
 the wall by `--track_spacing`, `--track_offset` and `--track_center_offset`. So
 one plate fits every standard wall. The windows use the same offsets as the
-etching, so the two always agree. The dowel holes come from the same code as the
-wall's corner groups, so they match exactly, including `--corner_holes=g2`.
+etching, so the two always agree. The pins come from the same code as the wall's
+corner groups, so they match exactly. With `--corner_holes=g6` that's 8 pins
+(plate about 93 mm tall at N scale); with `g2` it's the 2 centre-line pins
+(about 78 mm).
 
 If the tracks aren't symmetric about the centre (`--track_offset=outer` or a
 non-zero `--track_center_offset`), the plate is etched with
