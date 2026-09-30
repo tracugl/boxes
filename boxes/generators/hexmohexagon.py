@@ -1069,29 +1069,45 @@ class HexmoHexagon(Boxes):
         """
         return l + self.thickness - self._trackGuideBase(s, l)
 
+    def _trackGuideWindowFloor(self, s, l):
+        """Guide-frame height of the bottom edge of every window.
+
+        One material thickness below the deck top surface, which is level
+        with the deck's underside.  The window floor then always sits below
+        the track, so the plate can never lift it, even when the plate rides
+        a little high on its dowels (pin clearance, burn) or the deck edge is
+        sanded.
+
+        @param s - Wall reference length (``side_orig``).
+        @param l - Wall body height.
+        @returns y (mm) measured up from the plate's bottom edge.
+        """
+        return self._trackGuideDeckY(s, l) - self.thickness
+
     def _trackGuideSize(self, s, l):
         """Outer size of the track-guide plate, in the guide's own frame.
 
         The frame has x along the wall, from the plate's left edge at wall
         position ``s/2 − half-width`` (see :meth:`_trackGuideHalfWidth`), and y
         up from the plate's bottom edge (see :meth:`_trackGuideBase`).  The
-        plate runs from just below the pins, past the deck surface and the
-        window clearance, to one _SPACER of solid material above the windows.
+        plate runs from just below the pins, past the windows (see
+        :meth:`_trackGuideWindowFloor`), to one _SPACER of solid material
+        above them.
 
         @param s - Wall reference length (``side_orig``).
         @param l - Wall body height.
         @returns ``(width, height)`` in mm.
         @throws ValueError - Propagated from :meth:`_trackGuideWindows`.
         """
-        height = (self._trackGuideDeckY(s, l) + self.track_guide_clearance
+        height = (self._trackGuideWindowFloor(s, l) + self.track_guide_clearance
                   + self._SPACER)
         return 2.0 * self._trackGuideHalfWidth(s, l), height
 
     def _trackGuideWindows(self, s, l):
         """Compute the track-guide windows, one per track.
 
-        Each window starts at the deck top surface
-        (:meth:`_trackGuideDeckY`) and rises by
+        Each window starts at :meth:`_trackGuideWindowFloor`, one material
+        thickness below the deck top, and rises by
         --track_guide_clearance, leaving room for roadbed and scenery.  Its
         width is exactly --track_width (rectangularHole compensates for laser
         burn), so the track cannot shift sideways.  Tracks cross every wall
@@ -1118,7 +1134,7 @@ class HexmoHexagon(Boxes):
             raise ValueError(
                 f"--track_width must be positive for the track guide (got {width}).")
 
-        deck_y = self._trackGuideDeckY(s, l)
+        floor_y = self._trackGuideWindowFloor(s, l)
         windows = []
         for off in self._trackOffsets():
             cx = s / 2.0 + off
@@ -1132,7 +1148,7 @@ class HexmoHexagon(Boxes):
                     f"(width {width} mm) does not fit within the {s:.1f} mm wall; "
                     "reduce --track_spacing, --track_center_offset or "
                     "--track_line_count.")
-            windows.append((cx, deck_y, width, clearance))
+            windows.append((cx, floor_y, width, clearance))
         return windows
 
     def drawTrackGuide(self, s, l, move="right"):

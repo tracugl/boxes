@@ -106,11 +106,19 @@ class TestTrackGuideWindows:
                         "--track_guide_clearance=30"])
         windows = box._trackGuideWindows(self.S, self.L)
         assert [w[0] for w in windows] == [45.0, 95.0, 145.0]
-        deck_y = box._trackGuideDeckY(self.S, self.L)
+        # Window floor sits one thickness below the deck top, so the plate
+        # never lifts the track.
+        floor_y = box._trackGuideDeckY(self.S, self.L) - self.T
         for cx, y0, width, height in windows:
             assert width == 20.0
-            assert y0 == pytest.approx(deck_y)
+            assert y0 == pytest.approx(floor_y)
             assert height == 30.0
+
+    @pytest.mark.parametrize("thickness", [3.0, 6.0])
+    def test_window_floor_drops_by_material_thickness(self, thickness) -> None:
+        box = make_box([f"--thickness={thickness}"])
+        (_, y0, _, _), = box._trackGuideWindows(self.S, self.L)
+        assert y0 == pytest.approx(box._trackGuideDeckY(self.S, self.L) - thickness)
 
     def test_single_track_is_centred(self) -> None:
         box = make_box([])
@@ -136,7 +144,7 @@ class TestTrackGuideWindows:
         deck_y = self.L + self.T - base
         assert box._trackGuideDeckY(self.S, self.L) == pytest.approx(deck_y)
         _, height = box._trackGuideSize(self.S, self.L)
-        assert height == pytest.approx(deck_y + 30.0 + self.SP)
+        assert height == pytest.approx(deck_y - self.T + 30.0 + self.SP)
 
     def test_width_hugs_pins_with_spacer_margin(self) -> None:
         # A single 20 mm track reaches 10 mm from centre; the pins, 3·sp from

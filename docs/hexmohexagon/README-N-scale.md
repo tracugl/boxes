@@ -255,12 +255,14 @@ The etching shows where the track goes; `--track_guide=1` adds a jig that
 dowel to the outer face of any side wall, through two small pilot holes: the
 pin directly above each end's medium hole, in the row nearest the deck. No
 medium holes are cut. The plate is only as big as it needs to be, with 15 mm of
-solid material around the pins and windows (about 126 × 78 mm at N scale). It
+solid material around the pins and windows (about 126 × 75 mm at N scale). It
 stands above the deck with one rectangular window per track:
 
 - **Width:** exactly `--track_width`, so the track can't move sideways.
-- **Height:** `--track_guide_clearance` (default 30 mm) above the deck surface,
-  so there's room for roadbed, risers and scenery.
+- **Height:** `--track_guide_clearance` (default 30 mm), so there's room for
+  roadbed, risers and scenery. The window floor starts one material thickness
+  below the deck surface, level with the deck's underside, so the plate never
+  lifts the track even if it sits slightly high on its dowels.
 
 Every track crosses a wall at a right angle, at the wall's centre, offset along
 the wall by `--track_spacing`, `--track_offset` and `--track_center_offset`. So
