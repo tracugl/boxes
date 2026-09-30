@@ -127,20 +127,31 @@ class TestTrackGuideWindows:
         with pytest.raises(ValueError, match="clearance"):
             box._trackGuideWindows(self.S, self.L)
 
-    @pytest.mark.parametrize("corner_holes, lowest_pin", [
-        ("g6", 100.0 - 2 * 15),   # top L-cluster inner leg at l - 2·sp
-        ("g2", 100.0 - 15),       # centre-line pins only, at l - sp
-    ])
-    def test_plate_starts_one_spacer_below_lowest_pin(self, corner_holes, lowest_pin) -> None:
+    @pytest.mark.parametrize("corner_holes", ["g6", "g2"])
+    def test_plate_starts_one_spacer_below_pins(self, corner_holes) -> None:
         box = make_box([f"--corner_holes={corner_holes}", "--track_guide_clearance=30"])
-        base = lowest_pin - self.SP
+        base = (self.L - self.SP) - self.SP   # pins sit at l - sp
         assert box._trackGuideBase(self.S, self.L) == pytest.approx(base)
         # Deck top is wall-frame l + t, measured up from the plate bottom.
         deck_y = self.L + self.T - base
         assert box._trackGuideDeckY(self.S, self.L) == pytest.approx(deck_y)
-        width, height = box._trackGuideSize(self.S, self.L)
-        assert width == self.S
+        _, height = box._trackGuideSize(self.S, self.L)
         assert height == pytest.approx(deck_y + 30.0 + self.SP)
+
+    def test_width_hugs_pins_with_spacer_margin(self) -> None:
+        # A single 20 mm track reaches 10 mm from centre; the pins, 3·sp from
+        # each wall end, reach further, so they set the width.
+        box = make_box([])
+        width, _ = box._trackGuideSize(self.S, self.L)
+        pin_reach = self.S / 2 - 3 * self.SP
+        assert width == pytest.approx(2 * (pin_reach + self.SP))
+        assert width < self.S
+
+    def test_width_grows_for_wide_track_family(self) -> None:
+        # Outermost window edge: 60 + 10 = 70 mm from centre, past the pins.
+        box = make_box(["--track_line_count=3", "--track_spacing=60"])
+        width, _ = box._trackGuideSize(self.S, self.L)
+        assert width == pytest.approx(2 * (70.0 + self.SP))
 
 
 class TestTrackGuidePins:
@@ -148,12 +159,14 @@ class TestTrackGuidePins:
 
     S, L = 190.0, 100.0
 
-    @pytest.mark.parametrize("corner_holes, count", [("g6", 8), ("g2", 2)])
-    def test_top_row_small_holes_only(self, corner_holes, count) -> None:
+    @pytest.mark.parametrize("corner_holes", ["g6", "g2"])
+    def test_two_deck_side_pins_above_the_mediums(self, corner_holes) -> None:
         box = make_box([f"--corner_holes={corner_holes}"])
         pins = box._trackGuidePins(self.S, self.L)
         wall = box._cornerGroupHoles(self.S, self.L)
-        assert len(pins) == count
+        medium_ys = {y for _, y, r in wall if r == HexmoHexagon._R2}
+        assert len(pins) == 2
+        assert {y for _, y, _ in pins} == medium_ys
         assert all(p in wall for p in pins)                 # same holes as the wall
         assert all(r == HexmoHexagon._R3 for _, _, r in pins)  # no mediums
         assert all(x > self.L / 2 for x, _, _ in pins)      # deck-side row only
@@ -171,7 +184,7 @@ class TestTrackGuideRender:
     @pytest.mark.parametrize("trapezoid", ["0", "1"])
     def test_guide_cuts_only_small_pins(self, trapezoid: str) -> None:
         radii = guide_holes(make_box([f"--trapezoid={trapezoid}", "--track_guide=1"]))
-        assert radii == [HexmoHexagon._R3] * 8
+        assert radii == [HexmoHexagon._R3] * 2
 
     @pytest.mark.parametrize("trapezoid", ["0", "1"])
     def test_flag_off_draws_no_guide(self, trapezoid: str) -> None:

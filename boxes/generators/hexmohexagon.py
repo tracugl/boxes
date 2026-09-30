@@ -1007,20 +1007,42 @@ class HexmoHexagon(Boxes):
     def _trackGuidePins(self, s, l):
         """The wall holes the track guide dowels through.
 
-        Only the small Ø(2·_R3) pilot holes of the corner-group row nearest
-        the deck (wall-frame ``x > l/2``) are used.  Dowel pins only need the
-        small holes, and staying close to the deck keeps the plate short.  The
-        holes are taken from :meth:`_cornerGroupHoles` itself, so they match
-        the wall exactly and follow --corner_holes: g2 gives the two
-        centre-line pins, and g6 adds the top corner L-clusters.
+        Just two holes: the small Ø(2·_R3) pilot directly above each end's
+        medium hole, on the deck side (wall-frame ``x > l/2``).  Both
+        --corner_holes patterns have these, so the guide is the same either
+        way.  Two pins fix both position and rotation.  Staying near the deck
+        keeps the plate short.  Skipping the g6 corner L-clusters, which sit
+        _SPACER from each wall end, keeps it narrow.  The holes are taken from
+        :meth:`_cornerGroupHoles` itself, so they match the wall exactly.
 
         @param s - Wall reference length (``side_orig``), the same ``s`` the
                    side walls pass to :meth:`_drawCornerGroup8`.
         @param l - Wall body height (the ``l`` passed to the same method).
         @returns ``(x, y, radius)`` tuples in the wall hole frame.
         """
-        return [(x, y, r) for x, y, r in self._cornerGroupHoles(s, l)
-                if r == self._R3 and x > l / 2.0]
+        holes = self._cornerGroupHoles(s, l)
+        medium_ys = {y for _, y, r in holes if r == self._R2}
+        return [(x, y, r) for x, y, r in holes
+                if r == self._R3 and x > l / 2.0 and y in medium_ys]
+
+    def _trackGuideHalfWidth(self, s, l):
+        """Half the guide plate's width, measured from the wall centre.
+
+        The plate is just wide enough to leave one _SPACER of solid material
+        beyond the outermost pin centre or window edge on either side.  It is
+        symmetric about the wall centre, so its outline is unchanged when the
+        plate is flipped for the other end of a curve.
+
+        @param s - Wall reference length (``side_orig``).
+        @param l - Wall body height.
+        @returns Half-width in mm.
+        @throws ValueError - Propagated from :meth:`_trackGuideWindows`.
+        """
+        centre = s / 2.0
+        reach = [abs(y - centre) for _, y, _ in self._trackGuidePins(s, l)]
+        reach += [abs(cx - centre) + w / 2.0
+                  for cx, _, w, _ in self._trackGuideWindows(s, l)]
+        return max(reach) + self._SPACER
 
     def _trackGuideBase(self, s, l):
         """Wall-frame height (x) of the guide plate's bottom edge.
@@ -1050,18 +1072,20 @@ class HexmoHexagon(Boxes):
     def _trackGuideSize(self, s, l):
         """Outer size of the track-guide plate, in the guide's own frame.
 
-        The frame has x along the wall (0 … s) and y up from the plate's
-        bottom edge (see :meth:`_trackGuideBase`).  The plate runs from just
-        below the pins, past the deck surface and the window clearance, to one
-        _SPACER of solid material above the windows.
+        The frame has x along the wall, from the plate's left edge at wall
+        position ``s/2 − half-width`` (see :meth:`_trackGuideHalfWidth`), and y
+        up from the plate's bottom edge (see :meth:`_trackGuideBase`).  The
+        plate runs from just below the pins, past the deck surface and the
+        window clearance, to one _SPACER of solid material above the windows.
 
         @param s - Wall reference length (``side_orig``).
         @param l - Wall body height.
         @returns ``(width, height)`` in mm.
+        @throws ValueError - Propagated from :meth:`_trackGuideWindows`.
         """
         height = (self._trackGuideDeckY(s, l) + self.track_guide_clearance
                   + self._SPACER)
-        return s, height
+        return 2.0 * self._trackGuideHalfWidth(s, l), height
 
     def _trackGuideWindows(self, s, l):
         """Compute the track-guide windows, one per track.
@@ -1077,10 +1101,13 @@ class HexmoHexagon(Boxes):
 
         @param s - Wall reference length (``side_orig``).
         @param l - Wall body height.
-        @returns List of ``(centre_x, bottom_y, width, height)`` tuples.
+        @returns List of ``(centre_x, bottom_y, width, height)`` tuples, with
+                 ``centre_x`` measured along the wall (0 … s) and ``bottom_y``
+                 in the guide frame.
         @throws ValueError - If the clearance or track width is not positive,
                              or a window would reach within
-                             ``_GUIDE_MIN_WEB`` of either plate edge.
+                             ``_GUIDE_MIN_WEB`` of either wall end (the track
+                             must cross the wall itself).
         """
         width = self.track_width
         clearance = self.track_guide_clearance
@@ -1095,13 +1122,14 @@ class HexmoHexagon(Boxes):
         windows = []
         for off in self._trackOffsets():
             cx = s / 2.0 + off
-            # Leave a web of material at each plate end so the window stays a
-            # closed hole and the plate does not split in two.
+            # A track crossing past the wall's end would miss the module
+            # joint entirely, so windows must stay over the wall with a web
+            # of margin.
             if (cx - width / 2.0 < self._GUIDE_MIN_WEB
                     or cx + width / 2.0 > s - self._GUIDE_MIN_WEB):
                 raise ValueError(
                     f"track guide window at offset {off:+.1f} mm "
-                    f"(width {width} mm) does not fit on the {s:.1f} mm plate; "
+                    f"(width {width} mm) does not fit within the {s:.1f} mm wall; "
                     "reduce --track_spacing, --track_center_offset or "
                     "--track_line_count.")
             windows.append((cx, deck_y, width, clearance))
@@ -1112,15 +1140,17 @@ class HexmoHexagon(Boxes):
 
         The plate is dowelled to the outer face of any standard side wall
         through the small pilot holes nearest the deck (:meth:`_trackGuidePins`).
-        No medium holes are cut.  Those pins are symmetric along the wall, so
-        the plate fits either way round and can be flipped face-down.
+        No medium holes are cut.  The pins and the plate outline are both
+        symmetric about the wall centre, so the plate fits either way round
+        and can be flipped face-down.
 
         **Frame mapping.**  The wall's hole frame has x up the wall and y
-        along it.  The guide frame has x along the wall and y up from the
-        plate's bottom edge, which sits at wall-frame height
-        :meth:`_trackGuideBase`.  A pin at wall ``(x, y)`` is therefore drawn
-        at guide ``(y, x − base)``.  This mirrors the along-wall axis, which is
-        harmless because the pin pattern is symmetric about the wall centre.
+        along it.  The guide frame has x along the wall, starting at wall
+        position ``shift = s/2 − half-width``, and y up from the plate's
+        bottom edge, which sits at wall-frame height :meth:`_trackGuideBase`.
+        A pin at wall ``(x, y)`` is therefore drawn at guide
+        ``(y − shift, x − base)``.  This mirrors the along-wall axis, which is
+        harmless because the pins are symmetric about the wall centre.
 
         When the tracks are not symmetric about the centre (--track_offset
         outer, or a --track_center_offset), an arrow is etched pointing to the
@@ -1138,14 +1168,16 @@ class HexmoHexagon(Boxes):
         windows = self._trackGuideWindows(s, l)
         pins = self._trackGuidePins(s, l)
         base = self._trackGuideBase(s, l)
+        shift = s / 2.0 - width / 2.0
         offsets = self._trackOffsets()
         asymmetric = sorted(offsets) != sorted(-o for o in offsets)
 
         def features():
             for x, y, r in pins:
-                self.hole(y, x - base, r)
+                self.hole(y - shift, x - base, r)
             for cx, y0, w, h in windows:
-                self.rectangularHole(cx, y0, w, h, center_x=True, center_y=False)
+                self.rectangularHole(cx - shift, y0, w, h,
+                                     center_x=True, center_y=False)
             if asymmetric:
                 # Label in the solid band above the windows.  stroke=True so
                 # lasers that vector-etch by stroke colour still trace it.
