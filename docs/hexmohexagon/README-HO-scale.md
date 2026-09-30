@@ -312,9 +312,12 @@ choice, applied to every big hole on both generators.
 
 ## Gotchas
 
-- **`--outside`**: leave it **off** (the default). With it on, `radius` is treated
-  as an outside measurement and the inside is shrunk by one thickness — but the
-  track geometry needs the *inside corners* at the radius value.
+- **`--outside`**: it is **on** by default in both HexmoHexagon and
+  HexmoRectangle, and that is the intended setting, so leave it on. `radius`
+  is then the outside corner radius, and the inside is shrunk by one thickness
+  (inner corner radius = `radius − t / cos 30°`). The etched track is built from
+  that inner radius, and `--track_label` etches the radius you actually get. Both
+  generators must use the same setting, or their walls won't line up.
 - **Solid-hex fallback**: if you shrink `radius` for a tighter curve but leave the
   HO frame/spoke sizes, the kite cutouts go degenerate and the spoke pattern
   silently disappears (you get a solid hex). Keep `edge_width < A_inner` and

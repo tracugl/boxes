@@ -418,6 +418,41 @@ class HexmoRectangle(Boxes):
         else:
             self.hole(x, y, r)
 
+    def _hexWallLength(self):
+        """Hole-pattern length of the matching HexmoHexagon side wall.
+
+        The rect's short (end) wall joins a hex side wall face to face, so its
+        registration holes must sit where the hex wall's do.  The hex lays
+        its wall pattern over its hexagon side length ``side_orig``, centred
+        on the wall.  That length is the circumradius, reduced by
+        ``t / cos 30°`` in --outside mode, which is the same conversion
+        HexmoHexagon.render applies.  Laying the rect pattern over this
+        length, centred on the rect wall, reproduces the hex positions
+        exactly, instead of approximating them.
+
+        @returns Pattern length in mm.
+        """
+        r = self.radius
+        if self.outside:
+            r -= self.thickness / math.cos(math.radians(30))
+        _, _, side = self.regularPolygon(6, radius=r)
+        return side
+
+    def _hexWallHeight(self):
+        """Wall-body height of the matching HexmoHexagon side wall.
+
+        Every height-direction hole position on the rect is measured over
+        this height from the deck-side body edge, as the hex does.  The hex
+        (closed top) wall body is ``h − 2t`` in --outside mode and ``h``
+        otherwise.  Using the hex's height, rather than a fixed ``h − 2t``,
+        keeps the medium and far-side pins level with the hex's in both modes.
+
+        @returns Height in mm.
+        """
+        if self.outside:
+            return self.h - 2 * self.thickness
+        return self.h
+
     def _drawCornerGroup8Rect(self, s):
         """Draw the end-column alignment cluster for a rectangularWall panel.
 
@@ -430,14 +465,15 @@ class HexmoRectangle(Boxes):
         by ``drawAlignmentHolesRect`` and ``long_wall_cb`` when computing the safe
         zone for big through-holes, so that value must not change.
 
-        All y-positions are derived from ``l_eff = self.h − 2·t`` so they are
-        invariant with respect to outside mode.
+        All y-positions are measured over ``l_eff = _hexWallHeight()``, the
+        matching hex wall's body height, so they line up with the hex in both
+        --outside modes.
 
         @param s - Panel length along the wall (x-axis of the rectangularWall callback).
         """
         sp = self._SPACER
         t  = self.thickness
-        l_eff    = self.h - 2 * t
+        l_eff    = self._hexWallHeight()
         sp_y     = sp
         y_center = l_eff / 2
         r2 = self._R2
@@ -488,11 +524,9 @@ class HexmoRectangle(Boxes):
         sp_y = sp
         mc = self._MIN_CLEAR
 
-        # l_eff: effective inner height used by HexmoHexagon for all hole y-positions.
-        # The hex callback does moveTo(0, -t) before drawing holes, reducing the
-        # usable height to self.h - 2·t regardless of outside mode.  All top-edge
-        # hole y-positions must use l_eff so they match the hex panel physically.
-        l_eff = self.h - 2 * self.thickness
+        # l_eff: the matching hex wall's body height (see _hexWallHeight).  All
+        # top-edge hole y-positions use it so they match the hex panel.
+        l_eff = self._hexWallHeight()
         # Vertical guard: bottom-medium top edge (sp_y + 3·r2/2) must clear top-medium
         # bottom edge (l_eff − sp − 3·r2/2) by at least _MIN_CLEAR.
         # Rearranged: l_eff ≥ 2·sp + 3·r2 + _MIN_CLEAR.
@@ -569,7 +603,7 @@ class HexmoRectangle(Boxes):
         sp = self._SPACER
         mc = self._MIN_CLEAR
 
-        l_eff = self.h - 2 * self.thickness
+        l_eff = self._hexWallHeight()
         # Vertical guard: bottom-medium top edge must clear top-medium bottom edge.
         if l_eff < 2 * sp + 3 * r2 + mc:
             return
@@ -612,8 +646,9 @@ class HexmoRectangle(Boxes):
         constant used by ``drawAlignmentHolesRect`` for the outer-wall big holes —
         so all large apertures in the assembled box share the same diameter.
 
-        The vertical centre is placed at ``l_eff / 2`` (effective inner panel
-        height divided by two), identical to the outer-wall big-hole y-position,
+        The vertical centre is placed at ``l_eff / 2`` (half the matching hex
+        wall height, see _hexWallHeight), identical to the outer-wall big-hole
+        y-position,
         so the holes align across mating faces.
 
         A hole is skipped if it would not fit: the segment width must be at least
@@ -623,7 +658,7 @@ class HexmoRectangle(Boxes):
         @param x_hi - Inner right boundary of the segment (mm, callback frame x).
         """
         r4 = self._R4
-        l_eff = self.h - 2 * self.thickness
+        l_eff = self._hexWallHeight()
         # Guard: skip if the hole diameter exceeds the segment or panel height.
         if (x_hi - x_lo) < 2 * r4 or l_eff < 2 * r4:
             return
@@ -677,7 +712,7 @@ class HexmoRectangle(Boxes):
         # callers on a differently-proportioned panel (e.g. the spoke, which is
         # sw wide) pass their own centre.  ``clusters=False`` packs big holes only
         # and draws no small/medium gap features at all.
-        y_big = (self.h - 2 * self.thickness) / 2.0 if y_centre is None else y_centre
+        y_big = self._hexWallHeight() / 2.0 if y_centre is None else y_centre
         # Range in which a big-hole *centre* may sit, given the per-side edge
         # clearances (divider slots inset by _R4+_BIG_EDGE, corner sides by 0).
         c_lo, c_hi = x_lo + edge_lo, x_hi - edge_hi
@@ -721,9 +756,9 @@ class HexmoRectangle(Boxes):
         along y, matching the ``rectangularWall`` callback coordinate frame where
         the turtle faces right along the wall.
 
-        All height-direction (y) positions are derived from self.h via l_eff
-        (= self.h − 2·t) so they are invariant with respect to outside mode —
-        no panel height argument is needed.
+        All height-direction (y) positions are measured over l_eff, the
+        matching hex wall's body height (see _hexWallHeight), so no panel
+        height argument is needed.
 
         The layout algorithm is identical to drawAlignmentHoles:
           1. Corner group-of-8 clusters at both ends (via _drawCornerGroup8Rect),
@@ -760,7 +795,7 @@ class HexmoRectangle(Boxes):
         # Minimum x-distance from either end where a big hole centre can sit
         # without its edge overlapping the corner cluster's medium hole.  This is
         # registration-critical: it co-locates the outer-wall big holes with the
-        # HexmoHexagon edge-wall big holes (via s_rect), so it must NOT change.
+        # HexmoHexagon edge-wall big holes (via _hexWallLength), so it must NOT change.
         # The tight ~MIN_CLEAR gap to the corner cluster is the alignment, not a
         # defect — do not "centre" these big holes.
         x_floor = 3 * sp + r2 + r4 + mc
@@ -784,11 +819,10 @@ class HexmoRectangle(Boxes):
                 big_xs = [x_floor + i * step for i in range(n)]
 
         # Large through-holes along the centre line.
-        # y_big: vertical centre of big through-holes.  Uses l_eff (effective inner
-        # height = self.h − 2·t) rather than a callback-frame offset, so the physical
-        # hole centre matches the hex polygonWall's y_big = l_eff / 2 for both
-        # outside=True and outside=False.
-        l_eff = self.h - 2 * self.thickness
+        # y_big: vertical centre of big through-holes, half the matching hex wall
+        # height, so the physical hole centre matches the hex wall's in both
+        # --outside modes.
+        l_eff = self._hexWallHeight()
         y_big = l_eff / 2
         for x in big_xs:
             self._drawBigHole(x, y_big, r4)
@@ -1114,16 +1148,18 @@ class HexmoRectangle(Boxes):
         e_horiz_bot = edges.SlottedEdge(self, [col_w] * 3, 'f')
 
         # --- Shared callback precomputations ------------------------------------
-        # dx and x_floor are used identically in both short_wall_cb and long_wall_cb.
-        # Precomputing them once here avoids duplication inside each closure.
+        # dx is used identically in both short_wall_cb and long_wall_cb.
+        # Precomputing it once here avoids duplication inside each closure.
         #
-        # dx: origin shift so rect hole x-positions align with hex hole y-positions
-        # after the hex moveTo(0, -t) has been applied.  Derived empirically:
-        # dx = t*(2 - 1/√3).
-        dx = t * (2 - 1 / math.sqrt(3))
-        # x_floor: minimum x-distance from either end where a big hole centre can
-        # sit without overlapping the corner-cluster medium hole edge.
-        x_floor = 3 * self._SPACER + self._R2 + self._R4 + self._MIN_CLEAR
+        # s_hex: length of the matching hex wall's hole pattern (see
+        # _hexWallLength).  The hex centres that pattern on its wall, so the rect
+        # short wall centres the same pattern on its inner span W − 2t.
+        # dx: the origin shift that achieves that centring:
+        #   dx = (s_hex − (W − 2t)) / 2.
+        # In --outside mode this equals t·(2 − 1/√3), the value that used to be
+        # hard-coded as "empirical".  Deriving it keeps outside=0 correct as well.
+        s_hex = self._hexWallLength()
+        dx = (s_hex - (W - 2 * t)) / 2
         # div_pos: H-axis position of horizontal divider i (i = 0..3).
         # Used in long_wall_cb, spoke_cb, and base_cb.
         div_pos = lambda i: (i + 1) * row_h + (2 * i + 1) * t / 2
@@ -1149,24 +1185,19 @@ class HexmoRectangle(Boxes):
             full alignment-hole pattern across a compressed x-band whose spacing
             matches the HexmoHexagon edge-wall hole spacing.
 
-            The x-band compression (``s_rect``) and origin shift (``dx``) replicate
-            the affine transform that the hexagon's ``polygonWall`` miter geometry
-            applies to its edge-wall callbacks, so that big holes on both panel types
-            are co-located in physical space when the two box types are assembled
-            side-by-side.
+            The alignment pattern is laid over the hex wall's own pattern length
+            (``s_hex``) and centred on this wall by the origin shift ``dx``.  That
+            puts every pin, medium and big hole at the same offset from the wall
+            centre as on the mating HexmoHexagon side wall, so dowels pass
+            straight through both.  The wall centre is also the track centreline.
+            An earlier "compressed" length (s_rect) matched only the near end, and
+            put the far end up to s_rect − s_hex out (3.6 mm at radius 190).
 
-            Captures from enclosing scope: ``col_w``, ``t``, ``h``, ``W``, ``r``,
-            ``dx``, ``x_floor``.
+            Captures from enclosing scope: ``col_w``, ``t``, ``h``,
+            ``s_hex``, ``dx``.
             """
             self.fingerHolesAt(col_w + t / 2,           0, h, 90)
             self.fingerHolesAt(2 * col_w + 3 * t / 2,   0, h, 90)
-            # Compute s_rect so that big-hole spacing in x matches the HexmoHexagon
-            # edge wall's y-spacing.  The hex's polygonWall fires the callback with an
-            # effective x-scale of (radius - 2t) / radius due to the miter setup at
-            # each hex vertex (moveTo(-t/√3, 0) in the callback frame).  We replicate
-            # that same compressed distribution by shrinking the interior band while
-            # keeping the corner cluster positions (x_floor) fixed.
-            s_rect   = 2 * x_floor + (self.radius - 2 * x_floor) * (self.radius - 2 * t) / self.radius
             # NOTE: the spoke-to-short-wall connection is now handled by the 'F'
             # FingerJointEdgeCounterPart on the top edge of this panel (edge[2] in
             # rectangularWall).  The edge notches are drawn as part of the panel
@@ -1177,12 +1208,12 @@ class HexmoRectangle(Boxes):
             # slots (fingerHolesAt above), so they must be suppressed here.
             #
             # The big-hole x-positions are NOT adjusted here: on this outer
-            # (short) wall they are a registration surface, placed via s_rect so
+            # (short) wall they are a registration surface, placed via s_hex so
             # they co-locate with the HexmoHexagon edge-wall big holes when the
             # two box types are assembled side by side.  Moving them (e.g. to
             # add corner clearance) breaks that alignment, so drawAlignmentHolesRect
             # keeps its default registration x_floor.
-            self.drawAlignmentHolesRect(s_rect, gap_features=False)
+            self.drawAlignmentHolesRect(s_hex, gap_features=False)
 
         # Long outer walls (H × h): four horizontal dividers pass through.
         # Divider i is centred at (i+1)·row_h + (2i+1)·t/2 along H (i = 0..3).
@@ -1229,7 +1260,7 @@ class HexmoRectangle(Boxes):
             Segments 0 and 4 do not receive a full gap band because placing a big
             hole at their segment midpoints would overlap the corner cluster.
 
-            The corner shift (``dx = t * (2 − 1/√3)``) matches the origin shift used
+            The corner shift (``dx``, derived from the hex wall length) matches the origin shift used
             in ``short_wall_cb`` so that corner cluster holes are at the same distance
             from the panel edge on both wall types, keeping them pin-compatible.
 
