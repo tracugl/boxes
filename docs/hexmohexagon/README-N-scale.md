@@ -313,7 +313,8 @@ choice, applied to every big hole on both generators.
 
 ## Gotchas
 
-- **`--outside`**: leave it **off** (the default). With it on, `radius` is treated
+- **`--outside`**: it is **on** by default in both HexmoHexagon and
+  HexmoRectangle, so pass `outside=0` to turn it off. With it on, `radius` is treated
   as an outside measurement and the inside is shrunk by one thickness — but the
   track geometry needs the *inside corners* at 190 mm.
 - **Solid-hex fallback**: if you change `edge_width`/`spoke_width` and the spoke
