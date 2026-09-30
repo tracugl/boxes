@@ -1028,10 +1028,20 @@ class HexmoHexagon(Boxes):
         centre (edges 180° apart, so no finite radius — drawn as straight lines
         with no radius label or transition tick).
 
+        **Frame origin.**  Fired from callback[0].  ``regularPolygonWall`` fires
+        it at the true hexagon centre (``apothem + t`` above the edge-0 path),
+        but ``drawTrapezoidWall`` fires it at the join-edge outer face — only
+        ``apothem`` above V0, one thickness ``t`` *below* the true centre (the
+        kites are built around that frame, so callback[0] itself is left
+        alone).  Every edge's fingers are centred on the path-edge midpoint,
+        which lies on the edge normal through the *true* centre; drawing from
+        the trapezoid's lower origin would slide each crossing ``t·√3/2`` along
+        the slanted edges, off the middle finger.  In trapezoid mode the origin
+        is therefore shifted up by ``t`` before drawing — the same
+        ``apothem + t`` centre that ``drawSupportHoles`` uses on this panel.
+
         Drawn in ``Color.ETCHING`` inside a saved context so the engrave colour
-        does not leak into subsequent cut paths.  Fired from callback[0], which
-        both ``regularPolygonWall`` and ``drawTrapezoidWall`` position at the
-        hexagon centre.
+        does not leak into subsequent cut paths.
 
         @param r           - Hexagon circumradius (== track-geometry R), in mm.
         @param isTrapezoid - True for the half-hexagon deck (draws the single
@@ -1180,6 +1190,10 @@ class HexmoHexagon(Boxes):
         with self.saved_context():
             self.set_source_color(Color.ETCHING)
             if isTrapezoid:
+                # drawTrapezoidWall fires callback[0] one thickness below the
+                # true hex centre (see "Frame origin" above); lift the origin
+                # so the crossings land on each slanted edge's middle finger.
+                self.moveTo(0, self.thickness)
                 # The half-hexagon deck: its single lower curve (bisector 270°).
                 draw_curve(270.0)
             else:
