@@ -49,11 +49,12 @@ def _tracked(r):
     """True for the holes the alignment checks compare (small, medium, big)."""
     return r in (SMALL, MEDIUM) or _is_big(r)
 
-# (radius, thickness, outside, h): the N-scale build, the HO default, both
-# --outside modes, and heights other than 100 mm.  The big-hole radius follows
+# (radius, thickness, outside, h): the original r190 N-scale build, the
+# current preferred N-scale build (r220, t3, h100; README-N-scale.md), the HO
+# default, both --outside modes, and heights other than 100 mm.  The big-hole radius follows
 # h, so only h=100 matched before BOX-33.
 BUILDS = [
-    (190, 3, 1, 100), (190, 3, 0, 100),
+    (190, 3, 1, 100), (190, 3, 0, 100), (220, 3, 1, 100),
     (500, 6, 1, 100), (500, 6, 0, 100),
     (300, 4, 1, 100),
     (500, 6, 1, 60), (500, 6, 1, 150), (300, 4, 0, 150), (220, 3, 1, 80),

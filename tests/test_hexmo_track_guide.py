@@ -23,7 +23,9 @@ except ImportError:
 
 from boxes.generators.hexmohexagon import HexmoHexagon
 
-# N-scale reference build from docs/hexmohexagon/README-N-scale.md.
+# Fixed N-scale-sized reference build (the original radius-190 preset).  It is
+# kept as-is so the expected guide geometry below stays stable; the current
+# preferred N-scale settings live in docs/hexmohexagon/README-N-scale.md.
 N_SCALE_ARGS = [
     "--radius=190", "--thickness=3", "--h=100",
     "--edge_width=22", "--spoke_width=45", "--support_length=55",
