@@ -33,14 +33,15 @@ from boxes.Color import Color
 class _HorizDivSpokeEdge(edges.BaseEdge):
     """Horizontal divider top edge: crossing slots with 'f' finger tabs in the spoke region.
 
-    The horizontal divider spans W−2t = 3·col_w + 2·t.  Its top edge is divided
-    into three col_w sections by two slot notches (for the vertical-divider
-    interlock at mid-height).  When the spoke is present, the MIDDLE section is
-    itself split into three sub-parts:
+    The horizontal divider spans W−2t = n·col_w + (n−1)·t for n = --num_rows
+    lanes.  Its top edge is divided into n col_w sections by n−1 slot notches
+    (for the long-support interlock at mid-height; none when n = 1).  When the
+    spoke is present, the MIDDLE section (n is odd, so there is one) is itself
+    split into three sub-parts:
 
         'e' (pre-spoke gap) | 'f' (spoke width sw) | 'e' (post-spoke gap)
 
-    The outer two sections (1 and 3) remain plain 'e'.
+    All other sections remain plain 'e'.
 
     The central 'f' (FingerJointEdge) section projects finger tabs UPWARD from the
     divider top edge.  These tabs slot into ``fingerHolesAt`` cuts in the spoke
@@ -57,27 +58,29 @@ class _HorizDivSpokeEdge(edges.BaseEdge):
     step-adjustments), so all sections share the same baseline at y = panel-height.
 
     @param boxes      - Parent Boxes instance providing the drawing context.
-    @param col_w      - Width of each column segment in mm.
+    @param col_w      - Width of each lane section in mm.
     @param slot_depth - Depth of the crossing-slot notches (= h/2 − t when spoke present).
     @param sw         - Spoke width in mm (only this central span gets 'f' tabs).
+    @param n_lanes    - Number of lanes (--num_rows); must be odd.
     """
 
-    def __init__(self, boxes, col_w, slot_depth, sw) -> None:
+    def __init__(self, boxes, col_w, slot_depth, sw, n_lanes=3) -> None:
         super().__init__(boxes, None)
         self._col_w      = col_w
         self._slot_depth = slot_depth
         self._sw         = sw
+        self._n          = n_lanes
 
         # Compute the plain-'e' sub-sections flanking the 'f' strip inside the
-        # middle section.  The middle section spans [col_w+t, 2·col_w+t].
-        # The spoke occupies [side_gap, side_gap+sw] where
-        #   side_gap = ((3·col_w + 2·t) − sw) / 2.
+        # middle section.  Lane k spans [k·(col_w+t), k·(col_w+t)+col_w]; the
+        # middle lane is k = n//2.  The spoke is centred on the whole width:
+        #   side_gap = (total_w − sw) / 2.
         t           = boxes.thickness
-        total_w     = 3 * col_w + 2 * t          # = W − 2t
+        total_w     = n_lanes * col_w + (n_lanes - 1) * t   # = W − 2t
         side_gap    = (total_w - sw) / 2
-        mid_start   = col_w + t                   # x-start of middle section
-        self._pre   = max(0.0, side_gap - mid_start)           # gap before 'f'
-        self._post  = max(0.0, (2 * col_w + t) - (side_gap + sw))  # gap after 'f'
+        mid_start   = (n_lanes // 2) * (col_w + t)          # x-start of middle lane
+        self._pre   = max(0.0, side_gap - mid_start)                    # gap before 'f'
+        self._post  = max(0.0, (mid_start + col_w) - (side_gap + sw))  # gap after 'f'
 
     def startWidth(self) -> float:
         """Return 0; the edge starts flush with the panel boundary."""
@@ -101,9 +104,10 @@ class _HorizDivSpokeEdge(edges.BaseEdge):
     def __call__(self, length, **kw):
         """Draw the composite edge for ``length`` mm.
 
-        Draws section-1 ('e'), crossing slot, the mixed middle section
-        ('e'+'f'+'e'), crossing slot, then section-3 ('e').  The total
-        length equals W−2t = 3·col_w + 2·t, which must equal ``length``.
+        Draws the lanes left to right with a crossing slot between each pair:
+        plain 'e' lanes, except the middle lane, which is 'e'+'f'+'e'.  The
+        total length equals W−2t = n·col_w + (n−1)·t, which must equal
+        ``length``.
 
         @param length - Total edge length (must equal W−2t).
         """
@@ -112,22 +116,21 @@ class _HorizDivSpokeEdge(edges.BaseEdge):
         f_edge = self.edges['f']
         slot   = edges.Slot(self.boxes, self._slot_depth)
 
-        # Section 1: full col_w, plain 'e'
-        e_edge(self._col_w)
-        # First crossing slot (t wide, slot_depth deep)
-        slot(t)
-        # Section 2 (middle): 'e' gap + 'f' spoke tabs + 'e' gap.
-        # 'f' tabs project upward into the spoke face's fingerHoles.  The panel
-        # is drawn at height h−t so that tabs + body = h total bounding-box.
-        if self._pre > 0:
-            e_edge(self._pre)
-        f_edge(self._sw)
-        if self._post > 0:
-            e_edge(self._post)
-        # Second crossing slot
-        slot(t)
-        # Section 3: full col_w, plain 'e'
-        e_edge(self._col_w)
+        for k in range(self._n):
+            if k:
+                # Crossing slot (t wide, slot_depth deep) for long support k.
+                slot(t)
+            if k != self._n // 2:
+                e_edge(self._col_w)
+                continue
+            # Middle lane: 'e' gap + 'f' spoke tabs + 'e' gap.  'f' tabs
+            # project upward into the spoke face's fingerHoles.  The panel is
+            # drawn at height h−t so that tabs + body = h total bounding-box.
+            if self._pre > 0:
+                e_edge(self._pre)
+            f_edge(self._sw)
+            if self._post > 0:
+                e_edge(self._post)
 
 
 class _ShortWallTopEdge(edges.BaseEdge):
@@ -294,6 +297,17 @@ class HexmoRectangle(Boxes):
                  "radius ≥ 400 → 5 columns, 300 ≤ radius < 400 → 3 columns, "
                  "radius < 300 → 2 columns (one central divider).  "
                  "Minimum value is 1 (no horizontal dividers); maximum is 5.",
+        )
+        self.argparser.add_argument(
+            "--num_rows", action="store", type=int, default=3,
+            help="Number of lanes across the short (W) axis.  N lanes need N−1 "
+                 "long internal supports (the dividers that run the full length "
+                 "and slot into both end walls).  3 (default) gives two long "
+                 "supports.  1 gives none: one open lane with no long-support "
+                 "slots in the end walls or base, which suits small (e.g. N-scale) "
+                 "modules where those slots would clash with the end-wall big hole.  "
+                 "The centre spoke runs down the middle lane, so an even value "
+                 "needs --spoke_width 0.",
         )
 
         # --- Track-guide markings (base plate) ---------------------------------
@@ -1091,17 +1105,41 @@ class HexmoRectangle(Boxes):
         # Number of horizontal dividers = one fewer than the number of column cells.
         n_div_h = n_cols - 1
 
+        # --- Lanes across the short axis (--num_rows) ----------------------------
+        # N lanes need N−1 long internal supports (vertical dividers spanning H).
+        # An even N puts a support on the centreline, exactly where the spoke
+        # runs and where the horizontal dividers' spoke tabs sit, so that
+        # combination is refused rather than drawn with a clash.
+        n_rows = self.num_rows
+        if n_rows < 1:
+            raise ValueError(f"--num_rows must be at least 1 (got {n_rows}).")
+        if n_rows % 2 == 0 and self.spoke_width > 0:
+            raise ValueError(
+                f"--num_rows {n_rows} puts a long support on the centreline, "
+                "where the spoke runs; use an odd --num_rows or --spoke_width 0.")
+        # Number of long internal supports (vertical dividers).
+        n_div_v = n_rows - 1
+
         # --- Grid geometry ------------------------------------------------------
-        # The 3-column × n_cols-row grid divides the inner cavity dimensions evenly.
-        # 2 vertical dividers (each thickness t) occupy 2t of the W width.
+        # The n_rows-lane × n_cols-cell grid divides the inner cavity evenly.
+        # (In the code the lanes across W are "columns" (col_w) and the cells
+        # along H are "rows" (row_h); the CLI names count the other way round:
+        # --num_rows counts lanes and --num_columns counts cells.)
+        # n_div_v vertical dividers (each thickness t) occupy n_div_v·t of W.
         # n_div_h horizontal dividers (each thickness t) occupy n_div_h·t of H.
         # The short wall panel is drawn with inner dimension W − 2t (so the
         # laser-cut bounding box = (W−2t) + 2t = W, matching the HexmoHexagon
         # side-wall width).  The box inner cavity in the short direction is
-        # therefore W − 2t, and 2 vertical dividers (each thickness t) leave
-        # (W − 2t) − 2t = W − 4t for the 3 column interiors.
-        col_w = (W - 4 * t) / 3              # inner width of each of the 3 columns
+        # therefore W − 2t, and the vertical dividers leave
+        # (W − 2t) − n_div_v·t for the lane interiors.
+        col_w = (W - 2 * t - n_div_v * t) / n_rows   # inner width of each lane
+        if col_w <= 0:
+            raise ValueError(
+                f"--num_rows {n_rows} leaves no room between the long supports.")
         row_h = (H - n_div_h * t) / n_cols   # inner height of each row cell
+        # lane_pos: W-axis centre of long support i (i = 0..n_div_v−1), measured
+        # from the inner face of a long wall.  Used by short_wall_cb and base_cb.
+        lane_pos = lambda i: (i + 1) * col_w + (2 * i + 1) * t / 2
 
         # Support spoke geometry.  sw=0 suppresses the spoke and all its cutouts.
         sw  = self.spoke_width
@@ -1138,14 +1176,14 @@ class HexmoRectangle(Boxes):
         #     in the assembled box: (h−t) − (h/2−t) = h/2 ✓
         #   - When the spoke is omitted: plain SlottedEdge('e') as before.
         if sw > 0:
-            e_horiz_top = _HorizDivSpokeEdge(self, col_w, h / 2 - t + tol, sw)
+            e_horiz_top = _HorizDivSpokeEdge(self, col_w, h / 2 - t + tol, sw, n_rows)
         else:
-            e_horiz_top = edges.SlottedEdge(self, [col_w] * 3, 'e', slots=h / 2 + tol)
+            e_horiz_top = edges.SlottedEdge(self, [col_w] * n_rows, 'e', slots=h / 2 + tol)
 
         # Horizontal divider bottom: 'f' sections connect to base plate at the
         # three col_w spans; crossing positions use plain 'e' (no tabs there since
         # vertical dividers occupy that material).
-        e_horiz_bot = edges.SlottedEdge(self, [col_w] * 3, 'f')
+        e_horiz_bot = edges.SlottedEdge(self, [col_w] * n_rows, 'f')
 
         # --- Shared callback precomputations ------------------------------------
         # dx is used identically in both short_wall_cb and long_wall_cb.
@@ -1196,8 +1234,8 @@ class HexmoRectangle(Boxes):
             Captures from enclosing scope: ``col_w``, ``t``, ``h``,
             ``s_hex``, ``dx``.
             """
-            self.fingerHolesAt(col_w + t / 2,           0, h, 90)
-            self.fingerHolesAt(2 * col_w + 3 * t / 2,   0, h, 90)
+            for i in range(n_div_v):
+                self.fingerHolesAt(lane_pos(i), 0, h, 90)
             # NOTE: the spoke-to-short-wall connection is now handled by the 'F'
             # FingerJointEdgeCounterPart on the top edge of this panel (edge[2] in
             # rectangularWall).  The edge notches are drawn as part of the panel
@@ -1332,7 +1370,7 @@ class HexmoRectangle(Boxes):
         # Horizontal dividers (W−2t × h): 3 column segments, step = col_w.
         # NOTE: the spoke-to-divider connection is handled by the 'f' sections on
         # the top edge (via _HorizDivSpokeEdge) — no extra fingerHoles needed here.
-        horiz_div_cb = lambda: _seg_hole_cb(3, col_w)
+        horiz_div_cb = lambda: _seg_hole_cb(n_rows, col_w)
 
         # Base plate ((W−2t) × H inner, W × (H+2t) outer): fingerHoles for all
         # six dividers.  At callback-0 the turtle sits at the inner-bottom-left
@@ -1370,14 +1408,14 @@ class HexmoRectangle(Boxes):
             # Vertical divider fingerHoles (angle=0 → drawn along H direction, now x).
             # x_c is the divider's W-direction position, now the y-axis of the panel.
             # n_cols segments of row_h at positions j*(row_h+t) for j in [0, n_cols).
-            for i in range(2):
-                x_c = (i + 1) * col_w + (2 * i + 1) * t / 2
+            for i in range(n_div_v):
+                x_c = lane_pos(i)
                 for j in range(n_cols):
                     self.fingerHolesAt(j * (row_h + t), x_c, row_h, 0)
             # Horizontal divider fingerHoles (angle=90 → drawn along W direction, now y).
             # y_c is the divider's H-direction position, now the x-axis of the panel.
             for i in range(n_div_h):
-                for j in range(3):
+                for j in range(n_rows):
                     self.fingerHolesAt(div_pos(i), j * (col_w + t), col_w, 90)
             # Straight track guide down the long (H) axis, centred across the short
             # (W − 2t) axis.  The callback frame has x along H and y along W − 2t.
@@ -1480,10 +1518,11 @@ class HexmoRectangle(Boxes):
             self.rectangularWall(H, h, "ffef",
                                  callback=[long_wall_cb], move="up")
 
-        # Two vertical dividers (H × h), creating the 3-column grid split.
-        # Bottom SlottedEdge: 5 'f' sections + 4 Slot notches (depth h/2).
+        # n_div_v vertical dividers / long supports (H × h), splitting the width
+        # into --num_rows lanes (none when --num_rows is 1).
+        # Bottom SlottedEdge: n_cols 'f' sections + n_div_h Slot notches (depth h/2).
         # Left/right 'f': end-tabs into short outer wall fingerHoles.
-        for _ in range(2):
+        for _ in range(n_div_v):
             self.rectangularWall(H, h,
                                  [e_vert_bot, 'f', 'e', 'f'],
                                  callback=[vert_div_cb], move="up")
