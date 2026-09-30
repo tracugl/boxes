@@ -248,6 +248,47 @@ curl "http://localhost:4455/HexmoHexagon?render=1\
 &track_left=1&track_right=1&track_middle=1" -o hexmo_n_full.svg
 ```
 
+### Track-laying guide plate
+
+The etching shows where the track goes; `--track_guide=1` adds a jig that
+**holds** it there while you mark and cut. It is one extra flat plate that you
+dowel to the outer face of any side wall, through the wall's corner-hole groups.
+Its bottom edge sits flush with the underside of the box, and it stands above the
+deck with one rectangular window per track:
+
+- **Width:** exactly `--track_width`, so the track can't move sideways.
+- **Height:** `--track_guide_clearance` (default 30 mm) above the deck surface,
+  so there's room for roadbed, risers and scenery.
+
+Every track crosses a wall at a right angle, at the wall's centre, offset along
+the wall by `--track_spacing`, `--track_offset` and `--track_center_offset`. So
+one plate fits every standard wall. The windows use the same offsets as the
+etching, so the two always agree. The dowel holes come from the same code as the
+wall's corner groups, so they match exactly, including `--corner_holes=g2`.
+
+If the tracks aren't symmetric about the centre (`--track_offset=outer` or a
+non-zero `--track_center_offset`), the plate is etched with
+`outside of curve ->`. The other end of a curve is its mirror image, so flip the
+plate over for that end. The hole pattern is symmetric, so it still fits.
+
+| Parameter | Meaning | N suggestion |
+|---|---|---|
+| `--track_guide` | add the guide plate | `1` |
+| `--track_guide_clearance` | window height above the deck (mm) | `30` |
+
+```bash
+# Half-hexagon with its track guide (N-scale params)
+curl "http://localhost:4455/HexmoHexagon?render=1\
+&radius=190&edge_width=22&spoke_width=45&support_length=55&thickness=3\
+&bottom=spoke&top=closed\
+&trapezoid=1&track_lines=1&track_line_count=1\
+&draw_center=1&draw_track=1&track_width=20&track_lead_in=30\
+&track_guide=1&track_guide_clearance=30" -o hexmo_n_half_guide.svg
+```
+
+If a window wouldn't fit on the plate (for example a very wide `--track_spacing`),
+the generator stops with an error instead of drawing a guide that falls apart.
+
 ### Straight modules (HexmoRectangle)
 
 The companion `HexmoRectangle` straight module carries the same track markings on

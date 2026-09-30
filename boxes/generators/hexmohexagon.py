@@ -39,6 +39,7 @@ class HexmoHexagon(Boxes):
     _SPACER = 15    # minimum clearance from panel edge to hole edge (mm)
     _R2     = 12.5  # radius of medium alignment-pin receiver holes (mm)
     _R3     = 3     # radius of small registration dot / pilot holes (mm)
+    _GUIDE_MIN_WEB = 5  # min material between a track-guide window and the plate end (mm)
 
     def __init__(self) -> None:
         Boxes.__init__(self)
@@ -221,6 +222,20 @@ class HexmoHexagon(Boxes):
                  "of the track and etch a pair of edge lines offset by "
                  "± track_width/2, showing where the actual track footprint sits."
                  "  Can be combined with --draw_center to show both.")
+        self.argparser.add_argument(
+            "--track_guide", action="store", type=boolarg, default=False,
+            help="Add a track-laying guide plate: a temporary jig that is "
+                 "dowelled to a side wall's outer face through the wall's "
+                 "corner-hole groups and stands above the deck, with one "
+                 "rectangular window per track (exactly --track_width wide).  "
+                 "Every track crosses a wall perpendicularly at its centre, so "
+                 "one guide fits every standard wall.  When the tracks are "
+                 "asymmetric, flip the plate over for the other end of a curve.")
+        self.argparser.add_argument(
+            "--track_guide_clearance", action="store", type=float, default=30.0,
+            help="Height (mm) of each --track_guide window above the deck "
+                 "surface: the vertical room left for roadbed, risers and "
+                 "scenery so the track can move up and down but not sideways.")
 
         self.n = 6
 
@@ -943,6 +958,144 @@ class HexmoHexagon(Boxes):
             self.ctx.line_to(kite[0][0], kite[0][1])
             self.ctx.stroke()
 
+    def _trackOffsets(self):
+        """Signed offsets (mm) of each track centreline from the reference line.
+
+        Shared by :meth:`drawTrackLines` (radial offsets of the etched arcs)
+        and :meth:`drawTrackGuide` (window positions along the wall), so the
+        guide windows can never drift out of step with the etched deck guide.
+
+        'centred' (default) is symmetric about 0, so odd counts land a line on
+        the centreline and even counts straddle it.  'outer' is one-sided
+        (0, +spacing, +2·spacing, …), so the centreline is the minimum radius
+        and every extra line steps outward (larger radius) only.  The whole
+        family is then biased by --track_center_offset, which composes with
+        either mode and is the sole placement control for a single track.
+        Positive always means outward, i.e. toward the outside of a curve.
+
+        @returns One offset per track (empty when --track_line_count < 1).
+        """
+        n_lines = self.track_line_count
+        spacing = self.track_spacing
+        if self.track_offset == "outer":
+            offsets = [i * spacing for i in range(n_lines)]
+        else:
+            offsets = [(i - (n_lines - 1) / 2.0) * spacing for i in range(n_lines)]
+        return [self.track_center_offset + o for o in offsets]
+
+    def _trackGuideSize(self, s, l):
+        """Outer size of the track-guide plate, in the guide's own frame.
+
+        The frame has x along the wall (0 … s) and y up from the box
+        underside.  Starting the plate at the underside (rather than at the
+        wall body) gives a free physical reference: its bottom edge sits flush
+        with the bench when the module is standing on it.
+
+        @param s - Wall reference length (``side_orig``), the same ``s`` the
+                   side walls pass to :meth:`_drawCornerGroup8`.
+        @param l - Wall body height (the ``l`` passed to the same method).
+        @returns ``(width, height)`` in mm.
+        """
+        deck_y = l + 2 * self.thickness
+        return s, deck_y + self.track_guide_clearance + self._SPACER
+
+    def _trackGuideWindows(self, s, l):
+        """Compute the track-guide windows, one per track.
+
+        In the guide frame (see :meth:`_trackGuideSize`) the deck top surface
+        is at ``y = l + 2t``: bottom panel ``t`` + wall body ``l`` + deck
+        panel ``t``.  Each window starts there and rises by
+        --track_guide_clearance, leaving room for roadbed and scenery.  Its
+        width is exactly --track_width (rectangularHole compensates for laser
+        burn), so the track cannot shift sideways.  Tracks cross every wall
+        perpendicularly at its centre, offset along the wall by the same
+        amounts as the etched lines: at a curve end the radial direction lies
+        along the wall, and on the straight the lateral offset does.
+
+        @param s - Wall reference length (``side_orig``).
+        @param l - Wall body height.
+        @returns List of ``(centre_x, bottom_y, width, height)`` tuples.
+        @throws ValueError - If the clearance or track width is not positive,
+                             or a window would reach within
+                             ``_GUIDE_MIN_WEB`` of either plate edge.
+        """
+        width = self.track_width
+        clearance = self.track_guide_clearance
+        if clearance <= 0:
+            raise ValueError(
+                f"--track_guide_clearance must be positive (got {clearance}).")
+        if width <= 0:
+            raise ValueError(
+                f"--track_width must be positive for the track guide (got {width}).")
+
+        deck_y = l + 2 * self.thickness
+        windows = []
+        for off in self._trackOffsets():
+            cx = s / 2.0 + off
+            # Leave a web of material at each plate end so the window stays a
+            # closed hole and the plate does not split in two.
+            if (cx - width / 2.0 < self._GUIDE_MIN_WEB
+                    or cx + width / 2.0 > s - self._GUIDE_MIN_WEB):
+                raise ValueError(
+                    f"track guide window at offset {off:+.1f} mm "
+                    f"(width {width} mm) does not fit on the {s:.1f} mm plate; "
+                    "reduce --track_spacing, --track_center_offset or "
+                    "--track_line_count.")
+            windows.append((cx, deck_y, width, clearance))
+        return windows
+
+    def drawTrackGuide(self, s, l, move="right"):
+        """Draw the track-laying guide plate.
+
+        The plate is dowelled to the outer face of any standard side wall.
+        Its dowel holes come from the wall's own :meth:`_drawCornerGroup8`,
+        called with the same ``(s, l)`` in the same frame, so they match the
+        wall exactly: same positions, same diameters, and --corner_holes is
+        honoured.  The pattern is symmetric along and across the wall, so the
+        plate fits either way round and can be flipped face-down.
+
+        **Frame mapping.**  The wall's hole frame has x up from the wall body
+        bottom and y along the wall.  The guide frame has x along the wall
+        and y up from the box underside, one ``t`` below the wall body.
+        ``moveTo(s, t, 90)`` maps one onto the other: it puts the origin at
+        the wall-body bottom of the far plate end and rotates by 90°, so that
+        wall-x points up the plate and wall-y runs back along it.
+
+        When the tracks are not symmetric about the centre (--track_offset
+        outer, or a --track_center_offset), an arrow is etched pointing to the
+        outside of the curve.  The other end of a curve is its mirror image,
+        so the plate is flipped over for that end.
+
+        @param s    - Wall reference length (``side_orig``).
+        @param l    - Wall body height.
+        @param move - Layout direction passed to rectangularWall.
+        @throws ValueError - Propagated from :meth:`_trackGuideWindows`.
+        """
+        t = self.thickness
+        width, height = self._trackGuideSize(s, l)
+        # Compute (and validate) before drawing, so an error never leaves
+        # half a part in the layout.
+        windows = self._trackGuideWindows(s, l)
+        offsets = self._trackOffsets()
+        asymmetric = sorted(offsets) != sorted(-o for o in offsets)
+
+        def features():
+            with self.saved_context():
+                self.moveTo(s, t, 90)
+                self._drawCornerGroup8(s, l)
+            for cx, y0, w, h in windows:
+                self.rectangularHole(cx, y0, w, h, center_x=True, center_y=False)
+            if asymmetric:
+                # Label in the solid band above the windows.  stroke=True so
+                # lasers that vector-etch by stroke colour still trace it.
+                self.text("outside of curve ->", x=width / 2.0,
+                          y=height - self._SPACER / 2.0, align="middle center",
+                          fontsize=self._SPACER * 0.4, color=Color.ETCHING,
+                          stroke=True)
+
+        self.rectangularWall(width, height, "eeee", callback=[features],
+                             move=move, label="track guide")
+
     def drawTrackLines(self, r, isTrapezoid=False):
         """Etch the model-railway track curve onto the deck as an alignment guide.
 
@@ -1053,7 +1206,6 @@ class HexmoHexagon(Boxes):
         if n_lines < 1:
             return
 
-        spacing = self.track_spacing
         half_width = self.track_width / 2.0
         lead_in = self.track_lead_in
         apothem = r * math.sqrt(3.0) / 2.0
@@ -1073,21 +1225,7 @@ class HexmoHexagon(Boxes):
         label_fontsize = self.track_width * 0.35
         label_band = self.track_width / 4.0  # centre of each half of the width band
 
-        # Per-track radial offsets.  'centred' (default): symmetric about 0, so
-        # odd counts land a line on the centreline and even counts straddle it.
-        # 'outer': one-sided (0, +spacing, +2·spacing, …) so the centreline is the
-        # minimum radius and every extra line steps outward (larger rho) only.
-        if self.track_offset == "outer":
-            offsets = [i * spacing for i in range(n_lines)]
-        else:
-            offsets = [(i - (n_lines - 1) / 2.0) * spacing for i in range(n_lines)]
-
-        # Bias the whole family by the reference-centreline shift.  Folding it in
-        # here (rather than at the rho = rho_center + off site) means the arc,
-        # radius labels and crossing ticks all inherit the shift for free, and it
-        # composes with either --track_offset mode.  Positive = outward (larger
-        # rho); with track_line_count == 1 this is the sole placement control.
-        offsets = [self.track_center_offset + o for o in offsets]
+        offsets = self._trackOffsets()
 
         def draw_curve(bisector_deg):
             """Draw the full track family for a 120°-edge-pair with the given
@@ -1636,6 +1774,12 @@ class HexmoHexagon(Boxes):
             for _ in range(n):
                 self.polygonWall(borders0, edge=e0, correct_corners=False, move="right",
                                  callback=[None, draw_aligned_holes])
+
+        # Optional track-laying jig.  It fits any standard wall, so it takes
+        # the standard-wall hole frame (side_orig, l), never the trapezoid
+        # long wall's.
+        if self.track_guide:
+            self.drawTrackGuide(side_orig, l, move="right")
 
         # Append a reference panel that engraves all parameter values onto a
         # flat piece of stock — useful for reproducing or identifying a cut job.
