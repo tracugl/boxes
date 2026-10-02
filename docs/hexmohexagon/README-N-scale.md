@@ -183,7 +183,7 @@ full hexagon — see **Trapezoid vs. full hexagon** below.
 | `--track_lines` | master switch: turn the guide on | `1` |
 | `--track_line_count` | number of parallel track centrelines | `1`, or `2` for a double-track module |
 | `--track_spacing` | radial spacing between adjacent centrelines (mm) | `35` (track-centre to track-centre) |
-| `--track_offset` | `centred` (extras straddle the centreline) or `outer` (centreline = minimum radius, extras step outward only) | `outer` to guarantee no track tighter than the centreline |
+| `--track_offset` | `centred` (extras straddle the centreline), `outer` (centreline = minimum radius, extras step outward only) or `inner` (centreline = maximum radius, extras step inward only) | `outer` to guarantee no track tighter than the centreline |
 | `--track_center_offset` | signed shift (mm) of the reference centreline itself: `+` = outward (larger radius), `−` = inward | `0` (true centreline); `+15` to bias the whole family 15 mm out |
 | `--draw_center` | etch the centreline arc(s) themselves | `1` (off by default) |
 | `--draw_track` | etch the two track-footprint edges at ± `track_width`/2 | `1` |
@@ -206,14 +206,19 @@ centreline becomes the *minimum* radius: every extra track steps outward (larger
 radius) only, so no track is ever drawn tighter than the centreline. Use this
 when the centreline is your minimum-radius constraint and additional tracks may
 only bow out — it also keeps the hexagon's outward tracks on the same side as a
-mating straight (HexmoRectangle) module's outward tracks.
+mating straight (HexmoRectangle) module's outward tracks. `--track_offset inner`
+is the mirror image: the centreline becomes the *maximum* radius and every extra
+track steps inward (tighter). Use it when the centreline is your outermost line,
+e.g. against the deck edge, and check each inner track's etched radius label
+against your minimum curve. On a HexmoRectangle the extras go to the same
+side as the hexagon's inner tracks, so they still line up across a joint.
 
 `--track_center_offset` is a separate, additive knob that moves the *reference
 centreline itself* by a signed millimetre amount before the `--track_offset`
 spacing is applied. `0` (default) is the true geometric centreline; a positive
 value shifts the whole family outward (larger radius) and a negative value inward.
 It composes with `--track_offset` — in `outer` mode the *shifted* centreline
-becomes the minimum-radius track — and it works with a single track
+becomes the minimum-radius track (in `inner` mode, the maximum-radius one) — and it works with a single track
 (`--track_line_count 1`) to place one centreline off the geometric centre. The
 same sign convention as `outer` (positive = larger radius, matching
 HexmoRectangle's `+y`) keeps a shifted hex curve aligned with a shifted straight
@@ -299,7 +304,7 @@ corner groups, so they match exactly. Both `--corner_holes` options have them,
 so the guide is the same either way. A wider track family makes the plate wider
 to keep the margin round the outer windows.
 
-If the tracks aren't symmetric about the centre (`--track_offset=outer` or a
+If the tracks aren't symmetric about the centre (`--track_offset=outer` or `inner`, or a
 non-zero `--track_center_offset`), the plate is etched with
 `outside of curve ->`. The other end of a curve is its mirror image, so flip the
 plate over for that end. The hole pattern is symmetric, so it still fits.

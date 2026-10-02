@@ -146,15 +146,17 @@ class HexmoHexagon(HexmoTrackGuideMixin, Boxes):
                  "one line is drawn.")
         self.argparser.add_argument(
             "--track_offset", action="store", type=str, default="centred",
-            choices=["centred", "outer"],
+            choices=["centred", "outer", "inner"],
             help="How multiple track lines (--track_line_count > 1) are placed "
                  "relative to the centreline.  'centred' (default) spaces them "
                  "symmetrically about the centreline, so the inner lines have a "
                  "tighter radius than the centreline and the outer lines a wider "
                  "one.  'outer' keeps the centreline as the minimum-radius line "
                  "and steps every additional line outward only (larger radius), "
-                 "guaranteeing no track is tighter than the centreline.  No "
-                 "effect when --track_line_count is 1.")
+                 "guaranteeing no track is tighter than the centreline.  'inner' "
+                 "is the mirror: the centreline is the maximum-radius line and "
+                 "every additional line steps inward only (tighter radius; the "
+                 "labels show each one).  No effect when --track_line_count is 1.")
         self.argparser.add_argument(
             "--track_center_offset", action="store", type=float, default=0.0,
             help="Signed radial shift (mm) applied to the reference centreline "
