@@ -354,7 +354,7 @@ class HexmoRectangle(HexmoTrackGuideMixin, Boxes):
                  "centreline off the panel centre.")
         self.argparser.add_argument(
             "--draw_center", action="store", type=boolarg, default=False,
-            help="Etch the track centreline(s) themselves.  On by default.")
+            help="Etch the track centreline(s) themselves.  Off by default.")
         self.argparser.add_argument(
             "--draw_track", action="store", type=boolarg, default=True,
             help="Etch the two track-footprint edges at ± track_width/2 either "

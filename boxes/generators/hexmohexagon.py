@@ -214,8 +214,9 @@ class HexmoHexagon(HexmoTrackGuideMixin, Boxes):
         self.argparser.add_argument(
             "--draw_center", action="store", type=boolarg, default=False,
             help="When --track_lines is on, etch the track centreline arc(s) "
-                 "themselves (the --track_line_count parallel curves).  This is "
-                 "the original guide behaviour and is on by default.")
+                 "themselves (the --track_line_count parallel curves).  Off by "
+                 "default; --draw_track etches the footprint edges instead, and "
+                 "both can be on together.")
         self.argparser.add_argument(
             "--draw_track", action="store", type=boolarg, default=True,
             help="When --track_lines is on, treat each centreline as the middle "

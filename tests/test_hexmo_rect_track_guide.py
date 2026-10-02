@@ -29,6 +29,8 @@ from boxes.generators.hexmorectangle import HexmoRectangle
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from test_hexmo_wall_alignment import rect_end_wall_holes  # noqa: E402
 
+# Fixed N-scale-sized base build (the original radius-190 preset); the
+# "n-preferred" variant below adds the current README settings on top.
 N_SCALE = ["--radius=190", "--thickness=3", "--track_width=20"]
 
 # Guide-affecting settings to cover: plain N scale, a double track in 'outer'
@@ -36,6 +38,10 @@ N_SCALE = ["--radius=190", "--thickness=3", "--track_width=20"]
 # off, and the reduced corner-hole pattern.
 VARIANTS = {
     "n-single": [],
+    # Current preferred N-scale settings (docs/hexmohexagon/README-N-scale.md).
+    "n-preferred": ["--radius=220", "--h=100", "--track_width=17", "--track_lead_in=25",
+                    "--track_spacing=35", "--corner_holes=g2",
+                    "--big_hole_shape=rounded_rect", "--FingerJoint_extra_length=0.1"],
     "double-outer-biased": ["--track_line_count=2", "--track_spacing=40",
                             "--track_offset=outer", "--track_center_offset=-10"],
     "outside-off": ["--outside=0"],

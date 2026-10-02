@@ -128,8 +128,8 @@ editing at another scale), spell the values out:
 http://localhost:4455/HexmoHexagon?radius=500&edge_width=60&spoke_width=120&support_length=150&thickness=6&FingerJoint_play=0.2&bottom=spoke&top=closed
 ```
 
-For the **N-scale** bookmark (radius 190 and the shrunk frame/spoke/support
-values), see
+For the **N-scale** bookmark (radius 220, the shrunk frame/spoke/support values
+and the R282 track settings), see
 [README-N-scale.md → Scale presets](./README-N-scale.md#scale-presets-bookmarkable-urls).
 
 How to use it:
