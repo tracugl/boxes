@@ -332,14 +332,16 @@ class HexmoRectangle(HexmoTrackGuideMixin, Boxes):
                  "--track_line_count > 1.  Defaults to 80 mm.")
         self.argparser.add_argument(
             "--track_offset", action="store", type=str, default="centred",
-            choices=["centred", "outer"],
+            choices=["centred", "outer", "inner"],
             help="How multiple track lines (--track_line_count > 1) are placed "
                  "relative to the centreline.  'centred' (default) straddles the "
                  "centreline symmetrically.  'outer' keeps the centreline as the "
-                 "base line and steps every additional line to one side only — "
+                 "base line and steps every additional line to one side only (+y), "
                  "the counterpart of the HexmoHexagon 'outer' (larger-radius) "
                  "side, so parallel tracks line up across a hex↔straight joint "
-                 "when modules share the same track settings.  No effect when "
+                 "when modules share the same track settings.  'inner' is the "
+                 "mirror: extra lines step to −y, the counterpart of the "
+                 "HexmoHexagon 'inner' (tighter-radius) side.  No effect when "
                  "--track_line_count is 1.")
         self.argparser.add_argument(
             "--track_center_offset", action="store", type=float, default=0.0,

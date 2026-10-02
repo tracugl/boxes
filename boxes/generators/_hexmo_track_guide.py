@@ -136,9 +136,11 @@ class HexmoTrackGuideMixin:
         'centred' (default) is symmetric about 0, so odd counts land a line on
         the centreline and even counts straddle it.  'outer' is one-sided
         (0, +spacing, +2·spacing, …), so the centreline is the minimum radius
-        and every extra line steps outward (larger radius) only.  The whole
+        and every extra line steps outward (larger radius) only.  'inner' is
+        its mirror (0, −spacing, −2·spacing, …): the centreline is the maximum
+        radius and every extra line steps inward (tighter) only.  The whole
         family is then biased by --track_center_offset, which composes with
-        either mode and is the sole placement control for a single track.
+        any mode and is the sole placement control for a single track.
         Positive always means outward, i.e. toward the outside of a curve.
 
         @returns One offset per track (empty when --track_line_count < 1).
@@ -147,6 +149,10 @@ class HexmoTrackGuideMixin:
         spacing = self.track_spacing
         if self.track_offset == "outer":
             offsets = [i * spacing for i in range(n_lines)]
+        elif self.track_offset == "inner":
+            # Mirror of 'outer': the centreline is the largest radius and every
+            # extra line steps inward (tighter curve on the hex, −y on the rect).
+            offsets = [-i * spacing for i in range(n_lines)]
         else:
             offsets = [(i - (n_lines - 1) / 2.0) * spacing for i in range(n_lines)]
         return [self.track_center_offset + o for o in offsets]

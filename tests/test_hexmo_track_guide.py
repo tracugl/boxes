@@ -62,6 +62,62 @@ class TestTrackOffsets:
                         "--track_center_offset=10"])
         assert box._trackOffsets() == [-10.0, 30.0]
 
+    def test_inner_steps_inward_only(self) -> None:
+        box = make_box(["--track_line_count=3", "--track_spacing=50",
+                        "--track_offset=inner"])
+        assert box._trackOffsets() == [0.0, -50.0, -100.0]
+
+    @pytest.mark.parametrize("count", [1, 2, 3, 4])
+    def test_inner_mirrors_outer(self, count) -> None:
+        def offsets(mode):
+            return make_box([f"--track_line_count={count}", "--track_spacing=35",
+                             f"--track_offset={mode}"])._trackOffsets()
+        assert offsets("inner") == [-o for o in offsets("outer")]
+
+    def test_inner_composes_with_center_offset(self) -> None:
+        box = make_box(["--track_line_count=2", "--track_spacing=40",
+                        "--track_offset=inner", "--track_center_offset=10"])
+        assert box._trackOffsets() == [10.0, -30.0]
+
+    def test_rectangle_accepts_inner_with_the_same_offsets(self) -> None:
+        from boxes.generators.hexmorectangle import HexmoRectangle
+        args = ["--track_line_count=3", "--track_spacing=35", "--track_offset=inner"]
+        rect = HexmoRectangle()
+        rect.parseArgs(args)
+        assert rect._trackOffsets() == make_box(args)._trackOffsets() == [0.0, -35.0, -70.0]
+
+
+class TestInnerOffsetDrawing:
+    """The etched lines and the guide windows follow --track_offset=inner."""
+
+    ARGS = ["--trapezoid=1", "--track_line_count=2", "--track_spacing=35",
+            "--track_offset=inner", "--track_lead_in=25", "--track_guide=1"]
+
+    def _labels(self, args):
+        box = make_box(args)
+        texts = []
+        orig = box.text
+        box.text = lambda t, *a, **kw: (texts.append(t), orig(t, *a, **kw))[1]
+        box.open()
+        box.render()
+        box.close()
+        return texts
+
+    def test_inner_track_is_the_tighter_curve(self) -> None:
+        mm = sorted(int(t.split()[0]) for t in self._labels(self.ARGS) if t.endswith(" mm"))
+        outer = sorted(int(t.split()[0]) for t in self._labels(
+            [a.replace("inner", "outer") for a in self.ARGS]) if t.endswith(" mm"))
+        # Same centreline radius; the extra track is 35 mm inside it, not outside.
+        assert mm[-1] == outer[0]
+        assert mm[0] == pytest.approx(mm[-1] - 35, abs=1)
+        assert outer[-1] == pytest.approx(outer[0] + 35, abs=1)
+
+    def test_guide_windows_step_the_other_way_and_get_the_arrow(self) -> None:
+        box = make_box(self.ARGS)
+        s, l = 190.0, 100.0
+        assert [w[0] for w in box._trackGuideWindows(s, l)] == [95.0, 60.0]
+        assert "outside of curve ->" in self._labels(self.ARGS)
+
 
 def guide_holes(box: HexmoHexagon) -> list[float]:
     """Render ``box`` and return the radius of every hole the guide plate cuts.
