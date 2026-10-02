@@ -39,6 +39,11 @@ N_SCALE = ["--radius=190", "--thickness=3", "--track_width=20"]
 VARIANTS = {
     "n-single": [],
     # Current preferred N-scale settings (docs/hexmohexagon/README-N-scale.md).
+    # Current preferred HO settings (docs/hexmohexagon/README-HO-scale.md).
+    "ho-preferred": ["--radius=500", "--thickness=6", "--h=100", "--track_width=30",
+                     "--track_line_count=2", "--track_spacing=80", "--track_lead_in=23",
+                     "--corner_holes=g2", "--gap_holes=g2", "--big_hole_shape=rounded_rect",
+                     "--FingerJoint_play=0.1", "--FingerJoint_extra_length=0.05"],
     "n-preferred": ["--radius=220", "--h=100", "--track_width=17", "--track_lead_in=25",
                     "--track_spacing=35", "--corner_holes=g2",
                     "--big_hole_shape=rounded_rect", "--FingerJoint_extra_length=0.1"],
