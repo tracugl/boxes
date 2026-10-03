@@ -310,6 +310,47 @@ for how it works.
 | `--track_guide` | add the guide plate | `1` |
 | `--track_guide_clearance` | window height above the deck (mm) | `30` |
 
+### Track-laying template (Tracksetta-style)
+
+Commercial track-setting templates come in fixed radii that don't match these
+modules, so the generators cut their own. `--track_template=1` adds a flat strip
+exactly `--track_gauge` wide that sits **between the rails**. Push flexible track
+against both edges and it holds the module's exact curve while you pin it down.
+
+- **Shape:** it follows the etched track centreline: lead-in straight, the 60°
+  curve, lead-in straight. Its ends sit where the track crosses the module
+  edges. With the HO settings the two tracks' templates are the 660 mm and 740 mm curves, 737 mm and 821 mm long (centreline) in one piece.
+- **One per track:** a double-track module gets one template per track, at each
+  track's radius. On the full hexagon every curve route (left/right/top) shares
+  the same radii, so one set covers them; `--track_middle` adds a straight.
+  HexmoRectangle cuts one straight the length of its track.
+- **Width:** `--track_gauge` is the distance between the inside faces of the rails,
+  **16.5 mm** for HO (`--track_width` is the sleeper footprint, not the
+  gauge). `--track_template_clearance` (default 0) narrows it slightly so it
+  lifts out of laid track easily. Laser burn is compensated, so the strip is cut
+  true to size.
+- **Segments:** `--track_template_segments` (default 1) splits each template into
+  equal-length pieces, e.g. to fit a smaller laser bed. Each piece is etched
+  with its radius, the gauge and `i/N`, plus a mark at each end: **EDGE** on the
+  two ends that sit at the module edges, and a matching letter on both sides of
+  every cut. With 3 pieces that reads `EDGE … 1/3 … A`, `A … 2/3 … B`,
+  `B … 3/3 … EDGE`, so matching letters go together.
+- It is cut from the module's own `--thickness`, with no handle.
+
+| Parameter | Meaning | HO suggestion |
+|---|---|---|
+| `--track_template` | add the template(s) | `1` |
+| `--track_gauge` | rail gauge, inside faces (mm) | `16.5` |
+| `--track_template_clearance` | taken off the width (mm) | `0` |
+| `--track_template_segments` | pieces per template | `1` (or `2`–`3` for a small bed) |
+
+```bash
+curl "http://localhost:4455/HexmoHexagon?render=1\
+&radius=500&h=100&thickness=6&trapezoid=1\
+&track_line_count=2&track_spacing=80&track_width=30&track_lead_in=23\
+&track_template=1&track_gauge=16.5&track_template_segments=2" -o hexmo_ho_template.svg
+```
+
 ### Straight modules (HexmoRectangle)
 
 The companion `HexmoRectangle` straight module carries the same track markings on

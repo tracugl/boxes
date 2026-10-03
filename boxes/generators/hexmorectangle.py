@@ -30,6 +30,7 @@ from boxes import Boxes, edges, boolarg
 from boxes.Color import Color
 from boxes.generators._hexmo_big_holes import HexmoBigHoleMixin
 from boxes.generators._hexmo_track_guide import HexmoTrackGuideMixin
+from boxes.generators._hexmo_track_template import HexmoTrackTemplateMixin
 
 
 class _HorizDivSpokeEdge(edges.BaseEdge):
@@ -194,7 +195,7 @@ class _ShortWallTopEdge(edges.BaseEdge):
         e_edge(self._side_gap)
 
 
-class HexmoRectangle(HexmoBigHoleMixin, HexmoTrackGuideMixin, Boxes):
+class HexmoRectangle(HexmoBigHoleMixin, HexmoTrackGuideMixin, HexmoTrackTemplateMixin, Boxes):
     """Rectangular tray with a 3×N internal grid, compatible with HexmoHexagon stacking.
 
     The number of column compartments N is controlled by ``--num_columns`` (default 0 = auto).
@@ -378,6 +379,8 @@ class HexmoRectangle(HexmoBigHoleMixin, HexmoTrackGuideMixin, Boxes):
         # --track_guide / --track_guide_clearance, shared with HexmoHexagon so
         # both generators cut the same guide plate.
         self._addTrackGuideArgs()
+        # --track_template, --track_gauge, …, shared with HexmoHexagon.
+        self._addTrackTemplateArgs()
         self.argparser.add_argument(
             "--corner_holes", action="store", type=str, default="g6",
             choices=["g6", "g2"],
@@ -1677,5 +1680,12 @@ class HexmoRectangle(HexmoBigHoleMixin, HexmoTrackGuideMixin, Boxes):
         if self.track_guide:
             self.drawTrackGuide(self._hexWallLength(), self._hexWallHeight(),
                                 move="right")
+
+        # Optional Tracksetta-style template: a straight the full length of the
+        # etched track (H, end wall to end wall).  Every track's straight is the
+        # same, so one template covers them all.
+        if self.track_template:
+            self.drawTrackTemplate([("line", H)], f"straight {self.track_gauge:g}mm",
+                                   move="right")
 
         self.drawReferencePanel(move="right")
