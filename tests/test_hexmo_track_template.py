@@ -164,3 +164,53 @@ class TestValidation:
         box.open()
         with pytest.raises(ValueError, match=match):
             box.render()
+
+
+class TestPieceMarks:
+    """With segments, matching end marks show which pieces join, and how."""
+
+    def test_end_marks(self) -> None:
+        marks = HexmoHexagon._templateEndMarks
+        assert [marks(i, 1) for i in range(1)] == [("EDGE", "EDGE")]
+        assert [marks(i, 3) for i in range(3)] == [("EDGE", "A"), ("A", "B"), ("B", "EDGE")]
+
+    @staticmethod
+    def _etched_per_piece(args):
+        """Render and group the etched template texts by piece."""
+        box = parsed(HexmoHexagon, args)
+        box.open()
+        pieces, inside = [], [False]
+        o_text, o_move, o_tmpl = box.text, box.move, box.drawTrackTemplate
+
+        def text(t, *a, **kw):
+            if inside[0]:
+                pieces[-1].append(t)
+            return o_text(t, *a, **kw)
+
+        def move(x, y, where, before=False, label=""):
+            if inside[0] and before:
+                pieces.append([])
+            return o_move(x, y, where, before=before, label=label)
+
+        def tmpl(*a, **kw):
+            inside[0] = True
+            try:
+                return o_tmpl(*a, **kw)
+            finally:
+                inside[0] = False
+
+        box.text, box.move, box.drawTrackTemplate = text, move, tmpl
+        box.render()
+        return pieces
+
+    def test_three_pieces_are_etched_with_matching_joints(self) -> None:
+        pieces = self._etched_per_piece(N_HEX + ["--track_template_segments=3"])
+        assert [sorted(p) for p in pieces] == [
+            sorted(["EDGE", "R280 9mm  1/3", "A"]),
+            sorted(["A", "R280 9mm  2/3", "B"]),
+            sorted(["B", "R280 9mm  3/3", "EDGE"]),
+        ]
+
+    def test_single_piece_has_edge_at_both_ends(self) -> None:
+        (piece,) = self._etched_per_piece(N_HEX)
+        assert sorted(piece) == sorted(["EDGE", "R280 9mm", "EDGE"])

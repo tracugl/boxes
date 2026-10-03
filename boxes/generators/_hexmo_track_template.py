@@ -202,6 +202,23 @@ class HexmoTrackTemplateMixin:
                 break
         return x, y, h
 
+    @staticmethod
+    def _templateEndMarks(i, n):
+        """Etched marks for the two ends of piece ``i`` (0-based) of ``n``.
+
+        The ends that meet the module edges read ``EDGE``.  Each internal cut
+        gets a letter (A, B, …) etched on *both* pieces that meet there, so
+        matching letters show which ends join, in which order, and which way
+        round each piece goes.
+
+        @returns ``(start_mark, end_mark)``.
+        """
+        def joint(k):
+            return chr(ord("A") + k) if k < 26 else f"J{k + 1}"
+        start = "EDGE" if i == 0 else joint(i - 1)
+        end = "EDGE" if i == n - 1 else joint(i)
+        return start, end
+
     # ----------------------------------------------------------------- drawing
 
     def drawTrackTemplate(self, route, label, move="right"):
@@ -210,7 +227,8 @@ class HexmoTrackTemplateMixin:
         Each piece is its own part, rotated so its end-to-end chord lies
         horizontal (compact on the bed), with ``label`` etched along its
         centreline middle.  ``piece i/N`` is added when there is more than one
-        piece.
+        piece.  Each end is marked (see :meth:`_templateEndMarks`): ``EDGE`` at
+        the module edges, and a matching letter on both sides of every cut.
 
         @param route - Centreline steps of the whole template.
         @param label - Text etched on each piece (radius, gauge).
@@ -245,14 +263,27 @@ class HexmoTrackTemplateMixin:
                         self.corner(op[1], op[2])
                 self.ctx.stroke()
             text = label if len(pieces) == 1 else f"{label}  {i + 1}/{len(pieces)}"
-            mx, my, mh = self._templatePointAt(
-                piece, sum(self._stepLength(s) for s in piece) / 2,
-                (-minx, -miny), heading)
-            angle = ((mh + 90.0) % 180.0) - 90.0   # keep the text upright
-            with self.saved_context():
-                # stroke=True so lasers that vector-etch by stroke colour
-                # still trace the label.
-                self.text(text, x=mx, y=my, angle=angle, align="middle center",
-                          fontsize=min(0.55 * w, 6.0), color=Color.ETCHING,
-                          stroke=True)
+            fontsize = min(0.55 * w, 6.0)
+            length = sum(self._stepLength(s) for s in piece)
+            # Rough etched-text width: ~0.6 × font size per character.
+            width_of = lambda t: 0.6 * fontsize * len(t)
+            gap = 2.0   # mm between a mark and the piece end / the label
+            marks = self._templateEndMarks(i, len(pieces))
+            etch = []
+            room = length - 2 * gap
+            if room >= width_of(marks[0]) + width_of(marks[1]) + gap:
+                # End marks first: they are what shows the assembly order.
+                etch += [(marks[0], gap + width_of(marks[0]) / 2),
+                         (marks[1], length - gap - width_of(marks[1]) / 2)]
+                room -= width_of(marks[0]) + width_of(marks[1]) + 2 * gap
+            if not etch or room >= width_of(text):
+                etch.append((text, length / 2))
+            for t, at in etch:
+                mx, my, mh = self._templatePointAt(piece, at, (-minx, -miny), heading)
+                angle = ((mh + 90.0) % 180.0) - 90.0   # keep the text upright
+                with self.saved_context():
+                    # stroke=True so lasers that vector-etch by stroke colour
+                    # still trace the label.
+                    self.text(t, x=mx, y=my, angle=angle, align="middle center",
+                              fontsize=fontsize, color=Color.ETCHING, stroke=True)
             self.move(tw, th, move)

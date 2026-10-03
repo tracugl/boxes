@@ -350,7 +350,10 @@ against both edges and it holds the module's exact curve while you pin it down.
   true to size.
 - **Segments:** `--track_template_segments` (default 1) splits each template into
   equal-length pieces, e.g. to fit a smaller laser bed. Each piece is etched
-  with its radius, the gauge and `i/N`.
+  with its radius, the gauge and `i/N`, plus a mark at each end: **EDGE** on the
+  two ends that sit at the module edges, and a matching letter on both sides of
+  every cut. With 3 pieces that reads `EDGE … 1/3 … A`, `A … 2/3 … B`,
+  `B … 3/3 … EDGE`, so matching letters go together.
 - It is cut from the module's own `--thickness`, with no handle.
 
 | Parameter | Meaning | N suggestion |
