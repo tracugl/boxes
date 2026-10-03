@@ -1481,7 +1481,8 @@ class HexmoHexagon(HexmoBigHoleMixin, HexmoTrackGuideMixin, HexmoTrackTemplateMi
         Routes that leave from the same point, like a turnout's two routes,
         share a window.  Facing the wall from outside, anticlockwise is to the
         right, so when the windows are not symmetric the plate is etched
-        "edge N side ->", naming the neighbouring edge on that side.
+        "edge N side ->", naming the neighbouring edge on that side ("long
+        edge side ->" for the trapezoid's edge 3).
 
         @param s           - Wall reference length (``side_orig``).
         @param l           - Wall body height.
@@ -1501,9 +1502,13 @@ class HexmoHexagon(HexmoBigHoleMixin, HexmoTrackGuideMixin, HexmoTrackTemplateMi
                 by_edge.setdefault(edge, set()).add(position)
         for edge in sorted(by_edge):
             neighbour = 6 if edge == 1 else edge - 1   # anticlockwise neighbour
+            # On the trapezoid, edge 3's anticlockwise neighbour (edge 2 on the
+            # full hexagon) is cut away: the long join edge is there instead.
+            side = ("long edge" if isTrapezoid and neighbour not in self._TRAPEZOID_EDGES
+                    else f"edge {neighbour}")
             self.drawTrackGuide(s, l, move="right", offsets=sorted(by_edge[edge]),
                                 label=f"track guide edge {edge}",
-                                arrow=f"edge {neighbour} side ->")
+                                arrow=f"{side} side ->")
 
     # Polyline steps per arc: plenty for a smooth engraved curve.
     _ARC_STEPS = 64

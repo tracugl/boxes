@@ -282,3 +282,57 @@ class TestGuides:
     def test_without_routes_the_single_guide_is_unchanged(self) -> None:
         calls = self._guides(["--trapezoid=1"])
         assert calls == [{"move": "right"}]
+
+
+class TestTrapezoidOffsets:
+    """Per-end offsets on the trapezoid (BOX-49): the helix ring's M1 and M2–M5."""
+
+    M1 = "3:17.5-5:17.5,3:-17.5-5:-35"      # main line out, spur moving in
+    M2 = "3:17.5-5:17.5,3:-35-5:-35"        # main line out, spur steady inside
+
+    def _render(self, routes):
+        box = make_box(["--trapezoid=1", f"--track_routes={routes}", "--track_guide=1",
+                        "--track_template=1"])
+        texts, guides, templates = [], [], []
+        ot, og, otp = box.text, box.drawTrackGuide, box.drawTrackTemplate
+        box.text = lambda t, *a, **kw: (texts.append(t), ot(t, *a, **kw))[1]
+        box.drawTrackGuide = lambda *a, **kw: (guides.append(kw), og(*a, **kw))[1]
+        box.drawTrackTemplate = lambda route, label, *a, **kw: (
+            templates.append((label, route)), otp(route, label, *a, **kw))[1]
+        box.open()
+        box.render()
+        box.close()
+        return sorted(t for t in texts if t.endswith(" mm")), guides, templates
+
+    def test_m1_spur_shift_geometry(self) -> None:
+        main = route_geometry(3, 17.5, 5, 17.5, APOTHEM, LEAD)
+        spur = route_geometry(3, -17.5, 5, -35.0, APOTHEM, LEAD)
+        assert main.radius == pytest.approx(RHO + 17.5)
+        assert spur.radius == pytest.approx(227, abs=1)
+        # Ends: edge 3's curve-centre side is edge 4 (clockwise), so −17.5
+        # is 17.5 towards edge 4; at edge 5 edge 4 is anticlockwise.
+        assert spur.segments[0].p0 == pytest.approx(edge_point(3, -17.5))
+        assert spur.segments[-1].p1 == pytest.approx(edge_point(5, 35.0))
+        assert min(spur.segments[0].length, spur.segments[-1].length) == pytest.approx(LEAD)
+
+    def test_m1_labels_guides_and_templates(self) -> None:
+        labels, guides, templates = self._render(self.M1)
+        assert labels == ["227 mm", "297 mm"]
+        by_edge = {g["label"]: (sorted(g["offsets"]), g["arrow"]) for g in guides}
+        assert by_edge["track guide edge 3"][0] == pytest.approx([-17.5, 17.5])
+        assert by_edge["track guide edge 5"][0] == pytest.approx([-17.5, 35.0])
+        assert by_edge["track guide edge 5"][1] == "edge 4 side ->"
+        assert sorted(label for label, _ in templates) == ["R227 9mm", "R297 9mm"]
+
+    def test_uneven_pair_without_a_shift(self) -> None:
+        labels, guides, _ = self._render(self.M2)
+        assert labels == ["245 mm", "297 mm"]
+        by_edge = {g["label"]: sorted(g["offsets"]) for g in guides}
+        # Edge 3: main out (anticlockwise), spur in (clockwise); edge 5 mirrored.
+        assert by_edge["track guide edge 3"] == pytest.approx([-35.0, 17.5])
+        assert by_edge["track guide edge 5"] == pytest.approx([-17.5, 35.0])
+
+    def test_edge_3_arrow_names_the_long_edge(self) -> None:
+        _, guides, _ = self._render(self.M2)
+        edge3 = next(g for g in guides if g["label"] == "track guide edge 3")
+        assert edge3["arrow"] == "long edge side ->"

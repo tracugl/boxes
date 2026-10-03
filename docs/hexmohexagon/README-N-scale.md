@@ -304,7 +304,11 @@ it is to the right of travel from `A` to `B`. Leave the offsets off (`4-6`) to
 draw the `--track_line_count` family along that route. Give one offset and it
 applies to both ends. Routes that start at the same edge and offset share their
 lead-in, so the second one is drawn as a turnout's diverging route. On the
-trapezoid only edges 3, 4 and 5 exist, so its only route is `5-3`.
+trapezoid only edges 3, 4 and 5 exist, so its routes all run `3-5` (edge 4 is
+next to both), but each can still have its own offset at each end. The helix
+ring's M1 carries the main line 17.5 mm out and a spur that moves in from 17.5 to
+35 mm inside, `3:17.5-5:17.5,3:-17.5-5:-35` (R297 and R227); M2–M5 carry the
+same main line and the spur at a steady 35 mm in, `3:17.5-5:17.5,3:-35-5:-35`.
 
 With `--track_guide=1`, each edge the routes cross gets its own plate, labelled
 `track guide edge N`. Its windows sit where the routes cross that edge, in mm
