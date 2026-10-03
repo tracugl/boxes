@@ -85,7 +85,7 @@ The 120° miter (`t√3`) is often too large for trapezoid/half-hex panels — u
 
 ### Rebuilding the image
 
-When the image needs a full rebuild (e.g. after changing `requirements.txt` or `scripts/Dockerfile`):
+When the image needs a full rebuild (e.g. after changing dependencies in `pyproject.toml` or `scripts/Dockerfile`):
 
 ```bash
 docker compose down -v            # -v removes the anonymous /app/env volume
@@ -94,3 +94,21 @@ docker compose up
 ```
 
 The `-v` flag is critical — without it the old venv volume is reused and dependency changes in the new image are silently ignored.
+
+### Test tools after a rebuild
+
+The image installs only the runtime dependencies (`pip install .`). The test tools (`pytest`, `lxml`) belong to the `dev` dependency group in `pyproject.toml`, which the image doesn't install. They live in the same `/app/env` volume, so `docker compose down -v` wipes them. Reinstall them once after every rebuild:
+
+```bash
+docker compose exec web /app/env/bin/pip install pytest lxml
+```
+
+(Upstream's documented way is `pip install --group dev`, but that needs pip ≥ 25.1 and the image's venv has an older pip.)
+
+Run the Hexmo tests inside the container:
+
+```bash
+docker compose exec web /app/env/bin/python -m pytest tests/ -q -k hexmo --ignore=tests/test_svg.py -W ignore::PendingDeprecationWarning
+```
+
+`-W ignore::PendingDeprecationWarning` hides the flood of affine `*` → `@` matmul warnings from upstream's `boxes/drawing.py`; without it a run takes ~3× longer. `tests/test_svg.py` compares every generator byte-for-byte with upstream's reference SVGs, so it fails on this fork because of the fork's colour scheme (red `OUTER_CUT` etc.), not geometry.
