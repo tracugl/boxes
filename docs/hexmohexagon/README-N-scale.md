@@ -197,6 +197,7 @@ full hexagon — see **Trapezoid vs. full hexagon** below.
 | `--track_middle` | full hexagon: straight edge 4 → 1 (diameter) | `1` to draw it |
 | `--track_right` | full hexagon: curve edge 4 → 2 | `1` to draw it |
 | `--track_top` | full hexagon: curve edge 6 → 2 | `1` to draw it |
+| `--track_routes` | any routes, each with its own offset at each end (replaces the four above) | e.g. `1:-17.5-5:17.5` |
 
 `--track_lines` is the master switch. With it on, `--draw_center` etches the bare
 centreline(s) and `--draw_track` etches where the actual track footprint sits
@@ -280,6 +281,51 @@ curl "http://localhost:4455/HexmoHexagon?render=1\
 &bottom=spoke&top=closed&corner_holes=g2&big_hole_shape=rounded_rect\
 &track_lines=1&draw_center=1&draw_track=1&track_width=17&track_lead_in=26\
 &track_left=1&track_right=1&track_middle=1" -o hexmo_n_full.svg
+```
+
+### Any route: `--track_routes`
+
+The four toggles above only cover the routes from edge 4 plus the top curve.
+`--track_routes` draws any set of routes instead (it replaces the toggles, and
+the trapezoid's own curve, when set). Each entry is `A:offset-B:offset`,
+comma-separated:
+
+- **Edges two apart** (e.g. `1-5`) get a curve: a straight lead-in, one 60° arc
+  and a lead-out. With equal offsets it is the usual concentric curve
+  (`279.8 + offset`). With different offsets it is the largest arc that still
+  keeps `--track_lead_in` straight at both ends; the shorter end gets exactly the
+  lead-in and the other end a longer straight. The etched label gives the radius.
+- **Opposite edges** (e.g. `4-1`) get a straight, or an S-curve between the two
+  lead-ins if the offsets differ.
+- **Adjacent edges** are refused: the curve would be far too tight.
+
+On a curve a positive offset is towards the outside of that curve; on a straight
+it is to the right of travel from `A` to `B`. Leave the offsets off (`4-6`) to
+draw the `--track_line_count` family along that route. Give one offset and it
+applies to both ends. Routes that start at the same edge and offset share their
+lead-in, so the second one is drawn as a turnout's diverging route. On the
+trapezoid only edges 3, 4 and 5 exist, so its only route is `5-3`.
+
+With `--track_guide=1`, each edge the routes cross gets its own plate, labelled
+`track guide edge N`. Its windows sit where the routes cross that edge, in mm
+anticlockwise from the edge midpoint. Facing the wall from outside, anticlockwise
+is to the right, so an asymmetric plate is etched `edge M side ->`, naming the
+neighbour on that side. With `--track_template=1` each different route gets a
+template; mirror images and reversals share one.
+
+**Example: the helix ring's M6.** Two tracks enter at edge 1, 17.5 mm either side
+of its centre. Each becomes one leg of a reversing loop, curving to edge 5 or
+edge 3 and keeping its 17.5 mm on the inside of its curve (R262). A spur turnout
+leaves the edge 1 → 5 leg and crosses over, ending 17.5 mm on the outside of that
+curve at edge 5 (R227). There is no edge 3 → 5 track.
+
+```bash
+# Full hexagon: helix-ring M6 (N-scale params)
+curl "http://localhost:4455/HexmoHexagon?render=1\
+&radius=220&h=100&thickness=3&edge_width=22&spoke_width=60&support_length=60\
+&bottom=spoke&top=closed&corner_holes=g2&big_hole_shape=rounded_rect\
+&track_lines=1&draw_track=1&track_width=17&track_lead_in=26&track_gauge=9\
+&track_routes=1:-17.5-5:-17.5,3:-17.5-1:-17.5,1:-17.5-5:17.5" -o hexmo_n_m6.svg
 ```
 
 ### Track-laying guide plate
