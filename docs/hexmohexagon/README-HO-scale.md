@@ -98,7 +98,7 @@ by the ready-made URLs below:
 | `--track_width` | **30** | HO track footprint |
 | `--track_lead_in` | **23** | straight run at each edge crossing (default 30) |
 | `--track_guide` | **1** | the track-laying guide plate (clearance 30, the default) |
-| `--labels` | **0** | no part-name annotations in the SVG (the track labels stay on) |
+| `--labels` / `--reference` | **0** / **0** | no part-name annotations and no 100 mm scale-reference bar in the SVG (the track labels stay on) |
 
 The other track-guide extras stay at their defaults: `--track_lines`,
 `--draw_track`, `--track_label` and `--track_crossing` on, `--draw_center` off.
@@ -155,14 +155,14 @@ finger fit), so use the preset rather than the bare form.
 `&render=1` to jump straight to the SVG):
 
 ```
-http://localhost:4455/HexmoHexagon?radius=500&h=100&thickness=6&edge_width=60&spoke_width=120&support_length=150&bottom=spoke&top=closed&trapezoid=1&corner_holes=g2&gap_holes=g2&big_hole_shape=rounded_rect&FingerJoint_play=0.1&FingerJoint_extra_length=0.05&track_lines=1&track_line_count=2&track_spacing=80&draw_track=1&track_width=30&track_lead_in=23&track_guide=1&labels=0
+http://localhost:4455/HexmoHexagon?radius=500&h=100&thickness=6&edge_width=60&spoke_width=120&support_length=150&bottom=spoke&top=closed&trapezoid=1&corner_holes=g2&gap_holes=g2&big_hole_shape=rounded_rect&FingerJoint_play=0.1&FingerJoint_extra_length=0.05&track_lines=1&track_line_count=2&track_spacing=80&draw_track=1&track_width=30&track_lead_in=23&track_guide=1&labels=0&reference=0
 ```
 
 **HO HexmoRectangle** — the shared mating dimensions and track settings, with
 3 lanes and 3 compartments:
 
 ```
-http://localhost:4455/HexmoRectangle?radius=500&h=100&thickness=6&spoke_width=120&slot_tolerance=1&num_columns=3&num_rows=3&corner_holes=g2&gap_holes=g2&big_hole_shape=rounded_rect&FingerJoint_play=0.1&FingerJoint_extra_length=0.05&track_lines=1&track_line_count=2&track_spacing=80&draw_track=1&track_width=30&track_lead_in=23&track_guide=1&labels=0
+http://localhost:4455/HexmoRectangle?radius=500&h=100&thickness=6&spoke_width=120&slot_tolerance=1&num_columns=3&num_rows=3&corner_holes=g2&gap_holes=g2&big_hole_shape=rounded_rect&FingerJoint_play=0.1&FingerJoint_extra_length=0.05&track_lines=1&track_line_count=2&track_spacing=80&draw_track=1&track_width=30&track_lead_in=23&track_guide=1&labels=0&reference=0
 ```
 
 For the **N-scale** bookmark (radius 220, the shrunk frame/spoke/support values

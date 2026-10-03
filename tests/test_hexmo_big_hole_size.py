@@ -221,3 +221,12 @@ class TestValidation:
                     if l.strip().startswith("<path")]
 
         assert render(circle + ["--big_hole_width=40"]) == render(circle)
+
+
+def test_preferred_n_pass_through_lines_up_hex_to_rect() -> None:
+    """The preferred N modules (README-N-scale.md): one 50 × 70 tunnel, end to end."""
+    shared = ["--radius=220", "--thickness=3", "--h=100", "--big_hole_shape=rounded_rect",
+              "--big_hole_width=50", "--big_hole_height=70"]
+    hexa = hex_wall_big_holes(shared + ["--trapezoid=1"])
+    rect = rect_big_holes(shared + ["--num_rows=3", "--num_columns=2"])
+    assert hexa == rect["end"] == rect["div"] == [(0.0, 47.0, 50.0, 70.0)]
