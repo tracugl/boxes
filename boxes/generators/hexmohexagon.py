@@ -26,10 +26,11 @@ import math
 
 from boxes import Boxes, edges, boolarg
 from boxes.Color import *
+from boxes.generators._hexmo_big_holes import HexmoBigHoleMixin
 from boxes.generators._hexmo_track_guide import HexmoTrackGuideMixin
 
 
-class HexmoHexagon(HexmoTrackGuideMixin, Boxes):
+class HexmoHexagon(HexmoBigHoleMixin, HexmoTrackGuideMixin, Boxes):
     """Box with a regular hexagon or half hexagon as the base. """
 
     ui_group = "Box"
@@ -112,6 +113,8 @@ class HexmoHexagon(HexmoTrackGuideMixin, Boxes):
                  "1 = fully round, i.e. back to a circle).  Default 0.3 — on the "
                  "Ø70 mm big holes that is a 10.5 mm corner radius.  Values are "
                  "clamped by rectangularHole, so out-of-range numbers are safe.")
+        # --big_hole_width / --big_hole_height, shared with HexmoRectangle.
+        self._addBigHoleSizeArgs()
         self.argparser.add_argument(
             "--trapezoid", action="store", type=boolarg, default=False,
             help="If true, only draw a half-hexagon.")
@@ -229,28 +232,6 @@ class HexmoHexagon(HexmoTrackGuideMixin, Boxes):
         self._addTrackGuideArgs()
 
         self.n = 6
-
-    def _drawBigHole(self, x, y, r):
-        """Draw one large weight-reduction through-hole centred at (x, y).
-
-        Honours ``--big_hole_shape``: a circle of radius ``r`` by default, or —
-        when ``rounded_rect`` is selected — a square of side ``2·r`` (identical
-        bounding box, so every fit/clearance reservation upstream still holds)
-        with rounded corners.  The corner radius is ``--big_hole_roundness × r``;
-        :meth:`Boxes.rectangularHole` clamps it to at most half the side, so a
-        roundness of 1 degrades gracefully to a circle-like shape and any
-        out-of-range value is safe.
-
-        :param x: hole centre x (mm, callback frame).
-        :param y: hole centre y (mm, callback frame).
-        :param r: radius of the equivalent circular hole (mm).
-        """
-        if self.big_hole_shape == "rounded_rect":
-            corner = max(0.0, self.big_hole_roundness) * r
-            self.rectangularHole(x, y, 2 * r, 2 * r, r=corner,
-                                 center_x=True, center_y=True)
-        else:
-            self.hole(x, y, r)
 
     def drawSupports(self, isTrapezoid=False):
         """Draw rectangular internal support walls, one per half-spoke.
@@ -658,7 +639,7 @@ class HexmoHexagon(HexmoTrackGuideMixin, Boxes):
 
         # Draw the big through-holes along the vertical centre line.
         for y in big_ys:
-            self._drawBigHole(l / 2, y, r1)
+            self._drawBigHole(l / 2, y, r1, along_x=False)
 
         # Fill every gap with sub-groups via _drawGapFeatures.
         # Boundaries: the corner group's inner edge is 3·sp + r2 (top of the
@@ -726,7 +707,7 @@ class HexmoHexagon(HexmoTrackGuideMixin, Boxes):
 
         # Draw the big through-holes along the vertical centre line.
         for y in big_ys:
-            self._drawBigHole(l / 2, y, r1)
+            self._drawBigHole(l / 2, y, r1, along_x=False)
 
         # Fill every gap with sub-groups via _drawGapFeatures — same logic as
         # drawAlignmentHoles.  The "transition zone" gaps near s/2 are naturally

@@ -371,8 +371,11 @@ needs `spoke_width=0`; otherwise the generator stops with an error.
 The short internal dividers cut **the same big holes as the end walls**, at the
 same positions and height, so they line up along the module (handy as a wiring
 run). A big hole that would cross a long-support slot is left out of both, so
-with 3 rows at `radius=220` the centre hole is dropped rather than cut through
-the joint.
+with 3 rows at `radius=220` the full-size 70 mm centre hole is dropped rather
+than cut through the joint. To keep 3 rows *and* the pass-through, narrow it
+with `--big_hole_shape=rounded_rect` and `--big_hole_width` of up to **57 mm**
+(the supports sit at ±35.2 mm); the hole stays centred and keeps its 70 mm
+height.
 
 ---
 
@@ -420,6 +423,14 @@ choice, applied to every big hole on both generators.
   (back to a circle). At the default `0.3`, the Ø70 mm big holes of a `h=100`
   box get a 10.5 mm corner radius. Out-of-range values are clamped, so they never
   error.
+- `--big_hole_width` / `--big_hole_height` (default `0` = automatic) — for
+  `rounded_rect`, the hole's width (along the wall) and height (up the wall) in
+  mm. A value shrinks **every** big hole around its own centre, on both
+  generators, so the holes still line up module to module. They double as the
+  under-board train pass-through, so size them to your trains. Positions and
+  counts never change. A narrower hole can fit where the full-size one is
+  dropped, e.g. between a HexmoRectangle's long supports. Values above the
+  automatic size are refused with an error.
 
 The big-hole **size** follows the box height: diameter = `h − 30` mm (Ø70 at the
 default `h=100`), identical on HexmoHexagon and HexmoRectangle, so the holes on
