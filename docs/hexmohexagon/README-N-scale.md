@@ -596,14 +596,34 @@ A slot that reaches a deck edge runs 1 mm past it, so it opens cleanly. The wall
 below must have a `--track_openings` notch there at least as wide as the slot,
 which also leaves that deck edge plain; otherwise it is refused. A slot that
 crosses a support slot is refused too, because the support wall would block the
-track underneath. Use `--supports 0`, or a `--support_length` that stops short
-of it. The outline is cut with the same burn compensation as other holes.
+track underneath; see the next section. The outline is cut with the same burn
+compensation as other holes.
+
+### Choosing and placing supports (`--support_edges`, `--support_position`)
+
+The support walls stand under the deck, floor to deck, one per half-spoke (the
+line from the centre to an edge's midpoint), centred half the apothem out. A
+track running below the deck must not pass through one.
+
+- `--support_edges` — which half-spokes get a support, by the edge each points
+  to, e.g. `2,4,6`. Default: all of them (1–6 on the hexagon; 4, or 3, 4, 5 with
+  `--trapezoid_side_supports`, on the trapezoid). When set it overrides
+  `--trapezoid_side_supports`.
+- `--support_position` — distance (mm) from the centre to the middle of every
+  support. Default: half the apothem (about 94 mm). Refused if a support would
+  reach the centre or the side wall.
+
+The support walls and their slots in the deck and bottom panel all follow both,
+so they still fit. For the helix ring: the trapezoids (M1–M5) use
+`--support_position 125`, moving the support out past the spur. M6 keeps the
+three supports clear of its spur, `--support_edges 2,4,6`.
 
 ```bash
 # Helix ring M1 at h=80: main line 17.5 mm out, the spur moving in from 17.5 to
-# 35 mm inside, its notches and its slot (supports off: see above).
+# 35 mm inside, its notches and its slot, with the support moved out past it.
 curl "http://localhost:4455/HexmoHexagon?render=1&radius=220&thickness=3&h=80\
-&trapezoid=1&supports=0&track_routes=3:17.5-5:17.5,3:-17.5-5:-35\
+&trapezoid=1&support_length=55&support_position=125\
+&track_routes=3:17.5-5:17.5,3:-17.5-5:-35\
 &track_openings=3:-17.5:72.5:26,5:35:65.2:26\
 &deck_slots=3:-17.5-5:-35/26" -o hexmo_n_m1_slot.svg
 ```
