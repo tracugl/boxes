@@ -62,23 +62,23 @@ radius = (track_radius + √3 × L) / 1.5 + t / cos 30°
 
 ---
 
-## N-scale target: R282 curve
+## N-scale target: 280 mm curve
 
-282 mm is the standard N set-track curve (Kato Unitrack R282).
+280 mm is essentially the standard N set-track curve (Kato Unitrack R282).
 
 ```
-radius = (282 + √3 × 25) / 1.5 + 3 / cos 30°
-       = 216.9 + 3.5  ≈  220.3 mm  →  radius = 220
+radius = (280 + √3 × 26) / 1.5 + 3 / cos 30°
+       = 216.7 + 3.5  ≈  220.2 mm  →  radius = 220
 ```
 
-With `radius=220`, `thickness=3` and `track_lead_in=25`, the inner corner radius is
-216.5 mm and the etched curve is `1.5 × 216.5 − √3 × 25 = 281.5 mm`; the
-`--track_label` on the deck reads **282 mm**. These are the preferred N-scale
+With `radius=220`, `thickness=3` and `track_lead_in=26`, the inner corner radius is
+216.5 mm and the etched curve is `1.5 × 216.5 − √3 × 26 = 279.8 mm`; the
+`--track_label` on the deck reads **280 mm**. These are the preferred N-scale
 settings used throughout this file and by the ready-made URLs below:
 
 | Parameter | Value | Why |
 |---|---|---|
-| `--radius` | **220** | outside corner radius for the R282 curve (see above) |
+| `--radius` | **220** | outside corner radius for the 280 mm curve (see above) |
 | `--h` (height) | **100** | module/board depth; independent of track radius |
 | `--thickness` | **3** | 3 mm ply suits the lighter N module |
 | `--outside` | **on** (default) | `radius` is the outside measurement |
@@ -87,13 +87,16 @@ settings used throughout this file and by the ready-made URLs below:
 | `--support_length` | **60** | internal support walls |
 | `--trapezoid` | **1** | half-hexagon module |
 | `--corner_holes` | **g2** | fewer pierces, see [Reducing laser cut time](#reducing-laser-cut-time) |
+| `--gap_holes` | **g2** | fewer pierces in the gap-fill clusters too |
 | `--big_hole_shape` | **rounded_rect** | roundness `0.3` (default), see [Big-hole shape](#big-hole-shape) |
+| `--big_hole_width` × `--big_hole_height` | **50 × 70** | the under-board train pass-through, narrowed so it fits between a 3-lane HexmoRectangle's long supports (see [Straight modules](#straight-modules-hexmorectangle)); the same size on every module so the holes line up |
 | `--FingerJoint_play` | **0.2** (default) | finger-joint clearance, a multiple of thickness (0.6 mm at 3 mm) |
 | `--FingerJoint_extra_length` | **0.1** | fingers stand 0.3 mm proud, to sand flush |
 | `--track_width` | **17** | N track footprint |
-| `--track_lead_in` | **25** | straight run at each edge crossing |
+| `--track_lead_in` | **26** | straight run at each edge crossing |
 | `--track_spacing` | **35** | centre-to-centre, if you add a second track |
 | `--track_guide` | **1** | the track-laying guide plate (clearance 30, the default) |
+| `--labels` / `--reference` | **0** / **0** | no part-name annotations and no 100 mm scale-reference bar in the SVG (the track labels stay on) |
 
 The track-guide extras stay at their defaults: `--track_lines`, `--draw_track`,
 `--track_label` and `--track_crossing` on, plus `--draw_center=1` to etch the
@@ -125,7 +128,8 @@ curl "http://localhost:4455/HexmoHexagon?render=1\
 &edge_width=22&spoke_width=60&support_length=60\
 &bottom=spoke&top=closed&trapezoid=1\
 &corner_holes=g2&big_hole_shape=rounded_rect&FingerJoint_extra_length=0.1\
-&track_width=17&track_lead_in=25" -o hexmo_n.svg
+&gap_holes=g2&big_hole_width=50&big_hole_height=70\
+&track_width=17&track_lead_in=26" -o hexmo_n.svg
 ```
 
 ---
@@ -141,17 +145,15 @@ N-scale values, ready to review, tweak, or render.
 `&render=1` to jump straight to the SVG):
 
 ```
-http://localhost:4455/HexmoHexagon?radius=220&h=100&thickness=3&edge_width=22&spoke_width=60&support_length=60&bottom=spoke&top=closed&trapezoid=1&corner_holes=g2&big_hole_shape=rounded_rect&FingerJoint_extra_length=0.1&track_lines=1&draw_center=1&draw_track=1&track_width=17&track_lead_in=25&track_spacing=35&track_guide=1
+http://localhost:4455/HexmoHexagon?radius=220&h=100&thickness=3&edge_width=22&spoke_width=60&support_length=60&bottom=spoke&top=closed&trapezoid=1&corner_holes=g2&gap_holes=g2&big_hole_shape=rounded_rect&big_hole_width=50&big_hole_height=70&FingerJoint_extra_length=0.1&track_lines=1&draw_center=1&draw_track=1&track_width=17&track_lead_in=26&track_spacing=35&track_guide=1&labels=0&reference=0
 ```
 
-**N-scale HexmoRectangle** — the shared mating dimensions and track settings,
-with `num_rows=1` (no long internal supports, see
-[Straight modules](#straight-modules-hexmorectangle)). A straight module has no
-frame or support geometry of its own, and its column count auto-selects from the
-radius:
+**N-scale HexmoRectangle** — the shared mating dimensions, track settings and
+50 × 70 mm pass-through, with 3 lanes and 2 compartments (`num_rows=3`,
+`num_columns=2`, see [Straight modules](#straight-modules-hexmorectangle)):
 
 ```
-http://localhost:4455/HexmoRectangle?radius=220&h=100&thickness=3&spoke_width=60&num_rows=1&corner_holes=g2&big_hole_shape=rounded_rect&FingerJoint_extra_length=0.1&track_lines=1&draw_center=1&draw_track=1&track_width=17&track_lead_in=25&track_spacing=35&track_guide=1
+http://localhost:4455/HexmoRectangle?radius=220&h=100&thickness=3&spoke_width=120&slot_tolerance=1&num_columns=2&num_rows=3&corner_holes=g2&gap_holes=g2&big_hole_shape=rounded_rect&big_hole_width=50&big_hole_height=70&FingerJoint_extra_length=0.1&track_lines=1&draw_track=1&track_width=17&track_lead_in=26&track_spacing=35&track_guide=1&labels=0&reference=0
 ```
 
 How to use it:
@@ -188,7 +190,7 @@ full hexagon — see **Trapezoid vs. full hexagon** below.
 | `--draw_center` | etch the centreline arc(s) themselves | `1` (off by default) |
 | `--draw_track` | etch the two track-footprint edges at ± `track_width`/2 | `1` |
 | `--track_width` | physical width of the laid track/roadbed (mm) | `17` |
-| `--track_lead_in` | straight lead-in length at each edge (mm) | `25` (default `30`) |
+| `--track_lead_in` | straight lead-in length at each edge (mm) | `26` (default `30`) |
 | `--track_label` | etch each curve's resulting radius as text | `1` (on by default) |
 | `--track_crossing` | etch a tick where each lead-in meets the curve | `1` (on by default) |
 | `--track_left` | full hexagon: curve edge 4 → 6 | `1` to draw it |
@@ -252,7 +254,7 @@ a flat-top hexagon — 1 top, 2 upper-right, 3 lower-right, 4 bottom, 5 lower-le
 straight (perpendicular to the edge) for that distance, then the curve begins.
 The crossing points stay pinned to the edge midpoints, so the arc shortens to
 keep everything joined — the curve radius becomes `1.5·R − √3·lead_in`. With the
-N-scale settings (`R` = 216.5, lead-in 25) that is the 281.5 mm R282 curve. Set it
+N-scale settings (`R` = 216.5, lead-in 26) that is the 279.8 mm (280 mm) curve. Set it
 to `0` for a pure edge-to-edge arc.
 
 `--track_label` etches that resulting radius at each centreline apex —
@@ -268,7 +270,7 @@ curl "http://localhost:4455/HexmoHexagon?render=1\
 &radius=220&h=100&thickness=3&edge_width=22&spoke_width=60&support_length=60\
 &bottom=spoke&top=closed&corner_holes=g2&big_hole_shape=rounded_rect\
 &trapezoid=1&track_lines=1&track_line_count=1\
-&draw_center=1&draw_track=1&track_width=17&track_lead_in=25" -o hexmo_n_half.svg
+&draw_center=1&draw_track=1&track_width=17&track_lead_in=26" -o hexmo_n_half.svg
 ```
 
 ```bash
@@ -276,7 +278,7 @@ curl "http://localhost:4455/HexmoHexagon?render=1\
 curl "http://localhost:4455/HexmoHexagon?render=1\
 &radius=220&h=100&thickness=3&edge_width=22&spoke_width=60&support_length=60\
 &bottom=spoke&top=closed&corner_holes=g2&big_hole_shape=rounded_rect\
-&track_lines=1&draw_center=1&draw_track=1&track_width=17&track_lead_in=25\
+&track_lines=1&draw_center=1&draw_track=1&track_width=17&track_lead_in=26\
 &track_left=1&track_right=1&track_middle=1" -o hexmo_n_full.svg
 ```
 
@@ -320,7 +322,7 @@ curl "http://localhost:4455/HexmoHexagon?render=1\
 &radius=220&h=100&thickness=3&edge_width=22&spoke_width=60&support_length=60\
 &bottom=spoke&top=closed&corner_holes=g2&big_hole_shape=rounded_rect\
 &trapezoid=1&track_lines=1&track_line_count=1\
-&draw_center=1&draw_track=1&track_width=17&track_lead_in=25\
+&draw_center=1&draw_track=1&track_width=17&track_lead_in=26\
 &track_guide=1&track_guide_clearance=30" -o hexmo_n_half_guide.svg
 ```
 
@@ -338,8 +340,9 @@ where the track enters/leaves the module.
 
 ```bash
 curl "http://localhost:4455/HexmoRectangle?render=1\
-&radius=220&h=100&thickness=3&num_rows=1\
-&track_lines=1&draw_center=1&draw_track=1&track_width=17&track_lead_in=25" -o hexmo_rect_track.svg
+&radius=220&h=100&thickness=3&num_rows=3&num_columns=2\
+&big_hole_shape=rounded_rect&big_hole_width=50&big_hole_height=70\
+&track_lines=1&draw_track=1&track_width=17&track_lead_in=26" -o hexmo_rect_track.svg
 ```
 
 `--track_guide=1` (and `--track_guide_clearance`) works here too, for the two
@@ -351,8 +354,9 @@ the dowels line up.)
 
 ```bash
 curl "http://localhost:4455/HexmoRectangle?render=1\
-&radius=220&h=100&thickness=3&num_rows=1\
-&track_lines=1&draw_center=1&draw_track=1&track_width=17&track_lead_in=25\
+&radius=220&h=100&thickness=3&num_rows=3&num_columns=2\
+&big_hole_shape=rounded_rect&big_hole_width=50&big_hole_height=70\
+&track_lines=1&draw_track=1&track_width=17&track_lead_in=26\
 &track_guide=1" -o hexmo_rect_guide.svg
 ```
 
@@ -360,13 +364,15 @@ curl "http://localhost:4455/HexmoRectangle?render=1\
 
 | Parameter | Meaning | N suggestion |
 |---|---|---|
-| `--num_columns` | compartments along the long axis; N compartments need N−1 short dividers. `0` = auto from radius | `0` (auto) or `2` |
-| `--num_rows` | lanes across the short axis; N lanes need N−1 long internal supports running the full length. Default `3` | `1` |
+| `--num_columns` | compartments along the long axis; N compartments need N−1 short dividers. `0` = auto from radius | `2` |
+| `--num_rows` | lanes across the short axis; N lanes need N−1 long internal supports running the full length. Default `3` | `3`, with the 50 mm-wide pass-through (below) |
 
-At N scale use `num_rows=1`. It leaves out the two long supports, and with them
-their slots in the end walls, so the end wall keeps its centre big hole at
-`radius=220`. The centre spoke runs down the middle lane, so an even `num_rows`
-needs `spoke_width=0`; otherwise the generator stops with an error.
+The preferred N rectangle keeps 3 lanes (two long supports, at ±35.2 mm) and
+narrows the big holes to 50 × 70 mm so the pass-through fits between them, on
+the end walls and the short dividers. `num_rows=1` is the alternative: no long
+supports at all, so even a full-size 70 mm hole fits. The centre spoke runs down
+the middle lane, so an even `num_rows` needs `spoke_width=0`; otherwise the
+generator stops with an error.
 
 The short internal dividers cut **the same big holes as the end walls**, at the
 same positions and height, so they line up along the module (handy as a wiring
