@@ -24,12 +24,15 @@ import copy
 import datetime
 import math
 
-from boxes import Boxes, edges, boolarg
+from boxes import Boxes, edges, boolarg, holeCol, restore
 from boxes.Color import *
 from boxes.generators._hexmo_big_holes import HexmoBigHoleMixin
 from boxes.generators._hexmo_track_guide import HexmoTrackGuideMixin
 from boxes.generators._hexmo_track_template import HexmoTrackTemplateMixin
 from boxes.generators._hexmo_under_track import HexmoUnderTrackMixin
+from boxes.generators._hexmo_deck_slots import (
+    OVERRUN, centreline_points, parse_deck_slots, slot_outline, trim_segments,
+)
 from boxes.generators._hexmo_track_openings import (
     SplitJointEdge, parse_track_openings, rect_circle_gap, wall_and_deck_pieces,
 )
@@ -146,6 +149,16 @@ class HexmoHexagon(HexmoBigHoleMixin, HexmoTrackGuideMixin, HexmoTrackTemplateMi
                  "on that track still fits one thickness under the deck it is a "
                  "closed hole; otherwise a notch open at the top of the wall, "
                  "with the deck's edge left plain over it.  E.g. '5:17.5:92.5:26'.")
+        self.argparser.add_argument(
+            "--deck_slots", action="store", type=str, default="",
+            help="Open slots cut through the deck along a descending track, "
+                 "comma-separated 'route[@from..to][/width]'.  route: as in "
+                 "--track_routes (offsets default 0).  from..to: the stretch in "
+                 "mm along the route from its start, either end optional "
+                 "(default the whole route).  width: default --under_track_width. "
+                 " A slot reaching a deck edge needs a --track_openings notch "
+                 "there, and slots must keep clear of the support slots.  E.g. "
+                 "'1:-17.5-5:17.5@157..'.")
         self.argparser.add_argument(
             "--trapezoid", action="store", type=boolarg, default=False,
             help="If true, only draw a half-hexagon.")
@@ -1278,6 +1291,125 @@ class HexmoHexagon(HexmoBigHoleMixin, HexmoTrackGuideMixin, HexmoTrackTemplateMi
                         "--track_openings: two openings on one wall overlap or come "
                         f"within {clear:g} mm of each other.")
 
+    # Minimum solid material between a deck slot and a support slot.
+    _DECK_SLOT_CLEAR = 2.0
+
+    def _deckSlotPlan(self, r, isTrapezoid, notches):
+        """Solve and check --deck_slots.
+
+        @param r           - Inner hexagon circumradius (the deck's).
+        @param isTrapezoid - True for the half-hexagon deck.
+        @param notches     - Edge → ``[(position, width, depth)]`` wall notches
+                             (see _trackOpeningPlan), where the deck edge is plain.
+        @returns List of ``(segments, width)``: each slot's trimmed centreline
+                 in the deck frame (hex centre, y up) and its width.
+        @throws ValueError - On a malformed entry, an edge the deck lacks, a
+                             slot reaching a deck edge with no notch under it,
+                             or one crossing a support slot.
+        """
+        apothem = r * math.sqrt(3.0) / 2.0
+        plan = []
+        for slot in parse_deck_slots(self.deck_slots, self.under_track_width):
+            name = f"--deck_slots {slot.start}-{slot.end}"
+            if isTrapezoid and not {slot.start, slot.end} <= self._TRAPEZOID_EDGES:
+                raise ValueError(f"{name}: the trapezoid only has edges 3, 4 and 5.")
+            geometry = route_geometry(slot.start, slot.start_offset, slot.end,
+                                      slot.end_offset, apothem, self.track_lead_in)
+            total = sum(seg.length for seg in geometry.segments)
+            lo = 0.0 if slot.lo is None else slot.lo
+            hi = total if slot.hi is None else slot.hi
+            if not (0 <= lo < hi <= total + 1e-6):
+                raise ValueError(f"{name}: the stretch {lo:g}..{hi:g} is not within "
+                                 f"the route's {total:.1f} mm.")
+            # A slot reaching a deck edge runs on past it so it opens cleanly,
+            # and needs the wall below notched (deck edge plain) right there.
+            ends = []
+            if lo <= 1e-6:
+                lo = -OVERRUN
+                ends.append((slot.start, geometry.segments[0].p0))
+            if hi >= total - 1e-6:
+                hi = total + OVERRUN
+                ends.append((slot.end, geometry.segments[-1].p1))
+            for edge, point in ends:
+                position = edge_position(edge, point, apothem)
+                fits = any(abs(position - pos) <= (w - slot.width) / 2 + 1e-6
+                           for pos, w, _ in notches.get(edge, []))
+                if not fits:
+                    raise ValueError(
+                        f"{name} reaches edge {edge} at {position:+.1f} mm, where the "
+                        f"wall has no notch at least {slot.width:g} mm wide; add "
+                        f"--track_openings for it, or stop the slot short of the edge.")
+            segments = trim_segments(geometry.segments, lo, hi)
+            self._checkDeckSlotClearsSupports(r, isTrapezoid, segments, slot.width, name)
+            plan.append((segments, slot.width))
+        return plan
+
+    def _checkDeckSlotClearsSupports(self, r, isTrapezoid, segments, width, name):
+        """Refuse a deck slot that crosses a support's finger slot.
+
+        The supports are walls under the deck along the spoke axes; the deck
+        carries their finger slots (see drawSupportHoles), which a deck slot
+        must not cut through.  A support standing there would also block the
+        track below.
+
+        @throws ValueError - If the slot comes within _DECK_SLOT_CLEAR mm of one.
+        """
+        if not self.supports:
+            return
+        h = r * math.sqrt(3.0) / 2.0
+        sl = self.support_length
+        if isTrapezoid and not self.trapezoid_side_supports:
+            angles = (0.0,)
+        else:
+            angles = (0.0, 60.0, -60.0)
+        centre = centreline_points(segments)
+        reach = width / 2.0 + self.thickness / 2.0 + self._DECK_SLOT_CLEAR
+        for angle in angles:
+            a = math.radians(angle)
+            for sign in ((-1.0,) if isTrapezoid else (-1.0, 1.0)):
+                # Support slot along the spoke axis, h/2 ± sl/2 from the centre.
+                axis = (-sign * math.sin(a), sign * math.cos(a))
+                for k in range(21):
+                    d = h / 2 - sl / 2 + sl * k / 20
+                    p = (axis[0] * d, axis[1] * d)
+                    if min(math.dist(p, q) for q in centre) < reach:
+                        raise ValueError(
+                            f"{name} crosses a support slot (spoke at {angle:+.0f}°, "
+                            f"{h / 2 - sl / 2:.0f}–{h / 2 + sl / 2:.0f} mm from the "
+                            "centre).  A support there would block the track; use "
+                            "--supports 0, or a --support_length that stops short of it.")
+
+    def drawDeckSlots(self, plan, isTrapezoid):
+        """Cut the deck slots (see _deckSlotPlan), from the deck's centre frame.
+
+        @param plan        - ``[(segments, width)]`` from _deckSlotPlan.
+        @param isTrapezoid - True for the half-hexagon deck, whose callback
+                             frame sits one thickness below the true centre
+                             (see drawTrackLines).
+        """
+        if not plan:
+            return
+        with self.saved_context():
+            if isTrapezoid:
+                self.moveTo(0, self.thickness)
+            for segments, width in plan:
+                start, heading, steps = slot_outline(segments, width)
+                self._drawDeckSlotOutline(start, heading, steps)
+
+    @restore
+    @holeCol
+    def _drawDeckSlotOutline(self, start, heading, steps):
+        """Trace one slot outline with the turtle (burn-compensated, like
+        rectangularHole: clockwise, starting one burn width inside the hole)."""
+        forward = math.radians(heading - 90.0)
+        self.moveTo(start[0] + self.burn * math.cos(forward),
+                    start[1] + self.burn * math.sin(forward), heading)
+        for step in steps:
+            if step[0] == "edge":
+                self.edge(step[1])
+            else:
+                self.corner(step[1], step[2])
+
     def drawRouteTrackGuides(self, s, l, r, isTrapezoid):
         """One track-guide plate per edge that --track_routes crosses.
 
@@ -1647,6 +1779,8 @@ class HexmoHexagon(HexmoBigHoleMixin, HexmoTrackGuideMixin, HexmoTrackTemplateMi
             cut = [(o.position, o.width, l - o.height) for o, notch in entries if notch]
             if cut:
                 notches[edge] = cut
+        # Deck slots (--deck_slots), also checked before anything is drawn.
+        slot_plan = self._deckSlotPlan(r, isTrapezoid, notches)
 
         # Register custom finger-joint edge objects.  Each call mutates self.edges
         # as a side effect; the returned settings object is not used afterwards,
@@ -1711,8 +1845,11 @@ class HexmoHexagon(HexmoBigHoleMixin, HexmoTrackGuideMixin, HexmoTrackTemplateMi
             # --track_left/middle/right/top routes selected.  It occupies
             # callback[0]; if support slots are present we splice it into the
             # index-0 slot of the existing support callback list.
-            if is_top and self.track_lines:
-                track_cb = lambda: self.drawTrackLines(r=r, isTrapezoid=isTrapezoid)
+            if is_top and (self.track_lines or slot_plan):
+                def track_cb():
+                    if self.track_lines:
+                        self.drawTrackLines(r=r, isTrapezoid=isTrapezoid)
+                    self.drawDeckSlots(slot_plan, isTrapezoid)
                 if support_cb is not None:
                     support_cb = [track_cb] + support_cb[1:]
                 else:
