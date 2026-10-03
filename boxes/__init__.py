@@ -254,14 +254,12 @@ class ArgparseEdgeType:
 
     def html(self, name, default, translate):
         options = "\n".join(
-            """<option value="%s"%s>%s</option>""" %
-             (e, ' selected="selected"' if e == default else "",
+            """<option value="{}"{}>{}</option>""".format(e, ' selected="selected"' if e == default else "",
               translate("{} {}".format(e, self.names.get(e, "")))) for e in self.edges)
         return """<select name="{}" id="{}" aria-labeledby="{} {}" size="1">\n{}</select>\n""".format(name,  name, name+"_id", name+"_description", options)
 
     def inx(self, name, viewname, arg):
-        return ('        <param name="%s" type="optiongroup" appearance="combo" gui-text="%s" gui-description=%s>\n' %
-                (name, viewname, quoteattr(arg.help or "")) +
+        return ('        <param name="{}" type="optiongroup" appearance="combo" gui-text="{}" gui-description={}>\n'.format(name, viewname, quoteattr(arg.help or "")) +
                 ''.join('            <option value="{}">{} {}</option>\n'.format(
                     e, e, self.names.get(e, ""))
                          for e in self.edges) +
@@ -276,9 +274,8 @@ class BoolArg:
     def html(self, name, default, _):
         if isinstance(default, (str)):
             default = self(default)
-        return """<input name="%s" type="hidden" value="0">
-<input name="%s" id="%s" aria-labeledby="%s %s" type="checkbox" value="1"%s>""" % \
-            (name, name, name, name+"_id", name+"_description",' checked="checked"' if default else "")
+        return """<input name="{}" type="hidden" value="0">
+<input name="{}" id="{}" aria-labeledby="{} {}" type="checkbox" value="1"{}>""".format(name, name, name, name+"_id", name+"_description",' checked="checked"' if default else "")
 
 boolarg = BoolArg()
 
@@ -1241,14 +1238,15 @@ class Boxes:
         * "up" / "down"
         * "left" / "right"
         * "mirror"
+        * "upsidedown"
         * "rotated"
         * "only"
 
         "down" and "left" move before drawing, while "up" and "right" move
         after drawing.
 
-        "mirror" will flip the part along the y-axis; "rotated" draws the
-        parts rotated 90 degrees counter clockwise; when "only" is included
+        "mirror" will flip the part along the y-axis; "upsidedown" will flip the part along the x-axis;
+        "rotated" draws the parts rotated 90 degrees counter clockwise; when "only" is included
         the move is only done when ``before`` is True
 
         :param x: width of part
@@ -1276,6 +1274,7 @@ class Boxes:
             "right": (x, 0, False),
             "only": (0, 0, None),
             "mirror": (0, 0, None),
+            "upsidedown": (0, 0, None),
             "rotated": (0, 0, None),
         }
 
@@ -1288,8 +1287,8 @@ class Boxes:
                 self.ctx.stroke()
 
         for term in terms:
-            if not term in moves:
-                raise ValueError("Unknown direction: '%s'" % term)
+            if term not in moves:
+                raise ValueError(f"Unknown direction: '{term}'")
             mx, my, movebeforeprint = moves[term]
             if movebeforeprint and before:
                 self.moveTo(mx, my)
@@ -1306,10 +1305,13 @@ class Boxes:
                 self.ctx.save()
                 if "rotated" in terms:
                     self.moveTo(x, 0, 90)
-                    x, y = y, x # change back for "mirror"
+                    x, y = y, x # change back for "mirror" and "upsidedown"
                 if "mirror" in terms:
                     self.moveTo(x, 0)
                     self.ctx.scale(-1, 1)
+                if "upsidedown" in terms:
+                    self.moveTo(0, y)
+                    self.ctx.scale(1, -1)
                 self.moveTo(self.spacing / 2.0, self.spacing / 2.0)
         self.ctx.new_part()
 
@@ -1558,7 +1560,7 @@ class Boxes:
                 else:
                     self.moveTo(0, moves[a])
             else:
-                raise ValueError("Unknown alignment: %s" % align)
+                raise ValueError(f"Unknown alignment: {align}")
 
         for line in reversed(text):
             self.ctx.show_text(line, fs=fontsize, align=halign, rgb=color, font=font, stroke=stroke)
@@ -1737,7 +1739,7 @@ class Boxes:
             n = 8
             a = 22.5
         else:
-            raise ValueError("fillHoles - unknown hole style: %s)" % style)
+            raise ValueError(f"fillHoles - unknown hole style: {style})")
 
 # note to myself: ^y  x>
 
@@ -2038,7 +2040,7 @@ class Boxes:
                                 segment_max = 0
                 y += step_y
         else:
-           raise ValueError("fillHoles - unknown hole pattern: %s)" % pattern)
+           raise ValueError(f"fillHoles - unknown hole pattern: {pattern})")
 
     def hexHolesRectangle(self, x, y, settings=None, skip=None):
         """Fills a rectangle with holes in a hex pattern.
@@ -2797,6 +2799,16 @@ class Boxes:
         ext = [ 0.0 ] * 4
         angle = 0
 
+        def _angle_in_sweep(start, sweep, target):
+            """Return True if target angle is part of an angular sweep."""
+            if abs(sweep) >= 360:
+                return True
+            start = start % 360
+            target = target % 360
+            if sweep >= 0:
+                return ((target - start) % 360) <= sweep
+            return ((start - target) % 360) <= -sweep
+
         def checkpoint(ext, x, y):
             ext[0] = min(ext[0], x)
             ext[1] = min(ext[1], y)
@@ -2835,17 +2847,16 @@ class Boxes:
                     centerx = posx + r * math.cos(math.radians(angle-90))
                     centery = posy + r * math.sin(math.radians(angle-90))
 
+                # The arc point angle around the center is rotated by +/-90 deg
+                # relative to the heading angle depending on sweep direction.
+                start = angle - 90 if a > 0 else angle + 90
                 for direction in (0, 90, 180, 270):
-                    if (a > 0 and
-                        angle <= direction and (angle + a) >= direction):
-                        direction -= 90
-                    elif (a < 0 and
-                          angle >= direction and (angle + a) <= direction):
-                        direction -= 90
-                    else:
-                        continue
-                    checkpoint(ext, centerx + r * math.cos(math.radians(direction)), centery + r * math.sin(math.radians(direction)))
-                    #print("%4s %4s %4s %f %f" % (angle, direction+90, angle+a, centerx + r * math.cos(math.radians(direction)), centery + r * math.sin(math.radians(direction))))
+                    if _angle_in_sweep(start, a, direction):
+                        checkpoint(
+                            ext,
+                            centerx + r * math.cos(math.radians(direction)),
+                            centery + r * math.sin(math.radians(direction)),
+                        )
                 angle = (angle + a) % 360
                 if a > 0:
                     posx = centerx + r * math.cos(math.radians(angle-90))
