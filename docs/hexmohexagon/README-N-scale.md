@@ -581,6 +581,30 @@ curl "http://localhost:4455/HexmoHexagon?render=1&radius=220&thickness=3&h=80\
 &trapezoid=1&track_openings=5:17.5:72.5:26,3:-35:65.2:26" -o hexmo_n_m1.svg
 ```
 
+### Deck slots along a descending track (`--deck_slots`)
+
+A track that drops away from the deck runs in an open slot cut through it.
+Each entry is `route[@from..to][/width]`:
+
+- `route` — as in `--track_routes` (`A:offset-B:offset`; offsets default to 0);
+- `@from..to` — the stretch, in mm along the route from its start; leave either
+  end off for the route's end (`@157..`, `@..262`). Default: the whole route;
+- `/width` — default `--under_track_width`.
+
+A slot that reaches a deck edge runs 1 mm past it, so it opens cleanly. The wall
+below must have a `--track_openings` notch there at least as wide as the slot,
+which also leaves that deck edge plain; otherwise it is refused. A slot that
+crosses a support slot is refused too, because the support wall would block the
+track underneath. Use `--supports 0`, or a `--support_length` that stops short
+of it. The outline is cut with the same burn compensation as other holes.
+
+```bash
+# Helix ring M1 at h=80 with its spur slot (supports off: see above).
+curl "http://localhost:4455/HexmoHexagon?render=1&radius=220&thickness=3&h=80\
+&trapezoid=1&supports=0&track_openings=5:17.5:72.5:26,3:-35:65.2:26\
+&deck_slots=5:-17.5-3:-35/26" -o hexmo_n_m1_slot.svg
+```
+
 ---
 
 ## Gotchas
