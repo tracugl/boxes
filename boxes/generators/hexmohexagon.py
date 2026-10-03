@@ -29,6 +29,7 @@ from boxes.Color import *
 from boxes.generators._hexmo_big_holes import HexmoBigHoleMixin
 from boxes.generators._hexmo_track_guide import HexmoTrackGuideMixin
 from boxes.generators._hexmo_track_template import HexmoTrackTemplateMixin
+from boxes.generators._hexmo_under_track import HexmoUnderTrackMixin
 from boxes.generators._hexmo_track_routes import (
     Arc, Line, RouteSpec, edge_position, expand_routes, offset_segments,
     parse_track_routes, route_geometry, route_template_steps,
@@ -36,7 +37,8 @@ from boxes.generators._hexmo_track_routes import (
 )
 
 
-class HexmoHexagon(HexmoBigHoleMixin, HexmoTrackGuideMixin, HexmoTrackTemplateMixin, Boxes):
+class HexmoHexagon(HexmoBigHoleMixin, HexmoTrackGuideMixin, HexmoTrackTemplateMixin,
+                   HexmoUnderTrackMixin, Boxes):
     """Box with a regular hexagon or half hexagon as the base. """
 
     ui_group = "Box"
@@ -121,6 +123,15 @@ class HexmoHexagon(HexmoBigHoleMixin, HexmoTrackGuideMixin, HexmoTrackTemplateMi
                  "clamped by rectangularHole, so out-of-range numbers are safe.")
         # --big_hole_width / --big_hole_height, shared with HexmoRectangle.
         self._addBigHoleSizeArgs()
+        self.argparser.add_argument(
+            "--under_track_edges", action="store", type=str, default="",
+            help="Under-deck track opening: the edges (comma-separated, numbered "
+                 "as for --track_routes) whose side walls get it instead of the "
+                 "centre big hole, e.g. '1'.  A lower track can then run under "
+                 "the deck through those walls.  Each such wall is labelled with "
+                 "its edge.  The trapezoid only has edges 3, 4 and 5.")
+        # --under_track_height / --under_track_width, shared with HexmoRectangle.
+        self._addUnderTrackArgs()
         self.argparser.add_argument(
             "--trapezoid", action="store", type=boolarg, default=False,
             help="If true, only draw a half-hexagon.")
@@ -598,7 +609,7 @@ class HexmoHexagon(HexmoBigHoleMixin, HexmoTrackGuideMixin, HexmoTrackTemplateMi
             self.hole(x_mid, y_bot_r2, r2)  # bottom medium
             self.hole(x_mid, y_top_r2, r2)  # top medium
 
-    def drawAlignmentHoles(self, s, l, text):
+    def drawAlignmentHoles(self, s, l, text, under_track=False):
         """Cut and etch alignment features into a side panel for stacking hexagons.
 
         The corner group-of-8 clusters at both panel ends are always drawn at
@@ -617,9 +628,16 @@ class HexmoHexagon(HexmoBigHoleMixin, HexmoTrackGuideMixin, HexmoTrackTemplateMi
         At radius=300 this produces corner-8 → G2s → G2m → BIG → G2m → G2s
         → corner-8, matching the intended pattern exactly.
 
-        @param s    - Pre-shrink panel height (original side0, before subtracting 2*t).
-        @param l    - Panel width (slant length l from render()).
-        @param text - Unused; kept for API compatibility.
+        With ``under_track`` the centre big hole is replaced by the under-deck
+        track opening (see :mod:`_hexmo_under_track`).  Any other big hole that
+        would come within the minimum clearance of it is dropped too, and the
+        gap filling works around the opening as it does around a big hole.
+
+        @param s           - Pre-shrink panel height (original side0, before subtracting 2*t).
+        @param l           - Panel width (slant length l from render()).
+        @param text        - Unused; kept for API compatibility.
+        @param under_track - Cut the under-deck track opening on this wall.
+        @throws ValueError - From the under-deck opening's checks.
         """
         sp = self._SPACER
         r2 = self._R2
@@ -659,16 +677,31 @@ class HexmoHexagon(HexmoBigHoleMixin, HexmoTrackGuideMixin, HexmoTrackTemplateMi
                 step = available / (n - 1)
                 big_ys = [y_floor + i * step for i in range(n)]
 
+        # Interior features along the wall, as (lower edge, upper edge) spans
+        # in y.  Each big hole spans centre ± r1.
+        features = [(y - r1, y + r1) for y in big_ys]
+        if under_track:
+            # Validate before drawing anything, so an error never leaves half
+            # a wall.  The opening takes the centre big hole's place.
+            self._checkUnderTrackClearsCorners(s)
+            bottom, top = self._underTrackSpan(l)
+            half = self.under_track_width / 2
+            keep_clear = half + r1 + self._UNDER_TRACK_CLEAR
+            big_ys = [y for y in big_ys if abs(y - s / 2) >= keep_clear]
+            features = sorted([(y - r1, y + r1) for y in big_ys]
+                              + [(s / 2 - half, s / 2 + half)])
+            self._drawUnderTrackOpening(s / 2, bottom, top, along_x=False)
+
         # Draw the big through-holes along the vertical centre line.
         for y in big_ys:
             self._drawBigHole(l / 2, y, r1, along_x=False)
 
         # Fill every gap with sub-groups via _drawGapFeatures.
         # Boundaries: the corner group's inner edge is 3·sp + r2 (top of the
-        # medium hole).  Each big hole contributes its outer edge at centre ± r1.
+        # medium hole), and each interior feature contributes its outer edges.
         corner_inner = 3 * sp + r2
-        lo_bounds = [corner_inner]      + [y + r1 for y in big_ys]
-        hi_bounds = [y - r1 for y in big_ys] + [s - corner_inner]
+        lo_bounds = [corner_inner]      + [hi for _, hi in features]
+        hi_bounds = [lo for lo, _ in features] + [s - corner_inner]
         for y_lo, y_hi in zip(lo_bounds, hi_bounds):
             self._drawGapFeatures(l, y_lo, y_hi)
 
@@ -1080,6 +1113,30 @@ class HexmoHexagon(HexmoBigHoleMixin, HexmoTrackGuideMixin, HexmoTrackTemplateMi
                 self.moveTo(0, self.thickness)
             for geometry in geometries:
                 self._drawTrackRoute(geometry)
+
+    def _underTrackEdges(self, isTrapezoid):
+        """Edges whose side walls get the under-deck track opening.
+
+        @param isTrapezoid - True for the half-hexagon (edges 3, 4, 5 only).
+        @returns Sorted list of edge numbers (empty when the option is unset).
+        @throws ValueError - On anything but comma-separated edge numbers 1–6,
+                             or an edge the trapezoid does not have.
+        """
+        text = self.under_track_edges.strip()
+        if not text:
+            return []
+        edges = set()
+        for item in text.split(","):
+            item = item.strip()
+            if not item.isdigit() or not 1 <= int(item) <= 6:
+                raise ValueError(
+                    f"--under_track_edges: {item!r} is not an edge number 1–6.")
+            edges.add(int(item))
+        if isTrapezoid and not edges <= self._TRAPEZOID_EDGES:
+            raise ValueError(
+                "--under_track_edges: the trapezoid only has edges 3, 4 and 5 "
+                f"(got {', '.join(str(e) for e in sorted(edges))}).")
+        return sorted(edges)
 
     def drawRouteTrackGuides(self, s, l, r, isTrapezoid):
         """One track-guide plate per edge that --track_routes crosses.
@@ -1564,9 +1621,27 @@ class HexmoHexagon(HexmoBigHoleMixin, HexmoTrackGuideMixin, HexmoTrackTemplateMi
         # callback origin sits t to the left of where it was before trimming,
         # so shifting t rightward (−y in local coords) restores centre alignment
         # when new and old panels are stacked and centred.
-        def draw_aligned_holes():
+        def draw_aligned_holes(under_track=False):
             self.moveTo(0, -self.thickness)
-            self.drawAlignmentHoles(side_orig, l, "A")
+            if under_track:
+                self.drawAlignmentHoles(side_orig, l, "A", under_track=True)
+            else:
+                # The plain call, unchanged, so wrappers of drawAlignmentHoles
+                # with the original signature (e.g. test spies) keep working.
+                self.drawAlignmentHoles(side_orig, l, "A")
+
+        # Standard walls in drawing order, as (edge, under_track): the walls
+        # carrying the under-deck track opening first (labelled with their
+        # edge, since they are no longer interchangeable), then plain ones.
+        under_edges = self._underTrackEdges(isTrapezoid)
+        n_standard = 3 if isTrapezoid else n
+        standard_walls = ([(e, True) for e in under_edges]
+                          + [(None, False)] * (n_standard - len(under_edges)))
+
+        def draw_standard_wall(edge, under_track):
+            self.polygonWall(borders0, edge=e0, correct_corners=False, move="right",
+                             callback=[None, lambda: draw_aligned_holes(under_track)],
+                             label=f"edge {edge}" if under_track else "")
 
         # Alignment-hole callback for the trapezoid long back wall.
         # The hole pattern is always laid over the full 2*side_orig reference and
@@ -1622,15 +1697,13 @@ class HexmoHexagon(HexmoBigHoleMixin, HexmoTrackGuideMixin, HexmoTrackTemplateMi
                              callback=[None, draw_aligned_holes_long])
 
             # Three standard-width walls (right slant, front short, left slant).
-            for _ in range(3):
-                self.polygonWall(borders0, edge=e0, correct_corners=False, move="right",
-                                 callback=[None, draw_aligned_holes])
+            for edge, under_track in standard_walls:
+                draw_standard_wall(edge, under_track)
 
         else:
             # Even number of sides (n=6): all panels use the stepped-tab profile.
-            for _ in range(n):
-                self.polygonWall(borders0, edge=e0, correct_corners=False, move="right",
-                                 callback=[None, draw_aligned_holes])
+            for edge, under_track in standard_walls:
+                draw_standard_wall(edge, under_track)
 
         # Optional track-laying jig.  It fits any standard wall, so it takes
         # the standard-wall hole frame (side_orig, l), never the trapezoid

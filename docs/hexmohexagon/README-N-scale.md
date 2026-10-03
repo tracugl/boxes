@@ -529,6 +529,29 @@ The big-hole **size** follows the box height: diameter = `h − 30` mm (Ø70 at 
 default `h=100`), identical on HexmoHexagon and HexmoRectangle, so the holes on
 mating walls line up at any height.
 
+### Under-deck track opening
+
+The centre big hole sits halfway up the wall, which suits a train on the floor.
+For a lower track that runs just *under the deck* (the helix ring's descending
+spur), chosen walls get a rectangular opening instead, on the wall's centre line:
+
+- its **top** is one material thickness under the deck underside;
+- its **bottom** is the track height, `--under_track_height` mm above the floor
+  panel. `0` (default) puts it as high as still leaves 43 mm for the track and a
+  40 mm train, i.e. 46 mm under the deck;
+- its **width** along the wall is `--under_track_width` (default `30`).
+
+On HexmoHexagon, `--under_track_edges` lists the edges whose side walls get it
+(e.g. `1`; the trapezoid only has edges 3, 4 and 5). Those walls are labelled
+with their edge, since they are no longer interchangeable. On HexmoRectangle,
+`--under_track=1` cuts it through both end walls and every short divider, so the
+track can run from end to end. Both measure from the deck, so the openings of
+joined modules line up. The opening keeps 5 mm clear of every other hole; other
+big holes that would come closer are left out. A width that reaches the corner
+hole groups, a track height too close to the floor or under the deck, or a long
+support crossing the opening (HexmoRectangle with an even `--num_rows`) is
+refused with an error.
+
 ---
 
 ## Gotchas
