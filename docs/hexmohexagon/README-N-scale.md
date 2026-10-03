@@ -329,6 +329,44 @@ curl "http://localhost:4455/HexmoHexagon?render=1\
 If a window wouldn't fit on the plate (for example a very wide `--track_spacing`),
 the generator stops with an error instead of drawing a guide that falls apart.
 
+### Track-laying template (Tracksetta-style)
+
+Commercial track-setting templates come in fixed radii that don't match these
+modules, so the generators cut their own. `--track_template=1` adds a flat strip
+exactly `--track_gauge` wide that sits **between the rails**. Push flexible track
+against both edges and it holds the module's exact curve while you pin it down.
+
+- **Shape:** it follows the etched track centreline: lead-in straight, the 60°
+  curve, lead-in straight. Its ends sit where the track crosses the module
+  edges. With the N-scale settings it is the 280 mm curve, 345 mm long (centreline) in one piece.
+- **One per track:** a double-track module gets one template per track, at each
+  track's radius. On the full hexagon every curve route (left/right/top) shares
+  the same radii, so one set covers them; `--track_middle` adds a straight.
+  HexmoRectangle cuts one straight the length of its track.
+- **Width:** `--track_gauge` is the distance between the inside faces of the rails,
+  **9 mm** for N (`--track_width` is the sleeper footprint, not the
+  gauge). `--track_template_clearance` (default 0) narrows it slightly so it
+  lifts out of laid track easily. Laser burn is compensated, so the strip is cut
+  true to size.
+- **Segments:** `--track_template_segments` (default 1) splits each template into
+  equal-length pieces, e.g. to fit a smaller laser bed. Each piece is etched
+  with its radius, the gauge and `i/N`.
+- It is cut from the module's own `--thickness`, with no handle.
+
+| Parameter | Meaning | N suggestion |
+|---|---|---|
+| `--track_template` | add the template(s) | `1` |
+| `--track_gauge` | rail gauge, inside faces (mm) | `9` |
+| `--track_template_clearance` | taken off the width (mm) | `0` |
+| `--track_template_segments` | pieces per template | `1` (or `2`–`3` for a small bed) |
+
+```bash
+curl "http://localhost:4455/HexmoHexagon?render=1\
+&radius=220&h=100&thickness=3&edge_width=22&spoke_width=60&support_length=60\
+&trapezoid=1&track_width=17&track_lead_in=26\
+&track_template=1&track_gauge=9" -o hexmo_n_template.svg
+```
+
 ### Straight modules (HexmoRectangle)
 
 The companion `HexmoRectangle` straight module carries the same track markings on

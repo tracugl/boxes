@@ -28,9 +28,10 @@ from boxes import Boxes, edges, boolarg
 from boxes.Color import *
 from boxes.generators._hexmo_big_holes import HexmoBigHoleMixin
 from boxes.generators._hexmo_track_guide import HexmoTrackGuideMixin
+from boxes.generators._hexmo_track_template import HexmoTrackTemplateMixin
 
 
-class HexmoHexagon(HexmoBigHoleMixin, HexmoTrackGuideMixin, Boxes):
+class HexmoHexagon(HexmoBigHoleMixin, HexmoTrackGuideMixin, HexmoTrackTemplateMixin, Boxes):
     """Box with a regular hexagon or half hexagon as the base. """
 
     ui_group = "Box"
@@ -230,6 +231,8 @@ class HexmoHexagon(HexmoBigHoleMixin, HexmoTrackGuideMixin, Boxes):
                  "  Can be combined with --draw_center to show both.")
         # --track_guide / --track_guide_clearance, shared with HexmoRectangle.
         self._addTrackGuideArgs()
+        # --track_template, --track_gauge, …, shared with HexmoRectangle.
+        self._addTrackTemplateArgs()
 
         self.n = 6
 
@@ -887,6 +890,39 @@ class HexmoHexagon(HexmoBigHoleMixin, HexmoTrackGuideMixin, Boxes):
                 self.ctx.line_to(x_, y_)
             self.ctx.line_to(kite[0][0], kite[0][1])
             self.ctx.stroke()
+
+    def drawHexTrackTemplates(self, r, isTrapezoid=False):
+        """Cut the --track_template pieces for this module's track routes.
+
+        Every curve route on a module (the trapezoid's single curve, or the
+        full hexagon's left/right/top) has the same radius per track, so one
+        curve template per track offset covers them all.  It runs lead-in
+        (L) + 60° arc + lead-in, at the radius ``drawTrackLines`` etches:
+        ``ρ = (A − L)·√3 + offset`` with ``A = r·√3/2``.  On the full hexagon
+        with --track_middle, one straight template (apothem to apothem, ``2·A``)
+        is added; every track's straight is the same length.
+
+        @param r           - Inner hexagon circumradius (as for drawTrackLines).
+        @param isTrapezoid - True for the half-hexagon deck.
+        @throws ValueError - Propagated from the template width checks.
+        """
+        apothem = r * math.sqrt(3.0) / 2.0
+        lead_in = self.track_lead_in
+        rho_center = (apothem - lead_in) * math.sqrt(3.0)
+        half = self._templateWidth() / 2.0
+        gauge = f"{self.track_gauge:g}mm"
+        curves = isTrapezoid or self.track_left or self.track_right or self.track_top
+        if curves:
+            lead = [("line", lead_in)] if lead_in > 0 else []
+            for off in self._trackOffsets():
+                rho = rho_center + off
+                if rho - half <= 0:
+                    continue   # too tight to cut, as drawTrackLines skips rho ≤ 0
+                self.drawTrackTemplate(lead + [("arc", -60.0, rho)] + lead,
+                                       f"R{rho:.0f} {gauge}", move="right")
+        if not isTrapezoid and self.track_middle:
+            self.drawTrackTemplate([("line", 2 * apothem)], f"straight {gauge}",
+                                   move="right")
 
     def drawTrackLines(self, r, isTrapezoid=False):
         """Etch the model-railway track curve onto the deck as an alignment guide.
@@ -1572,6 +1608,10 @@ class HexmoHexagon(HexmoBigHoleMixin, HexmoTrackGuideMixin, Boxes):
         # long wall's.
         if self.track_guide:
             self.drawTrackGuide(side_orig, l, move="right")
+
+        # Optional Tracksetta-style templates that follow the etched track.
+        if self.track_template:
+            self.drawHexTrackTemplates(r, isTrapezoid)
 
         # Append a reference panel that engraves all parameter values onto a
         # flat piece of stock — useful for reproducing or identifying a cut job.
