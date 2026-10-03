@@ -26,6 +26,12 @@ except ImportError:
     sys.path.append(Path(__file__).resolve().parent.parent.__str__())
     import boxes
 
+from hexmo_testutil import IGNORE_CORE_MATMUL
+
+# Silence only the matmul deprecation raised by upstream's boxes/drawing.py
+# (see hexmo_testutil); every other warning still shows.
+pytestmark = IGNORE_CORE_MATMUL
+
 from boxes.generators.hexmohexagon import HexmoHexagon
 from boxes.generators.hexmorectangle import HexmoRectangle
 

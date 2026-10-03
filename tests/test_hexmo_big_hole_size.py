@@ -30,6 +30,12 @@ except ImportError:
     sys.path.append(Path(__file__).resolve().parent.parent.__str__())
     import boxes
 
+from hexmo_testutil import IGNORE_CORE_MATMUL, apply
+
+# Silence only the matmul deprecation raised by upstream's boxes/drawing.py
+# (see hexmo_testutil); every other warning still shows.
+pytestmark = IGNORE_CORE_MATMUL
+
 from boxes.generators.hexmohexagon import HexmoHexagon
 from boxes.generators.hexmorectangle import HexmoRectangle
 
@@ -115,7 +121,7 @@ def rect_big_holes(args):
 
     def rhole(x, y, dx, dy, r=0, center_x=True, center_y=True):
         if cur["kind"] and dx > BIG and dy > BIG:
-            px, py = (~cur["origin"]) * (box.ctx._m * (x, y))
+            px, py = apply(~cur["origin"], apply(box.ctx._m, (x, y)))
             found[cur["kind"]].append((round(px - cur["half"], 2), round(py, 2),
                                        round(dx, 2), round(dy, 2)))
         return o_rhole(x, y, dx, dy, r=r, center_x=center_x, center_y=center_y)

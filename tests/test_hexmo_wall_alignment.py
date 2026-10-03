@@ -34,6 +34,12 @@ except ImportError:
     sys.path.append(Path(__file__).resolve().parent.parent.__str__())
     import boxes
 
+from hexmo_testutil import IGNORE_CORE_MATMUL, apply
+
+# Silence only the matmul deprecation raised by upstream's boxes/drawing.py
+# (see hexmo_testutil); every other warning still shows.
+pytestmark = IGNORE_CORE_MATMUL
+
 from boxes.generators.hexmohexagon import HexmoHexagon
 from boxes.generators.hexmorectangle import HexmoRectangle
 
@@ -117,7 +123,7 @@ def rect_end_wall_holes(radius, thickness, outside, h=100):
 
     def hole(x, y, r=0.0, d=0.0, **kw):
         if state["origin"] is not None and _tracked(r):
-            px, py = (~state["origin"]) * (box.ctx._m * (x, y))
+            px, py = apply(~state["origin"], apply(box.ctx._m, (x, y)))
             holes.append((px, py, r))
         return orig_hole(x, y, r=r, d=d, **kw)
 
