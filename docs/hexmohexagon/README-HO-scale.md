@@ -381,6 +381,14 @@ choice, applied to every big hole on both generators.
   (back to a circle). At the default `0.3`, the Ø70 mm big holes of a `h=100`
   box get a 10.5 mm corner radius. Out-of-range values are clamped, so they never
   error.
+- `--big_hole_width` / `--big_hole_height` (default `0` = automatic) — for
+  `rounded_rect`, the hole's width (along the wall) and height (up the wall) in
+  mm. A value shrinks **every** big hole around its own centre, on both
+  generators, so the holes still line up module to module. They double as the
+  under-board train pass-through, so size them to your trains. Positions and
+  counts never change. A narrower hole can fit where the full-size one is
+  dropped, e.g. between a HexmoRectangle's long supports. Values above the
+  automatic size are refused with an error.
 
 The big-hole **size** follows the box height: diameter = `h − 30` mm (Ø70 at the
 default `h=100`), identical on HexmoHexagon and HexmoRectangle, so the holes on

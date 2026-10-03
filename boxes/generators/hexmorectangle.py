@@ -28,6 +28,7 @@ import math
 
 from boxes import Boxes, edges, boolarg
 from boxes.Color import Color
+from boxes.generators._hexmo_big_holes import HexmoBigHoleMixin
 from boxes.generators._hexmo_track_guide import HexmoTrackGuideMixin
 
 
@@ -193,7 +194,7 @@ class _ShortWallTopEdge(edges.BaseEdge):
         e_edge(self._side_gap)
 
 
-class HexmoRectangle(HexmoTrackGuideMixin, Boxes):
+class HexmoRectangle(HexmoBigHoleMixin, HexmoTrackGuideMixin, Boxes):
     """Rectangular tray with a 3×N internal grid, compatible with HexmoHexagon stacking.
 
     The number of column compartments N is controlled by ``--num_columns`` (default 0 = auto).
@@ -412,31 +413,8 @@ class HexmoRectangle(HexmoTrackGuideMixin, Boxes):
                  "1 = fully round, i.e. back to a circle).  Default 0.3 — on the "
                  "Ø70 mm big holes of the default h=100 that is a 10.5 mm corner radius.  Values are "
                  "clamped by rectangularHole, so out-of-range numbers are safe.")
-
-    def _drawBigHole(self, x, y, r):
-        """Draw one large weight-reduction through-hole centred at (x, y).
-
-        Honours ``--big_hole_shape``: a circle of radius ``r`` by default, or —
-        when ``rounded_rect`` is selected — a square of side ``2·r`` (identical
-        bounding box, so every fit/clearance reservation upstream still holds)
-        with rounded corners.  The corner radius is ``--big_hole_roundness × r``;
-        :meth:`Boxes.rectangularHole` clamps it to at most half the side, so a
-        roundness of 1 degrades gracefully to a circle-like shape and any
-        out-of-range value is safe.  Mirrors ``HexmoHexagon._drawBigHole``.
-
-        :param x: hole centre x (mm, callback frame).
-        :param y: hole centre y (mm, callback frame).
-        :param r: radius of the equivalent circular hole (mm).
-        """
-        if r <= 0:
-            # A box too short for big holes (--h ≤ 2·_SPACER) gets none.
-            return
-        if self.big_hole_shape == "rounded_rect":
-            corner = max(0.0, self.big_hole_roundness) * r
-            self.rectangularHole(x, y, 2 * r, 2 * r, r=corner,
-                                 center_x=True, center_y=True)
-        else:
-            self.hole(x, y, r)
+        # --big_hole_width / --big_hole_height, shared with HexmoHexagon.
+        self._addBigHoleSizeArgs()
 
     def _hexWallLength(self):
         """Hole-pattern length of the matching HexmoHexagon side wall.
@@ -1233,7 +1211,11 @@ class HexmoRectangle(HexmoTrackGuideMixin, Boxes):
         # through a joint weakens it.  The survivors are still a subset of the
         # hex wall's big holes, so registration is unaffected.  Both panels cut
         # exactly this list, so their big holes line up along the module.
-        big_keepout = self._bigHoleRadius() + t / 2 + self._MIN_CLEAR
+        # Keep-out uses the hole's real half-width, so a narrower
+        # --big_hole_width can fit between the supports where the full size
+        # can't.  The centres themselves never move.
+        big_keepout = (self._bigHoleHalfExtent(self._bigHoleRadius())[0]
+                       + t / 2 + self._MIN_CLEAR)
         end_big_xs = [x - dx for x in self._alignmentBigXs(s_hex)
                       if all(abs(x - dx - lane_pos(i)) >= big_keepout
                              for i in range(n_div_v))]
