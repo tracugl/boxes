@@ -596,7 +596,9 @@ Each entry is `route[@from..to][/width]`:
   end off for the route's end (`@157..`, `@..262`). Default: the whole route;
 - `/width` — default `--under_track_width`.
 
-A slot that reaches a deck edge runs 1 mm past it, so it opens cleanly. The wall
+A slot that reaches a deck edge runs right out through it: routes end at the
+wall's inner face, but the deck reaches one thickness further, over the wall, so
+the slot is run 1 mm past the deck's outer edge. The wall
 below must have a `--track_openings` notch there at least as wide as the slot,
 which also leaves that deck edge plain; otherwise it is refused. A slot that
 crosses a support slot is refused too, because the support wall would block the

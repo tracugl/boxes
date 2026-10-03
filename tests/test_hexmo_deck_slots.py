@@ -162,3 +162,20 @@ class TestRefused:
     def test_stretch_past_the_route(self) -> None:
         with pytest.raises(ValueError, match="stretch"):
             render(M1 + ["--deck_slots=3:-17.5-5:-35@10..900"])
+
+
+class TestThroughTheDeckEdge:
+    """A slot reaching a deck edge must open right through the deck."""
+
+    def test_slot_runs_past_the_decks_outer_edge(self) -> None:
+        box = HexmoHexagon()
+        box.parseArgs(M1 + [M1_SLOT])
+        box.open()
+        notches = {3: [(-17.5, 26.0, 7.5)], 5: [(35.0, 26.0, 15.0)]}
+        ((segments, _),) = box._deckSlotPlan(R_IN, True, notches)
+        # Routes end at the wall's inner face (the apothem); the deck reaches
+        # one thickness further, over the wall, and the slot 1 mm past that.
+        for point, edge_angle in ((segments[0].p0, 330), (segments[-1].p1, 210)):
+            n = (math.cos(math.radians(edge_angle)), math.sin(math.radians(edge_angle)))
+            reach = point[0] * n[0] + point[1] * n[1]
+            assert reach == pytest.approx(APOTHEM + 3 + 1)
