@@ -178,7 +178,7 @@ class HexmoTrackGuideMixin:
         return [(x, y, r) for x, y, r in holes
                 if r == self._R3 and x > l / 2.0 and y in medium_ys]
 
-    def _trackGuideHalfWidth(self, s, l):
+    def _trackGuideHalfWidth(self, s, l, offsets=None):
         """Half the guide plate's width, measured from the wall centre.
 
         The plate is just wide enough to leave one _SPACER of solid material
@@ -186,15 +186,17 @@ class HexmoTrackGuideMixin:
         symmetric about the wall centre, so its outline is unchanged when the
         plate is flipped for the other end of a curve.
 
-        @param s - Wall reference length (``side_orig``).
-        @param l - Wall body height.
+        @param s       - Wall reference length (``side_orig``).
+        @param l       - Wall body height.
+        @param offsets - Track positions along the wall (see
+                         :meth:`_trackGuideWindows`); default the track family.
         @returns Half-width in mm.
         @throws ValueError - Propagated from :meth:`_trackGuideWindows`.
         """
         centre = s / 2.0
         reach = [abs(y - centre) for _, y, _ in self._trackGuidePins(s, l)]
         reach += [abs(cx - centre) + w / 2.0
-                  for cx, _, w, _ in self._trackGuideWindows(s, l)]
+                  for cx, _, w, _ in self._trackGuideWindows(s, l, offsets)]
         return max(reach) + self._SPACER
 
     def _trackGuideBase(self, s, l):
@@ -237,7 +239,7 @@ class HexmoTrackGuideMixin:
         """
         return self._trackGuideDeckY(s, l) - self.thickness
 
-    def _trackGuideSize(self, s, l):
+    def _trackGuideSize(self, s, l, offsets=None):
         """Outer size of the track-guide plate, in the guide's own frame.
 
         The frame has x along the wall, from the plate's left edge at wall
@@ -247,16 +249,17 @@ class HexmoTrackGuideMixin:
         :meth:`_trackGuideWindowFloor`), to one _SPACER of solid material
         above them.
 
-        @param s - Wall reference length (``side_orig``).
-        @param l - Wall body height.
+        @param s       - Wall reference length (``side_orig``).
+        @param l       - Wall body height.
+        @param offsets - Track positions along the wall; default the track family.
         @returns ``(width, height)`` in mm.
         @throws ValueError - Propagated from :meth:`_trackGuideWindows`.
         """
         height = (self._trackGuideWindowFloor(s, l) + self.track_guide_clearance
                   + self._SPACER)
-        return 2.0 * self._trackGuideHalfWidth(s, l), height
+        return 2.0 * self._trackGuideHalfWidth(s, l, offsets), height
 
-    def _trackGuideWindows(self, s, l):
+    def _trackGuideWindows(self, s, l, offsets=None):
         """Compute the track-guide windows, one per track.
 
         Each window starts at :meth:`_trackGuideWindowFloor`, one material
@@ -268,8 +271,12 @@ class HexmoTrackGuideMixin:
         amounts as the etched lines: at a curve end the radial direction lies
         along the wall, and on the straight the lateral offset does.
 
-        @param s - Wall reference length (``side_orig``).
-        @param l - Wall body height.
+        @param s       - Wall reference length (``side_orig``).
+        @param l       - Wall body height.
+        @param offsets - Track positions (mm) along the wall from its centre.
+                         Default: the --track_line_count family
+                         (:meth:`_trackOffsets`), the same at every wall.
+                         HexmoHexagon's --track_routes passes each edge's own.
         @returns List of ``(centre_x, bottom_y, width, height)`` tuples, with
                  ``centre_x`` measured along the wall (0 … s) and ``bottom_y``
                  in the guide frame.
@@ -289,7 +296,7 @@ class HexmoTrackGuideMixin:
 
         floor_y = self._trackGuideWindowFloor(s, l)
         windows = []
-        for off in self._trackOffsets():
+        for off in (self._trackOffsets() if offsets is None else offsets):
             cx = s / 2.0 + off
             # A track crossing past the wall's end would miss the module
             # joint entirely, so windows must stay over the wall with a web
@@ -304,7 +311,8 @@ class HexmoTrackGuideMixin:
             windows.append((cx, floor_y, width, clearance))
         return windows
 
-    def drawTrackGuide(self, s, l, move="right"):
+    def drawTrackGuide(self, s, l, move="right", offsets=None,
+                       label="track guide", arrow=None):
         """Draw the track-laying guide plate.
 
         The plate is dowelled to the outer face of any standard HexmoHexagon
@@ -327,20 +335,29 @@ class HexmoTrackGuideMixin:
         outside of the curve.  The other end of a curve is its mirror image,
         so the plate is flipped over for that end.
 
-        @param s    - Wall reference length (``side_orig``).
-        @param l    - Wall body height.
-        @param move - Layout direction passed to rectangularWall.
+        @param s       - Wall reference length (``side_orig``).
+        @param l       - Wall body height.
+        @param move    - Layout direction passed to rectangularWall.
+        @param offsets - Track positions along the wall (see
+                         :meth:`_trackGuideWindows`); default the track family.
+        @param label   - Part label.
+        @param arrow   - Text etched when the windows are not symmetric,
+                         pointing to the +offset side.  Default
+                         "outside of curve ->", which is what +offset means
+                         for the track family.
         @throws ValueError - Propagated from :meth:`_trackGuideWindows`.
         """
-        width, height = self._trackGuideSize(s, l)
+        if offsets is None:
+            offsets = self._trackOffsets()
+        width, height = self._trackGuideSize(s, l, offsets)
         # Compute (and validate) before drawing, so an error never leaves
         # half a part in the layout.
-        windows = self._trackGuideWindows(s, l)
+        windows = self._trackGuideWindows(s, l, offsets)
         pins = self._trackGuidePins(s, l)
         base = self._trackGuideBase(s, l)
         shift = s / 2.0 - width / 2.0
-        offsets = self._trackOffsets()
         asymmetric = sorted(offsets) != sorted(-o for o in offsets)
+        arrow = arrow or "outside of curve ->"
 
         def features():
             for x, y, r in pins:
@@ -351,10 +368,10 @@ class HexmoTrackGuideMixin:
             if asymmetric:
                 # Label in the solid band above the windows.  stroke=True so
                 # lasers that vector-etch by stroke colour still trace it.
-                self.text("outside of curve ->", x=width / 2.0,
+                self.text(arrow, x=width / 2.0,
                           y=height - self._SPACER / 2.0, align="middle center",
                           fontsize=self._SPACER * 0.4, color=Color.ETCHING,
                           stroke=True)
 
         self.rectangularWall(width, height, "eeee", callback=[features],
-                             move=move, label="track guide")
+                             move=move, label=label)
