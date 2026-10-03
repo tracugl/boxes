@@ -1525,7 +1525,7 @@ class HexmoHexagon(HexmoBigHoleMixin, HexmoTrackGuideMixin, HexmoTrackTemplateMi
         fingers_bottom = self.bottom in ("closed", "hole", "angled hole",
                                          "round lid", "angled lid2", "spoke")
 
-        t_ = self.edges["G"].startwidth()
+        t_ = self.edges["G"].startWidth()
         bottom_edge = ('y' if fingers_bottom else 'e')
         top_edge = ('z' if fingers_top else 'e')
         # No taper: d_top = d_bottom = 0, so l is unchanged after this point.

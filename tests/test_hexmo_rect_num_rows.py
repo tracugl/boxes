@@ -28,6 +28,12 @@ except ImportError:
     sys.path.append(Path(__file__).resolve().parent.parent.__str__())
     import boxes
 
+from hexmo_testutil import IGNORE_CORE_MATMUL, apply
+
+# Silence only the matmul deprecation raised by upstream's boxes/drawing.py
+# (see hexmo_testutil); every other warning still shows.
+pytestmark = IGNORE_CORE_MATMUL
+
 from boxes import edges as box_edges
 from boxes.generators.hexmorectangle import HexmoRectangle
 
@@ -61,7 +67,7 @@ def render_recorded(args, monkeypatch):
                                      box.rectangularHole, box.fingerHolesAt)
 
     def page(x, y):
-        return box.ctx._m * (x, y)
+        return apply(box.ctx._m, (x, y))
 
     def wall(x, y, edges="eeee", *a, callback=None, **kw):
         cbs = list(callback or [])
@@ -216,7 +222,7 @@ def part_boxes(args):
     def move(x, y, where, before=False, label=""):
         skip = o_move(x, y, where, before=before, label=label)
         if before and where and "only" not in where.split():
-            (ax, ay), (bx, by) = box.ctx._m * (0, 0), box.ctx._m * (x, y)
+            (ax, ay), (bx, by) = apply(box.ctx._m, (0, 0)), apply(box.ctx._m, (x, y))
             found.append((min(ax, bx), min(ay, by), max(ax, bx), max(ay, by)))
         return skip
 
@@ -260,7 +266,7 @@ def big_holes_by_panel(args):
     o_wall, o_hole, o_rhole = box.rectangularWall, box.hole, box.rectangularHole
 
     def local(x, y):
-        px, py = (~cur["origin"]) * (box.ctx._m * (x, y))
+        px, py = apply(~cur["origin"], apply(box.ctx._m, (x, y)))
         return round(px, 2), round(py, 2)
 
     def wall(x, y, edges="eeee", *a, callback=None, **kw):
