@@ -1386,18 +1386,18 @@ class HexmoHexagon(HexmoBigHoleMixin, HexmoTrackGuideMixin, HexmoTrackTemplateMi
             if not (0 <= lo < hi <= total + 1e-6):
                 raise ValueError(f"{name}: the stretch {lo:g}..{hi:g} is not within "
                                  f"the route's {total:.1f} mm.")
-            # A slot reaching a deck edge must open right through it, and needs
-            # the wall below notched (deck edge plain) right there.  Routes end
-            # at the wall's inner face, but the deck runs one thickness further,
-            # over the top of the wall, so the slot is run out past the deck's
-            # outer edge by the thickness plus OVERRUN.
+            # A slot reaching a deck edge runs OVERRUN past the wall's inner
+            # face (where routes end), and needs the wall below notched (deck
+            # edge plain) right there.  The deck reaches one thickness further,
+            # over the top of the wall, so a narrow strip of deck is left
+            # across the slot's mouth on purpose: it keeps an edge-to-edge
+            # slotted deck in one piece, and is cut away once it is in place.
             ends = []
-            past = self.thickness + OVERRUN
             if lo <= 1e-6:
-                lo = -past
+                lo = -OVERRUN
                 ends.append((slot.start, geometry.segments[0].p0))
             if hi >= total - 1e-6:
-                hi = total + past
+                hi = total + OVERRUN
                 ends.append((slot.end, geometry.segments[-1].p1))
             for edge, point in ends:
                 position = edge_position(edge, point, apothem)
