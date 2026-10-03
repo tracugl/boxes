@@ -135,10 +135,12 @@ class TestNotch:
         assert not [h for h in holes if pytest.approx(26) in h[2:]]
 
     def test_trapezoid_ring_module(self) -> None:
-        # M1 of the helix ring at h=80: the spur crosses edge 5 at +17.5 and
-        # edge 3 at −35, both above the 43 mm train envelope → two notches.
+        # M1 of the helix ring at h=80 (trains run edge 3 → 5): the spur enters
+        # at edge 3, 17.5 towards edge 4 (−17.5 anticlockwise), and leaves at
+        # edge 5, 35 towards edge 4 (+35), both above the 43 mm train
+        # envelope → two notches.
         _, splits = render(["--radius=220", "--thickness=3", "--h=80", "--trapezoid=1",
-                            "--track_openings=5:17.5:72.5:26,3:-35:65.2:26"])
+                            "--track_openings=3:-17.5:72.5:26,5:35:65.2:26"])
         assert len([s for s in splits if s[0] == "FingerJointEdge"]) == 2
         assert len([s for s in splits if s[0] == "FingerJointEdgeCounterPart"]) == 2
 

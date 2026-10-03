@@ -35,11 +35,12 @@ R_IN = 220 - 3 / math.cos(math.radians(30))
 APOTHEM = R_IN * math.sqrt(3) / 2
 LEAD = 26.0
 
-# Helix-ring M1 at h=80: the spur notches at both ends, and its slot from
-# edge 5 to edge 3 (inside of the curve, so negative offsets).
+# Helix-ring M1 at h=80 (trains run edge 3 → 5): the spur notches at both
+# ends, and its slot from edge 3 to edge 5 (inside of the curve, so negative
+# offsets: −17.5 at edge 3 moving in to −35 at edge 5).
 M1 = ["--radius=220", "--thickness=3", "--h=80", "--trapezoid=1", "--track_lead_in=26",
-      "--supports=0", "--track_openings=5:17.5:72.5:26,3:-35:65.2:26"]
-M1_SLOT = "--deck_slots=5:-17.5-3:-35/26"
+      "--supports=0", "--track_openings=3:-17.5:72.5:26,5:35:65.2:26"]
+M1_SLOT = "--deck_slots=3:-17.5-5:-35/26"
 
 
 def walk(start, heading, steps):
@@ -129,7 +130,7 @@ class TestRender:
 
     def test_stretch_short_of_the_edges_needs_no_notch(self) -> None:
         args = [a for a in M1 if not a.startswith("--track_openings")]
-        assert len(render(args + ["--deck_slots=5:-17.5-3:-35@60..250/26"])) == 1
+        assert len(render(args + ["--deck_slots=3:-17.5-5:-35@60..250/26"])) == 1
 
     def test_slot_without_track_lines(self) -> None:
         assert len(render(M1 + [M1_SLOT, "--track_lines=0"])) == 1
@@ -147,7 +148,7 @@ class TestRefused:
 
     def test_notch_narrower_than_the_slot(self) -> None:
         with pytest.raises(ValueError, match="notch"):
-            render(M1 + ["--deck_slots=5:-17.5-3:-35/30"])
+            render(M1 + ["--deck_slots=3:-17.5-5:-35/30"])
 
     def test_crossing_a_support(self) -> None:
         args = [a for a in M1 if a != "--supports=0"] + ["--supports=1", "--support_length=55"]
@@ -160,4 +161,4 @@ class TestRefused:
 
     def test_stretch_past_the_route(self) -> None:
         with pytest.raises(ValueError, match="stretch"):
-            render(M1 + ["--deck_slots=5:-17.5-3:-35@10..900"])
+            render(M1 + ["--deck_slots=3:-17.5-5:-35@10..900"])
