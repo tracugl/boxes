@@ -37,7 +37,7 @@ from boxes.generators._hexmo_track_openings import (
     SplitJointEdge, parse_track_openings, rect_circle_gap, wall_and_deck_pieces,
 )
 from boxes.generators._hexmo_track_routes import (
-    Arc, Line, RouteSpec, edge_position, expand_routes, offset_segments,
+    EDGE_ANGLES, Arc, Line, RouteSpec, edge_position, expand_routes, offset_segments,
     parse_track_routes, route_geometry, route_template_steps,
     segments_polyline, template_key,
 )
@@ -91,6 +91,20 @@ class HexmoHexagon(HexmoBigHoleMixin, HexmoTrackGuideMixin, HexmoTrackTemplateMi
         self.argparser.add_argument(
             "--supports", action="store", type=boolarg, default=True,
             help="add internal support walls and matching finger-joint slots in the top and bottom panels.")
+        self.argparser.add_argument(
+            "--support_edges", action="store", type=str, default="",
+            help="Which half-spokes get a support wall, by the edge each points "
+                 "to (numbered as for --track_routes), comma-separated, e.g. "
+                 "'2,4,6' to keep every other one clear of a lower track.  Empty "
+                 "(default): all of them (1-6 on the hexagon; 4, or 3,4,5 with "
+                 "--trapezoid_side_supports, on the trapezoid).  When set it "
+                 "overrides --trapezoid_side_supports.")
+        self.argparser.add_argument(
+            "--support_position", action="store", type=float, default=0.0,
+            help="Distance (mm) from the hexagon centre to the middle of every "
+                 "support wall, along its half-spoke.  0 (default): half the "
+                 "apothem, as before.  Move them out (e.g. towards the inner "
+                 "wall) to clear a track passing nearer the centre.")
         self.argparser.add_argument(
             "--corner_holes", action="store", type=str, default="g6",
             choices=["g6", "g2"],
@@ -338,10 +352,8 @@ class HexmoHexagon(HexmoBigHoleMixin, HexmoTrackGuideMixin, HexmoTrackTemplateMi
         #   full hexagon                            → 6  (3 axes × 2 half-spokes)
         #   trapezoid, side supports enabled        → 3  (3 downward half-spokes)
         #   trapezoid, side supports disabled       → 1  (only 0° axis spoke)
-        if isTrapezoid:
-            n_supports = 3 if self.trapezoid_side_supports else 1
-        else:
-            n_supports = 6
+        # One identical wall per supported half-spoke (see _supportLayout).
+        n_supports = len(self._supportLayout(self.radius, isTrapezoid)[0])
 
         def draw_holes():
             """Place through-holes on one support panel.
@@ -453,13 +465,9 @@ class HexmoHexagon(HexmoBigHoleMixin, HexmoTrackGuideMixin, HexmoTrackTemplateMi
 
         H = r * math.sqrt(3) / 2.0  # apothem — also the y-distance from origin to centre
 
-        # Choose which spoke axes receive slots.  The three axes are 60° apart.
-        # In trapezoid mode without side supports, the ±60° axes are skipped
-        # so the bottom panel matches the single-wall drawSupports layout.
-        if isTrapezoid and not self.trapezoid_side_supports:
-            spoke_angles = (0,)
-        else:
-            spoke_angles = (0, 60, -60)
+        # Which half-spokes get a slot, and how far out (--support_edges,
+        # --support_position; see _supportLayout).
+        layout, d = self._supportLayout(r, isTrapezoid)
 
         # For each spoke axis, shift the coordinate origin to the hex centre
         # and rotate to align with the spoke, then draw the slot(s).
@@ -472,18 +480,14 @@ class HexmoHexagon(HexmoBigHoleMixin, HexmoTrackGuideMixin, HexmoTrackTemplateMi
         # places the centre at y = H + thickness + burn from V0 — identical in both
         # modes.  No special trapezoid correction is needed here.
 
-        for spoke_angle in spoke_angles:
+        for spoke_angle, side, _ in layout:
             with self.saved_context():
                 # Translate to the hex centre then rotate to the spoke axis.
                 self.moveTo(r / 2, H, spoke_angle)
-                # Lower slot: midpoint at (0, -H/2) in centre-relative coords.
-                # This slot falls in the trapezoid's half (below the hex centre)
-                # and is always drawn.
-                self.fingerHolesAt(0, -H / 2 - sl / 2, sl, angle=90)
-                if not isTrapezoid:
-                    # Upper slot: midpoint at (0, +H/2) — above the hex centre.
-                    # Only present in full-hexagon mode; outside the trapezoid panel.
-                    self.fingerHolesAt(0,  H / 2 - sl / 2, sl, angle=90)
+                # Lower slot (side −1): midpoint at (0, −d) in centre-relative
+                # coords, in the trapezoid's half.  Upper slot (side +1, full
+                # hexagon only): midpoint at (0, +d).  d is H/2 by default.
+                self.fingerHolesAt(0, side * d - sl / 2, sl, angle=90)
 
     def _drawCornerGroup8(self, s, l):
         """Draw the corner registration clusters shared by all side-panel variants.
@@ -1291,6 +1295,67 @@ class HexmoHexagon(HexmoBigHoleMixin, HexmoTrackGuideMixin, HexmoTrackTemplateMi
                         "--track_openings: two openings on one wall overlap or come "
                         f"within {clear:g} mm of each other.")
 
+    # Half-spokes as drawn by drawSupportHoles: (spoke angle, side, edge).
+    # Side −1 is the "lower" slot (towards −y before rotation), +1 the upper.
+    # The edge is the one that half-spoke points to: the 0° axis runs to edges
+    # 4 and 1, +60° to 3 and 6, −60° to 5 and 2.
+    _HALF_SPOKES = ((0.0, -1.0, 4), (0.0, 1.0, 1), (60.0, -1.0, 3),
+                    (60.0, 1.0, 6), (-60.0, -1.0, 5), (-60.0, 1.0, 2))
+    # Minimum gap between a support's ends and the centre or the side wall.
+    _SUPPORT_END_CLEAR = 2.0
+
+    def _supportLayout(self, r, isTrapezoid):
+        """The supported half-spokes and how far out the supports sit.
+
+        Shared by drawSupports (one wall each), drawSupportHoles (the deck's
+        and bottom panel's slots) and the deck-slot check, so all three always
+        agree.  Without --support_edges / --support_position it is exactly
+        the original layout.
+
+        @param r           - Inner hexagon circumradius (the panels').
+        @param isTrapezoid - True for the half-hexagon (lower half-spokes only).
+        @returns ``(half_spokes, d)``: ``(spoke angle, side, edge)`` tuples in
+                 drawing order, and the support centre distance from the hex
+                 centre.
+        @throws ValueError - On a malformed --support_edges, an edge the module
+                             lacks, or a --support_position that puts a support
+                             into the centre or the side wall.
+        """
+        apothem = r * math.sqrt(3.0) / 2.0
+        if self.support_edges.strip():
+            edges = set()
+            for item in self.support_edges.split(","):
+                item = item.strip()
+                if not item.isdigit() or not 1 <= int(item) <= 6:
+                    raise ValueError(
+                        f"--support_edges: {item!r} is not an edge number 1–6.")
+                edges.add(int(item))
+            if isTrapezoid and not edges <= self._TRAPEZOID_EDGES:
+                raise ValueError(
+                    "--support_edges: the trapezoid only has half-spokes towards "
+                    f"edges 3, 4 and 5 (got {', '.join(map(str, sorted(edges)))}).")
+        elif isTrapezoid:
+            edges = {3, 4, 5} if self.trapezoid_side_supports else {4}
+        else:
+            edges = {1, 2, 3, 4, 5, 6}
+        half_spokes = [hs for hs in self._HALF_SPOKES if hs[2] in edges]
+
+        d = apothem / 2.0
+        if self.support_position:
+            d = self.support_position
+            sl, t = self.support_length, self.thickness
+            if d - sl / 2.0 < t:
+                raise ValueError(
+                    f"--support_position {d:g}: the {sl:g} mm supports would reach "
+                    f"within {t:g} mm of the centre, where they meet each other; "
+                    f"use at least {t + sl / 2:.1f}.")
+            limit = apothem - t - self._SUPPORT_END_CLEAR
+            if d + sl / 2.0 > limit:
+                raise ValueError(
+                    f"--support_position {d:g}: the {sl:g} mm supports would run "
+                    f"into the side wall; use at most {limit - sl / 2:.1f}.")
+        return half_spokes, d
+
     # Minimum solid material between a deck slot and a support slot.
     _DECK_SLOT_CLEAR = 2.0
 
@@ -1356,28 +1421,24 @@ class HexmoHexagon(HexmoBigHoleMixin, HexmoTrackGuideMixin, HexmoTrackTemplateMi
         """
         if not self.supports:
             return
-        h = r * math.sqrt(3.0) / 2.0
         sl = self.support_length
-        if isTrapezoid and not self.trapezoid_side_supports:
-            angles = (0.0,)
-        else:
-            angles = (0.0, 60.0, -60.0)
+        layout, d = self._supportLayout(r, isTrapezoid)
         centre = centreline_points(segments)
         reach = width / 2.0 + self.thickness / 2.0 + self._DECK_SLOT_CLEAR
-        for angle in angles:
-            a = math.radians(angle)
-            for sign in ((-1.0,) if isTrapezoid else (-1.0, 1.0)):
-                # Support slot along the spoke axis, h/2 ± sl/2 from the centre.
-                axis = (-sign * math.sin(a), sign * math.cos(a))
-                for k in range(21):
-                    d = h / 2 - sl / 2 + sl * k / 20
-                    p = (axis[0] * d, axis[1] * d)
-                    if min(math.dist(p, q) for q in centre) < reach:
-                        raise ValueError(
-                            f"{name} crosses a support slot (spoke at {angle:+.0f}°, "
-                            f"{h / 2 - sl / 2:.0f}–{h / 2 + sl / 2:.0f} mm from the "
-                            "centre).  A support there would block the track; use "
-                            "--supports 0, or a --support_length that stops short of it.")
+        for _, _, edge in layout:
+            # Support slot along the half-spoke towards `edge`, d ± sl/2 out.
+            th = math.radians(EDGE_ANGLES[edge])
+            axis = (math.cos(th), math.sin(th))
+            for k in range(21):
+                dist = d - sl / 2 + sl * k / 20
+                p = (axis[0] * dist, axis[1] * dist)
+                if min(math.dist(p, q) for q in centre) < reach:
+                    raise ValueError(
+                        f"{name} crosses the support towards edge {edge} "
+                        f"({d - sl / 2:.0f}–{d + sl / 2:.0f} mm from the centre).  "
+                        "A support there would block the track; leave it out with "
+                        "--support_edges, move it with --support_position, or use "
+                        "--supports 0.")
 
     def drawDeckSlots(self, plan, isTrapezoid):
         """Cut the deck slots (see _deckSlotPlan), from the deck's centre frame.
