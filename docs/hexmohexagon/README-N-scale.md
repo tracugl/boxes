@@ -87,7 +87,7 @@ settings used throughout this file and by the ready-made URLs below:
 | `--support_length` | **60** | internal support walls |
 | `--trapezoid` | **1** | half-hexagon module |
 | `--corner_holes` | **g2** | fewer pierces, see [Reducing laser cut time](#reducing-laser-cut-time) |
-| `--gap_holes` | **g2** | fewer pierces in the gap-fill clusters too |
+| `--gap_holes` | **g4** (default) on the hexagon, **g2** on the rectangle | full gap-fill clusters on the hexagon's walls; the rectangle's reduced set saves pierces |
 | `--big_hole_shape` | **rounded_rect** | roundness `0.3` (default), see [Big-hole shape](#big-hole-shape) |
 | `--big_hole_width` × `--big_hole_height` | **50 × 70** | the under-board train pass-through, narrowed so it fits between a 3-lane HexmoRectangle's long supports (see [Straight modules](#straight-modules-hexmorectangle)); the same size on every module so the holes line up |
 | `--FingerJoint_play` | **0.2** (default) | finger-joint clearance, a multiple of thickness (0.6 mm at 3 mm) |
@@ -128,7 +128,7 @@ curl "http://localhost:4455/HexmoHexagon?render=1\
 &edge_width=22&spoke_width=60&support_length=60\
 &bottom=spoke&top=closed&trapezoid=1\
 &corner_holes=g2&big_hole_shape=rounded_rect&FingerJoint_extra_length=0.1\
-&gap_holes=g2&big_hole_width=50&big_hole_height=70\
+&gap_holes=g4&big_hole_width=50&big_hole_height=70\
 &track_width=17&track_lead_in=26" -o hexmo_n.svg
 ```
 
@@ -145,7 +145,7 @@ N-scale values, ready to review, tweak, or render.
 `&render=1` to jump straight to the SVG):
 
 ```
-http://localhost:4455/HexmoHexagon?radius=220&h=100&thickness=3&edge_width=22&spoke_width=60&support_length=60&bottom=spoke&top=closed&trapezoid=1&corner_holes=g2&gap_holes=g2&big_hole_shape=rounded_rect&big_hole_width=50&big_hole_height=70&FingerJoint_extra_length=0.1&track_lines=1&draw_center=1&draw_track=1&track_width=17&track_lead_in=26&track_spacing=35&track_guide=1&labels=0&reference=0
+http://localhost:4455/HexmoHexagon?radius=220&h=100&thickness=3&edge_width=22&spoke_width=60&support_length=60&bottom=spoke&top=closed&trapezoid=1&corner_holes=g2&gap_holes=g4&big_hole_shape=rounded_rect&big_hole_width=50&big_hole_height=70&FingerJoint_extra_length=0.1&track_lines=1&draw_center=1&draw_track=1&track_width=17&track_lead_in=26&track_spacing=35&track_guide=1&labels=0&reference=0
 ```
 
 **N-scale HexmoRectangle** — the shared mating dimensions, track settings and
