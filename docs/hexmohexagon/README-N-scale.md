@@ -552,6 +552,35 @@ hole groups, a track height too close to the floor or under the deck, or a long
 support crossing the opening (HexmoRectangle with an even `--num_rows`) is
 refused with an error.
 
+### Track openings at a joint (`--track_openings`)
+
+A track that crosses a joint below deck level but off the centre line (the helix
+ring's descending spur) needs its own opening in the wall at that edge. Each entry
+is `edge:position:height[:width]`:
+
+- `position` — mm along the edge from its midpoint, anticlockwise seen from above
+  (to the right, facing the wall from outside), as for the per-edge track guides;
+- `height` — the track base above the floor panel, the opening's bottom edge;
+- `width` — along the wall, default `--under_track_width`.
+
+If a 40 mm train on that track still fits one thickness under the deck, the
+opening is a closed hole up to one thickness under the deck. Otherwise it is a
+**notch** open at the top of the wall, and the deck edge above it is left plain
+(no finger slots) across the notch. The wall's top joint and the deck edge are
+both split round it, so they still mate finger for finger. The deck itself stays
+closed until the deck slot along the track is cut. A notched or holed wall is
+labelled with its edge; fit it with the opening over the track. Openings keep
+2 mm clear of the wall's other holes (big holes that would come closer are left
+out), and are refused if they reach the corner or registration holes, overlap,
+or put the track too near the floor or above the deck.
+
+```bash
+# Helix ring M1 at h=80: the spur enters at edge 5 (17.5 mm towards edge 4) and
+# leaves at edge 3 (35 mm towards edge 4), both notches.
+curl "http://localhost:4455/HexmoHexagon?render=1&radius=220&thickness=3&h=80\
+&trapezoid=1&track_openings=5:17.5:72.5:26,3:-35:65.2:26" -o hexmo_n_m1.svg
+```
+
 ---
 
 ## Gotchas

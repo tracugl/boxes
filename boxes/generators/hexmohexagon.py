@@ -30,6 +30,9 @@ from boxes.generators._hexmo_big_holes import HexmoBigHoleMixin
 from boxes.generators._hexmo_track_guide import HexmoTrackGuideMixin
 from boxes.generators._hexmo_track_template import HexmoTrackTemplateMixin
 from boxes.generators._hexmo_under_track import HexmoUnderTrackMixin
+from boxes.generators._hexmo_track_openings import (
+    SplitJointEdge, parse_track_openings, rect_circle_gap, wall_and_deck_pieces,
+)
 from boxes.generators._hexmo_track_routes import (
     Arc, Line, RouteSpec, edge_position, expand_routes, offset_segments,
     parse_track_routes, route_geometry, route_template_steps,
@@ -132,6 +135,17 @@ class HexmoHexagon(HexmoBigHoleMixin, HexmoTrackGuideMixin, HexmoTrackTemplateMi
                  "its edge.  The trapezoid only has edges 3, 4 and 5.")
         # --under_track_height / --under_track_width, shared with HexmoRectangle.
         self._addUnderTrackArgs()
+        self.argparser.add_argument(
+            "--track_openings", action="store", type=str, default="",
+            help="Openings for tracks that cross a joint below deck level (e.g. a "
+                 "descending spur), comma-separated 'edge:position:height[:width]'. "
+                 "position: mm along the edge from its midpoint, anticlockwise "
+                 "seen from above (to the right, facing the wall from outside). "
+                 "height: the track base above the floor panel (the opening's "
+                 "bottom).  width: default --under_track_width.  If a 40 mm train "
+                 "on that track still fits one thickness under the deck it is a "
+                 "closed hole; otherwise a notch open at the top of the wall, "
+                 "with the deck's edge left plain over it.  E.g. '5:17.5:92.5:26'.")
         self.argparser.add_argument(
             "--trapezoid", action="store", type=boolarg, default=False,
             help="If true, only draw a half-hexagon.")
@@ -609,7 +623,7 @@ class HexmoHexagon(HexmoBigHoleMixin, HexmoTrackGuideMixin, HexmoTrackTemplateMi
             self.hole(x_mid, y_bot_r2, r2)  # bottom medium
             self.hole(x_mid, y_top_r2, r2)  # top medium
 
-    def drawAlignmentHoles(self, s, l, text, under_track=False):
+    def drawAlignmentHoles(self, s, l, text, under_track=False, openings=()):
         """Cut and etch alignment features into a side panel for stacking hexagons.
 
         The corner group-of-8 clusters at both panel ends are always drawn at
@@ -637,7 +651,12 @@ class HexmoHexagon(HexmoBigHoleMixin, HexmoTrackGuideMixin, HexmoTrackTemplateMi
         @param l           - Panel width (slant length l from render()).
         @param text        - Unused; kept for API compatibility.
         @param under_track - Cut the under-deck track opening on this wall.
-        @throws ValueError - From the under-deck opening's checks.
+        @param openings    - Track openings (--track_openings) on this wall, as
+                             ``((x0, x1, y0, y1), closed)`` in this frame (x up
+                             the wall, y along it).  Closed ones are cut here;
+                             notches (``closed`` False) are cut by the wall's top
+                             edge, but still clear the big holes and gap filling.
+        @throws ValueError - From the under-deck and track-opening checks.
         """
         sp = self._SPACER
         r2 = self._R2
@@ -680,17 +699,37 @@ class HexmoHexagon(HexmoBigHoleMixin, HexmoTrackGuideMixin, HexmoTrackTemplateMi
         # Interior features along the wall, as (lower edge, upper edge) spans
         # in y.  Each big hole spans centre ± r1.
         features = [(y - r1, y + r1) for y in big_ys]
-        if under_track:
+        under_rect = None
+        if under_track or openings:
             # Validate before drawing anything, so an error never leaves half
-            # a wall.  The opening takes the centre big hole's place.
-            self._checkUnderTrackClearsCorners(s)
-            bottom, top = self._underTrackSpan(l)
-            half = self.under_track_width / 2
-            keep_clear = half + r1 + self._UNDER_TRACK_CLEAR
-            big_ys = [y for y in big_ys if abs(y - s / 2) >= keep_clear]
+            # a wall.  Openings take the place of any big hole they would
+            # come too close to (the under-deck one replaces the centre hole).
+            if under_track:
+                self._checkUnderTrackClearsCorners(s)
+                bottom, top = self._underTrackSpan(l)
+                half = self.under_track_width / 2
+                under_rect = (bottom, top, s / 2 - half, s / 2 + half)
+                big_ys = [y for y in big_ys
+                          if abs(y - s / 2) >= half + r1 + self._UNDER_TRACK_CLEAR]
+            rects = [rect for rect, _ in openings]
+            big_ys = [y for y in big_ys
+                      if all(rect_circle_gap(rect, (l / 2, y, r1)) >= self._UNDER_TRACK_CLEAR
+                             for rect in rects)]
+            self._checkTrackOpenings(s, l, rects, under_rect,
+                                     [(l / 2, y, r1) for y in big_ys])
             features = sorted([(y - r1, y + r1) for y in big_ys]
-                              + [(s / 2 - half, s / 2 + half)])
-            self._drawUnderTrackOpening(s / 2, bottom, top, along_x=False)
+                              + [(y0, y1) for _, _, y0, y1 in rects]
+                              + ([(under_rect[2], under_rect[3])] if under_rect else []))
+            if under_rect:
+                self._drawUnderTrackOpening(s / 2, under_rect[0], under_rect[1],
+                                            along_x=False)
+            for (x0, x1, y0, y1), closed in openings:
+                # Notches are cut by the wall's top edge, not here.
+                if closed:
+                    self.rectangularHole(
+                        (x0 + x1) / 2, (y0 + y1) / 2, x1 - x0, y1 - y0,
+                        r=max(0.0, self.big_hole_roundness) * min(x1 - x0, y1 - y0) / 2,
+                        center_x=True, center_y=True)
 
         # Draw the big through-holes along the vertical centre line.
         for y in big_ys:
@@ -1138,6 +1177,107 @@ class HexmoHexagon(HexmoBigHoleMixin, HexmoTrackGuideMixin, HexmoTrackTemplateMi
                 f"(got {', '.join(str(e) for e in sorted(edges))}).")
         return sorted(edges)
 
+    # Deck side index → edge number, in the order the deck panel draws its
+    # sides (anticlockwise from the bottom).  The trapezoid's third side is
+    # its long join edge, which has no edge number.
+    _DECK_SIDE_EDGES = (4, 3, 2, 1, 6, 5)
+    _TRAPEZOID_DECK_SIDE_EDGES = (4, 3, None, 5)
+    # Minimum solid material between a track opening and any other hole.
+    _TRACK_OPENING_CLEAR = 2.0
+
+    def _trackOpeningPlan(self, isTrapezoid, l):
+        """Parse and classify --track_openings.
+
+        @param isTrapezoid - True for the half-hexagon (edges 3, 4, 5 only).
+        @param l           - Wall body height: floor panel top to deck underside.
+        @returns Dict edge → list of ``(opening, notch)``, where ``notch`` is
+                 True when a 40 mm train on that track would not fit under
+                 one thickness of wall below the deck.
+        @throws ValueError - On a malformed entry, an edge the module does not
+                             have, or a track height too near the floor or
+                             above the deck underside.
+        """
+        t = self.thickness
+        plan = {}
+        for opening in parse_track_openings(self.track_openings,
+                                            self.under_track_width):
+            if isTrapezoid and opening.edge not in self._TRAPEZOID_EDGES:
+                raise ValueError(
+                    f"--track_openings: the trapezoid has no edge {opening.edge}; "
+                    "it only has edges 3, 4 and 5.")
+            if opening.height < t:
+                raise ValueError(
+                    f"--track_openings: a track at {opening.height:g} mm would cut "
+                    f"into the floor joint; keep it at least {t:g} mm above the "
+                    "floor panel.")
+            if opening.height >= l:
+                raise ValueError(
+                    f"--track_openings: a track at {opening.height:g} mm is not "
+                    f"below the deck underside ({l:g} mm above the floor panel).")
+            notch = opening.height + self._UNDER_TRACK_ENVELOPE > l - t
+            plan.setdefault(opening.edge, []).append((opening, notch))
+        return plan
+
+    def _deckEdges(self, char, isTrapezoid, deck_length, wall_length, notches):
+        """Deck edge types, split where a wall below is notched.
+
+        @param char        - The deck's joint edge character (e.g. 'Z').
+        @param isTrapezoid - Selects the side → edge numbering.
+        @param deck_length - Deck side length.
+        @param wall_length - Wall top-edge length.
+        @param notches     - Edge → list of ``(position, width, depth)``.
+        @returns ``char`` when nothing is notched, else one edge per deck side.
+        """
+        if not notches:
+            return char
+        sides = self._TRAPEZOID_DECK_SIDE_EDGES if isTrapezoid else self._DECK_SIDE_EDGES
+        base = self.edges[char]
+        edges = []
+        for edge in sides:
+            if edge in notches:
+                _, deck = wall_and_deck_pieces(wall_length, deck_length, notches[edge])
+                edges.append(SplitJointEdge(self, base, deck))
+            else:
+                edges.append(base)
+        return edges
+
+    def _checkTrackOpenings(self, s, l, rects, under_rect, big_holes):
+        """Keep every track opening clear of the wall's other holes.
+
+        @param s          - Wall pattern length (the frame of the holes).
+        @param l          - Wall body height.
+        @param rects      - Track openings, ``(x0, x1, y0, y1)`` in the wall
+                            frame (x up the wall, y along it).
+        @param under_rect - The under-deck opening's rectangle, or None.
+        @param big_holes  - Big holes still to be drawn, ``(x, y, r)``.
+        @throws ValueError - If an opening comes within _TRACK_OPENING_CLEAR mm
+                             of a corner-group or big hole, another opening, or
+                             runs off the wall.
+        """
+        clear = self._TRACK_OPENING_CLEAR
+        holes = [(x, y, r) for x, y, r in self._cornerGroupHoles(s, l)] + list(big_holes)
+        others = list(rects) + ([under_rect] if under_rect else [])
+        for i, rect in enumerate(rects):
+            x0, x1, y0, y1 = rect
+            if y0 < clear or y1 > s - clear:
+                raise ValueError("--track_openings: an opening runs off the end of the wall.")
+            for hole in holes:
+                gap = rect_circle_gap(rect, hole)
+                if gap < clear:
+                    raise ValueError(
+                        f"--track_openings: an opening at {y0 + (y1 - y0) / 2 - s / 2:+.1f} mm "
+                        f"comes within {gap:.1f} mm of the wall's corner/registration "
+                        f"holes (needs {clear:g}); move it or narrow it.")
+            for j, other in enumerate(others):
+                if j == i:
+                    continue
+                ox0, ox1, oy0, oy1 = other
+                gap = max(oy0 - y1, y0 - oy1, ox0 - x1, x0 - ox1)
+                if gap < clear:
+                    raise ValueError(
+                        "--track_openings: two openings on one wall overlap or come "
+                        f"within {clear:g} mm of each other.")
+
     def drawRouteTrackGuides(self, s, l, r, isTrapezoid):
         """One track-guide plate per edge that --track_routes crosses.
 
@@ -1498,6 +1638,16 @@ class HexmoHexagon(HexmoBigHoleMixin, HexmoTrackGuideMixin, HexmoTrackTemplateMi
         # Dihedral correction angle between adjacent side panels (taper angle = 0).
         phi = 180 - 2 * math.degrees(math.asin(math.cos(math.pi / n)))
 
+        # Track openings (--track_openings), parsed and checked before anything
+        # is drawn.  Notched ones change both a wall's top edge and the deck
+        # edge above it: edge → [(position, width, depth below the deck)].
+        opening_plan = self._trackOpeningPlan(isTrapezoid, l)
+        notches = {}
+        for edge, entries in opening_plan.items():
+            cut = [(o.position, o.width, l - o.height) for o, notch in entries if notch]
+            if cut:
+                notches[edge] = cut
+
         # Register custom finger-joint edge objects.  Each call mutates self.edges
         # as a side effect; the returned settings object is not used afterwards,
         # so it is assigned to _ to make the write-only pattern explicit.
@@ -1513,6 +1663,12 @@ class HexmoHexagon(HexmoBigHoleMixin, HexmoTrackGuideMixin, HexmoTrackTemplateMi
         _ = copy.deepcopy(self.edges["f"].settings)
         _.setValues(self.thickness, angle=90)
         _.edgeObjects(self, chars="zZH")
+
+        def deck_edges(joint_type, is_top):
+            """The face's edge types: the deck's are split over any notch."""
+            if not is_top:
+                return joint_type[1]
+            return self._deckEdges(joint_type[1], isTrapezoid, side_orig, side, notches)
 
         def drawTop(r, top_type, joint_type, is_top=False):
             """Render one face (top or bottom) as the appropriate panel style.
@@ -1573,8 +1729,8 @@ class HexmoHexagon(HexmoBigHoleMixin, HexmoTrackGuideMixin, HexmoTrackTemplateMi
                         r=r, edges_char=joint_type[1], move="right",
                         callback=spoke_cbs)
                 else:  # "closed"
-                    self.drawTrapezoidWall(r=r, edges_char=joint_type[1], move="right",
-                                           callback=support_cb)
+                    self.drawTrapezoidWall(r=r, edges_char=deck_edges(joint_type, is_top),
+                                           move="right", callback=support_cb)
             else:
                 if top_type == "spoke":
                     spoke_cbs = [lambda: self.drawKites(r=r, joint_type=joint_type, isTrapezoid=False)]
@@ -1584,8 +1740,8 @@ class HexmoHexagon(HexmoBigHoleMixin, HexmoTrackGuideMixin, HexmoTrackTemplateMi
                         corners=n, r=r, edges=joint_type[1], move="right",
                         callback=spoke_cbs)
                 else:  # "closed"
-                    self.regularPolygonWall(corners=n, r=r, edges=joint_type[1], move="right",
-                                            callback=support_cb)
+                    self.regularPolygonWall(corners=n, r=r, edges=deck_edges(joint_type, is_top),
+                                            move="right", callback=support_cb)
 
         with self.saved_context():
             # Draw bottom panel first, then top (order affects SVG layout).
@@ -1621,27 +1777,51 @@ class HexmoHexagon(HexmoBigHoleMixin, HexmoTrackGuideMixin, HexmoTrackTemplateMi
         # callback origin sits t to the left of where it was before trimming,
         # so shifting t rightward (−y in local coords) restores centre alignment
         # when new and old panels are stacked and centred.
-        def draw_aligned_holes(under_track=False):
+        def draw_aligned_holes(under_track=False, openings=()):
             self.moveTo(0, -self.thickness)
-            if under_track:
-                self.drawAlignmentHoles(side_orig, l, "A", under_track=True)
+            if under_track or openings:
+                self.drawAlignmentHoles(side_orig, l, "A", under_track=under_track,
+                                        openings=openings)
             else:
                 # The plain call, unchanged, so wrappers of drawAlignmentHoles
                 # with the original signature (e.g. test spies) keep working.
                 self.drawAlignmentHoles(side_orig, l, "A")
 
         # Standard walls in drawing order, as (edge, under_track): the walls
-        # carrying the under-deck track opening first (labelled with their
-        # edge, since they are no longer interchangeable), then plain ones.
+        # with an under-deck or track opening first (labelled with their edge,
+        # since they are no longer interchangeable), then plain ones.
         under_edges = self._underTrackEdges(isTrapezoid)
+        feature_edges = sorted(set(under_edges) | set(opening_plan))
         n_standard = 3 if isTrapezoid else n
-        standard_walls = ([(e, True) for e in under_edges]
-                          + [(None, False)] * (n_standard - len(under_edges)))
+        standard_walls = ([(e, e in under_edges) for e in feature_edges]
+                          + [(None, False)] * (n_standard - len(feature_edges)))
+
+        def wall_openings(edge):
+            """This edge's track openings in the wall-hole frame.
+
+            Positions are along the wall's top edge in its drawing direction;
+            fitted with that direction anticlockwise, they match the deck.
+            """
+            rects = []
+            for o, notch in opening_plan.get(edge, []):
+                centre = side_orig / 2 + o.position
+                top = l if notch else l - self.thickness
+                rects.append(((o.height, top, centre - o.width / 2, centre + o.width / 2),
+                              not notch))
+            return rects
 
         def draw_standard_wall(edge, under_track):
-            self.polygonWall(borders0, edge=e0, correct_corners=False, move="right",
-                             callback=[None, lambda: draw_aligned_holes(under_track)],
-                             label=f"edge {edge}" if under_track else "")
+            wall_edges = e0
+            if edge in notches:
+                # Segment 6 of borders0 is the top (deck) edge; split it round
+                # the notches, keeping every other segment's edge type.
+                wall_edges = [e0[i % 4] for i in range(len(borders0) // 2)]
+                pieces, _ = wall_and_deck_pieces(side, side_orig, notches[edge])
+                wall_edges[6] = SplitJointEdge(self, self.edges[top_edge], pieces)
+            openings = wall_openings(edge)
+            self.polygonWall(borders0, edge=wall_edges, correct_corners=False, move="right",
+                             callback=[None, lambda: draw_aligned_holes(under_track, openings)],
+                             label=f"edge {edge}" if edge is not None else "")
 
         # Alignment-hole callback for the trapezoid long back wall.
         # The hole pattern is always laid over the full 2*side_orig reference and
