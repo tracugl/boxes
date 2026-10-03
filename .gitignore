@@ -22,3 +22,6 @@ tracker.log
 .DS_Store
 .venv/
 flake.lock
+
+# Local scratch files (plans, drawings) not for the repo
+/temp/
