@@ -33,6 +33,9 @@ from boxes.generators._hexmo_under_track import HexmoUnderTrackMixin
 from boxes.generators._hexmo_deck_slots import (
     OVERRUN, centreline_points, parse_deck_slots, slot_outline, trim_segments,
 )
+from boxes.generators._hexmo_risers import (
+    parse_risers, point_at, strip_outline, strip_points, support_stations,
+)
 from boxes.generators._hexmo_track_openings import (
     SplitJointEdge, parse_track_openings, rect_circle_gap, wall_and_deck_pieces,
 )
@@ -173,6 +176,18 @@ class HexmoHexagon(HexmoBigHoleMixin, HexmoTrackGuideMixin, HexmoTrackTemplateMi
                  " A slot reaching a deck edge needs a --track_openings notch "
                  "there, and slots must keep clear of the support slots.  E.g. "
                  "'1:-17.5-5:17.5@157..'.")
+        self.argparser.add_argument(
+            "--risers", action="store", type=str, default="",
+            help="Riser boards for a descending track: a track bed strip along "
+                 "the route plus supports cut to height, slotted into the floor "
+                 "panel (needs --bottom closed).  Comma-separated "
+                 "'route[@from..to]~h0..h1[/width]': route and stretch as for "
+                 "--deck_slots; h0..h1 the track height (bed top) above the floor "
+                 "panel at the stretch's start and end; width default "
+                 "--track_width.  E.g. '3:-17.5-5:-35~72.5..65.2'.")
+        self.argparser.add_argument(
+            "--riser_spacing", action="store", type=float, default=80.0,
+            help="Largest gap (mm) between neighbouring riser supports.")
         self.argparser.add_argument(
             "--trapezoid", action="store", type=boolarg, default=False,
             help="If true, only draw a half-hexagon.")
@@ -1471,6 +1486,171 @@ class HexmoHexagon(HexmoBigHoleMixin, HexmoTrackGuideMixin, HexmoTrackTemplateMi
             else:
                 self.corner(step[1], step[2])
 
+    # Minimum solid material between a riser support and anything else.
+    _RISER_CLEAR = 2.0
+
+    def _riserPlan(self, r, isTrapezoid, l):
+        """Solve and check --risers.
+
+        @param r           - Inner hexagon circumradius (the deck's).
+        @param isTrapezoid - True for the half-hexagon.
+        @param l           - Wall body height (floor panel top to deck underside).
+        @returns List of dicts: ``segments`` (bed centreline, deck frame),
+                 ``width``, ``stations`` (``(point, direction, height)`` per
+                 support, height = track height there) and ``name``.
+        @throws ValueError - On a malformed entry, a spoke bottom, a height
+                             out of range, or a support that would stand in
+                             another riser's track, on a support wall's slot,
+                             or against a side wall.
+        """
+        specs = parse_risers(self.risers)
+        if not specs:
+            return []
+        if self.bottom != "closed":
+            raise ValueError("--risers: the supports slot into the floor panel, which "
+                             "needs --bottom closed.")
+        t = self.thickness
+        apothem = r * math.sqrt(3.0) / 2.0
+        plan = []
+        for spec in specs:
+            name = f"--risers {spec.start}-{spec.end}"
+            if isTrapezoid and not {spec.start, spec.end} <= self._TRAPEZOID_EDGES:
+                raise ValueError(f"{name}: the trapezoid only has edges 3, 4 and 5.")
+            for height in (spec.h0, spec.h1):
+                if not 3 * t <= height <= l + t:
+                    raise ValueError(
+                        f"{name}: a track height of {height:g} mm is out of range; "
+                        f"it must be from {3 * t:g} (room for a support) up to the "
+                        f"deck top, {l + t:g} mm above the floor panel.")
+            geometry = route_geometry(spec.start, spec.start_offset, spec.end,
+                                      spec.end_offset, apothem, self.track_lead_in)
+            total = sum(seg.length for seg in geometry.segments)
+            lo = 0.0 if spec.lo is None else spec.lo
+            hi = total if spec.hi is None else spec.hi
+            if not (0 <= lo < hi <= total + 1e-6):
+                raise ValueError(f"{name}: the stretch {lo:g}..{hi:g} is not within "
+                                 f"the route's {total:.1f} mm.")
+            segments = trim_segments(geometry.segments, lo, hi)
+            length = hi - lo
+            width = spec.width or self.track_width
+            stations = []
+            for s in support_stations(length, self.riser_spacing):
+                point, direction = point_at(segments, s)
+                height = spec.h0 + (spec.h1 - spec.h0) * s / length
+                stations.append((point, direction, height))
+            plan.append({"segments": segments, "width": width,
+                         "stations": stations, "name": name})
+        self._checkRiserFootprints(r, isTrapezoid, plan)
+        return plan
+
+    def _checkRiserFootprints(self, r, isTrapezoid, plan):
+        """Refuse riser supports that stand where something else is.
+
+        A support's footprint is a line across its track, the bed's width
+        long.  It must keep clear of every other riser's track (which would
+        run into it), of the support walls' floor slots, and of the side walls.
+        """
+        clear = self._RISER_CLEAR
+        t = self.thickness
+        apothem = r * math.sqrt(3.0) / 2.0
+        paths = [(i, centreline_points(rp["segments"]), rp["width"]) for i, rp in enumerate(plan)]
+        walls = []
+        if self.supports:
+            layout, d = self._supportLayout(r, isTrapezoid)
+            sl = self.support_length
+            for _, _, edge in layout:
+                th = math.radians(EDGE_ANGLES[edge])
+                walls.append([(math.cos(th) * (d - sl / 2 + sl * k / 20),
+                               math.sin(th) * (d - sl / 2 + sl * k / 20)) for k in range(21)])
+        edges = sorted(self._TRAPEZOID_EDGES) if isTrapezoid else range(1, 7)
+        for i, rp in enumerate(plan):
+            half = rp["width"] / 2.0
+            for point, (dx, dy), _ in rp["stations"]:
+                ends = [(point[0] + half * dy, point[1] - half * dx),
+                        (point[0] - half * dy, point[1] + half * dx)]
+                foot = [(ends[0][0] + (ends[1][0] - ends[0][0]) * k / 10,
+                         ends[0][1] + (ends[1][1] - ends[0][1]) * k / 10) for k in range(11)]
+                for j, other, w in paths:
+                    if j != i and min(math.dist(p, q) for p in foot for q in other) < w / 2 + t / 2 + clear:
+                        raise ValueError(
+                            f"{rp['name']}: a support at ({point[0]:.0f}, {point[1]:.0f}) "
+                            f"would stand in the track of {plan[j]['name']}.")
+                for wall in walls:
+                    if min(math.dist(p, q) for p in foot for q in wall) < t + clear:
+                        raise ValueError(
+                            f"{rp['name']}: a support at ({point[0]:.0f}, {point[1]:.0f}) "
+                            "lands on a support wall's slot; move the supports with "
+                            "--support_position or --support_edges.")
+                for edge in edges:
+                    th = math.radians(EDGE_ANGLES[edge])
+                    inside = min(apothem - (p[0] * math.cos(th) + p[1] * math.sin(th))
+                                 for p in ends)
+                    if inside < t + clear:
+                        raise ValueError(
+                            f"{rp['name']}: a support at ({point[0]:.0f}, {point[1]:.0f}) "
+                            f"runs into the wall at edge {edge}; shorten the stretch.")
+
+    def _riserFingerHoles(self, stations, width):
+        """Finger holes across the track at each support station (current frame)."""
+        half = width / 2.0
+        for point, (dx, dy), _ in stations:
+            # Start on the right of the track and run across it to the left.
+            start = (point[0] + half * dy, point[1] - half * dx)
+            angle = math.degrees(math.atan2(dx, -dy))
+            self.fingerHolesAt(start[0], start[1], width, angle=angle)
+
+    def drawRiserFloorHoles(self, plan, isTrapezoid):
+        """Floor-panel slots for every riser support (floor centre callback).
+
+        Drawn in the deck's orientation (seen from above), so fit the floor
+        panel with this face up; the slots then sit under the bed.
+        """
+        with self.saved_context():
+            if isTrapezoid:
+                self.moveTo(0, self.thickness)
+            for riser in plan:
+                self._riserFingerHoles(riser["stations"], riser["width"])
+
+    def drawRiser(self, riser, move="right"):
+        """Cut one riser: the bed strip (with its support slots), then each support.
+
+        The bed is drawn in the deck frame, shifted so its bounding box sits
+        at the part's origin.  Its outline starts one burn width outside the
+        start cap, so boxes' corner compensation keeps it true to size.
+        Each support is a rectangle the bed's width wide and as tall as the
+        bed's underside at that point, finger-jointed top and bottom, with
+        its track height etched on it.
+        """
+        segments, width = riser["segments"], riser["width"]
+        points = strip_points(segments, width)
+        minx = min(p[0] for p in points)
+        miny = min(p[1] for p in points)
+        tw = max(p[0] for p in points) - minx
+        th = max(p[1] for p in points) - miny
+        if not self.move(tw, th, move, True):
+            self.moveTo(-minx, -miny)
+            with self.saved_context():
+                self._riserFingerHoles(riser["stations"], width)
+            start, heading, steps = strip_outline(segments, width)
+            back = math.radians(heading + 90.0)     # −forward: outwards from the cap
+            self.moveTo(start[0] + self.burn * math.cos(back),
+                        start[1] + self.burn * math.sin(back), heading)
+            for step in steps:
+                if step[0] == "edge":
+                    self.edge(step[1])
+                else:
+                    self.corner(step[1], step[2])
+            self.move(tw, th, move, label=f"riser bed {riser['name'][9:]}")
+        t = self.thickness
+        for _, _, height in riser["stations"]:
+            body = height - t
+            label = f"{height:.1f}"
+            self.rectangularWall(
+                width, body, "fefe", move="right", label=f"riser {label}",
+                callback=[lambda b=body, txt=label: self.text(
+                    txt, width / 2, b / 2, align="middle center",
+                    fontsize=min(4.0, b / 3), color=Color.ETCHING)])
+
     def drawRouteTrackGuides(self, s, l, r, isTrapezoid):
         """One track-guide plate per edge that --track_routes crosses.
 
@@ -1847,6 +2027,8 @@ class HexmoHexagon(HexmoBigHoleMixin, HexmoTrackGuideMixin, HexmoTrackTemplateMi
                 notches[edge] = cut
         # Deck slots (--deck_slots), also checked before anything is drawn.
         slot_plan = self._deckSlotPlan(r, isTrapezoid, notches)
+        # Riser boards (--risers): bed strips and supports, checked up front.
+        riser_plan = self._riserPlan(r, isTrapezoid, l)
 
         # Register custom finger-joint edge objects.  Each call mutates self.edges
         # as a side effect; the returned settings object is not used afterwards,
@@ -1905,6 +2087,11 @@ class HexmoHexagon(HexmoBigHoleMixin, HexmoTrackGuideMixin, HexmoTrackTemplateMi
                 support_cb = [None, lambda: self.drawSupportHoles(r=r, isTrapezoid=isTrapezoid)]
             else:
                 support_cb = None
+            # Riser supports stand in slots in the (closed) floor panel; they
+            # use the floor's centre slot (callback[0]).
+            if not is_top and riser_plan:
+                floor_cb = lambda: self.drawRiserFloorHoles(riser_plan, isTrapezoid)
+                support_cb = [floor_cb] + (support_cb[1:] if support_cb else [])
 
             # Track-curve guide: etched onto the top deck.  In trapezoid mode it
             # draws the single lower curve; on the full hexagon it draws the
@@ -2087,6 +2274,10 @@ class HexmoHexagon(HexmoBigHoleMixin, HexmoTrackGuideMixin, HexmoTrackTemplateMi
             # Even number of sides (n=6): all panels use the stepped-tab profile.
             for edge, under_track in standard_walls:
                 draw_standard_wall(edge, under_track)
+
+        # Riser boards: each bed strip followed by its supports.
+        for riser in riser_plan:
+            self.drawRiser(riser)
 
         # Optional track-laying jig.  It fits any standard wall, so it takes
         # the standard-wall hole frame (side_orig, l), never the trapezoid
