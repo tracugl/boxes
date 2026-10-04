@@ -581,16 +581,18 @@ closed until the deck slot along the track is cut. A notched or holed wall is
 labelled with its edge; fit it with the opening over the track. Openings keep
 2 mm clear of the wall's other holes. Big holes, and the 25 mm medium (cable)
 holes at each end of the wall, that would come closer are left out instead; both
-walls at a joint lose the same one, so they still match. An opening is refused if
-it reaches a small pin hole, overlaps another opening, or puts the track too near
-the floor or above the deck.
+walls at a joint lose the same one, so they still match. A track exactly at the deck underside
+(74 mm at h=80) rests on the wall top: nothing is cut from the wall, its top edge
+and the deck edge just go plain across the opening, so a deck slot can still run
+out over the joint. An opening is refused if it reaches a small pin hole, overlaps
+another opening, or puts the track too near the floor or above the deck underside.
 
 ```bash
 # Helix ring M1 at h=80.  Trains run edge 3 → edge 5 through every ring module,
-# so the spur enters at edge 3 (from M6, 17.5 mm towards edge 4) and leaves at
-# edge 5 (to M2, 35 mm towards edge 4); both are notches.
+# so the spur enters at edge 3 (from M6, 17.5 mm towards edge 4) on the wall top
+# (a flush opening) and leaves at edge 5 (to M2, 35 mm towards edge 4) in a notch.
 curl "http://localhost:4455/HexmoHexagon?render=1&radius=220&thickness=3&h=80\
-&trapezoid=1&track_openings=3:-17.5:72.5:35,5:35:64.9:35" -o hexmo_n_m1.svg
+&trapezoid=1&track_openings=3:-17.5:74:35,5:35:66.1:35" -o hexmo_n_m1.svg
 ```
 
 ### Deck slots along a descending track (`--deck_slots`)
@@ -681,22 +683,23 @@ out first), and the slot stops at the wall's
 inner face so the strip fits between the walls (the deck left over the wall is
 then one full thickness, cut away once fitted, as before). Make the two entries
 match to use it, e.g. `--deck_slots 3:-17.5-5:-35/35` with
-`--risers 3:-17.5-5:-35~72.5..64.9/35`. Where a track carries on under the deck
+`--risers 3:-17.5-5:-35~74..66.1/35`. Where a track carries on under the deck
 past the end of its slot (M6's return), give that stretch its own riser entry;
 it gets a separate bed.
 
 For the helix ring the notches, the deck slot and the bed are all 35 mm, which
 leaves room for long N coaches overhanging on the R227–R262 spur curves (about
-34 mm swept). At h=80 the spur heights are 72.5 (M6/M1), 64.9, 57.5, 50.2, 42.8
-and 35.4 (M5/M6), 31.0 where its return slot ends under M6's deck and 27.8 at M6
-edge 1: a steady 2.39 % from the spur leaving M6's deck to the end of the return
-slot, then 1.75 % to edge 1. On M6 the spur leaves the deck at 169 mm along its
-route, as soon as it is clear of the return running below it, and falls from 77
-(deck level) to 72.5 at edge 5. The return's slot stops at 186 mm. That leaves
-the deck whole under the spur's first stretch, and a 10 mm web of deck between
-the two slots. Past the slot the return runs under the deck, so it must be down
-to 31.0 by then (the 74 mm deck underside less a 43 mm train). The slots are
-`1:0-5:17.5@169..` and `3:35-1:0@..186`.
+34 mm swept). At h=80 the spur heights are 74.0 (M6/M1), 66.1, 58.5, 50.8, 43.2
+and 35.6 (M5/M6), 31.0 where its return slot ends under M6's deck and 27.8 at M6
+edge 1. On M6 the spur leaves the deck at 169 mm along its route, as soon as it
+is clear of the return running below it. It falls gently (1.6 %) from 77 (deck
+level) to 74 at edge 5, so it crosses the M6/M1 joint resting on the wall tops:
+the openings there are flush, with nothing cut from either wall. From there it is
+a steady 2.47 % to the end of the return slot, then 1.75 % to edge 1. The
+return's slot stops at 186 mm. That leaves the deck whole under the spur's first
+stretch, and a 10 mm web of deck between the two slots. Past the slot the return
+runs under the deck, so it must be down to 31.0 by then (the 74 mm deck underside
+less a 43 mm train). The slots are `1:0-5:17.5@169..` and `3:35-1:0@..186`.
 
 ```bash
 # Helix ring M6 at h=80: three deck tracks at edge 1 (loop legs at ±35, spur on
@@ -707,21 +710,21 @@ curl "http://localhost:4455/HexmoHexagon?render=1&radius=220&thickness=3&h=80\
 &track_lead_in=26&track_width=17\
 &track_routes=1:-35-5:-17.5,3:-17.5-1:-35,1:0-5:17.5\
 &under_track_edges=1&under_track_height=27.8&under_track_width=35\
-&track_openings=5:17.5:72.5:35,3:-35:35.4:35\
+&track_openings=5:17.5:74:35,3:-35:35.6:35\
 &deck_slots=1:0-5:17.5@169../35,3:35-1:0@..186/35\
-&risers=1:0-5:17.5@169..~77..72.5/35,3:35-1:0@..186~35.4..31/35,3:35-1:0@186..~31..27.8/35" \
+&risers=1:0-5:17.5@169..~77..74/35,3:35-1:0@..186~35.6..31/35,3:35-1:0@186..~31..27.8/35" \
   -o hexmo_n_m6_riser.svg
 ```
 
 ```bash
-# Helix ring M1 at h=80, with the spur's riser (72.5 at edge 3 to 64.9 at edge 5),
+# Helix ring M1 at h=80, with the spur's riser (74 at edge 3, on the wall top, to 66.1 at edge 5),
 # all 35 mm wide.
 curl "http://localhost:4455/HexmoHexagon?render=1&radius=220&thickness=3&h=80\
 &trapezoid=1&bottom=spoke&support_length=55&support_edges=4@132,4@30/90\
 &track_lead_in=26&track_width=17\
 &track_routes=3:17.5-5:17.5,3:-17.5-5:-35\
-&track_openings=3:-17.5:72.5:35,5:35:64.9:35&deck_slots=3:-17.5-5:-35/35\
-&risers=3:-17.5-5:-35~72.5..64.9/35" -o hexmo_n_m1_riser.svg
+&track_openings=3:-17.5:74:35,5:35:66.1:35&deck_slots=3:-17.5-5:-35/35\
+&risers=3:-17.5-5:-35~74..66.1/35" -o hexmo_n_m1_riser.svg
 ```
 
 ```bash
@@ -731,7 +734,7 @@ curl "http://localhost:4455/HexmoHexagon?render=1&radius=220&thickness=3&h=80\
 &trapezoid=1&support_length=55&support_edges=4@132,4@30/90\
 &track_lead_in=26&track_width=17\
 &track_routes=3:17.5-5:17.5,3:-17.5-5:-35\
-&track_openings=3:-17.5:72.5:35,5:35:64.9:35\
+&track_openings=3:-17.5:74:35,5:35:66.1:35\
 &deck_slots=3:-17.5-5:-35/35" -o hexmo_n_m1_slot.svg
 ```
 

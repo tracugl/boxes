@@ -46,9 +46,9 @@ SCALES = {
               "--track_lead_in=26", "--track_width=17",
               "--track_routes=1:-35-5:-17.5,3:-17.5-1:-35,1:0-5:17.5",
               "--under_track_edges=1", "--under_track_height=27.8", "--under_track_width=35",
-              "--track_openings=5:17.5:72.5:35,3:-35:35.4:35",
+              "--track_openings=5:17.5:74:35,3:-35:35.6:35",
               "--deck_slots=1:0-5:17.5@169../35,3:35-1:0@..186/35",
-              "--risers=1:0-5:17.5@169..~77..72.5/35,3:35-1:0@..186~35.4..31/35,"
+              "--risers=1:0-5:17.5@169..~77..74/35,3:35-1:0@..186~35.6..31/35,"
               "3:35-1:0@186..~31..27.8/35"]),
     "HO": dict(
         radius=500, t=6, lead=23, spacing=80, bed=60, track=30, deck_under=88, envelope=70,
