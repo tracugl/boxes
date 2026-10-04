@@ -151,7 +151,8 @@ class TestRefused:
         ("5:0:2", "floor"),
         ("5:0:95", "deck"),
         ("1:0:50", "trapezoid"),
-        ("3:-35:30:30", "registration"),
+        # Over a small pin (63 mm off centre, 15 and 59 mm up): still refused.
+        ("3:-50:30:30", "registration"),
         ("5:0:60:26,5:10:60:26", "overlap"),
     ])
     def test_refused(self, spec, match) -> None:
@@ -161,3 +162,23 @@ class TestRefused:
             args = N_HEX + ["--trapezoid=1", f"--track_openings={spec}"]
         with pytest.raises(ValueError, match=match):
             render(args)
+
+
+class TestMediumHolesGiveWay:
+    """A medium (cable) hole an opening needs the room of is left out."""
+
+    def test_m5_at_h80_with_35mm_notches(self) -> None:
+        # The M4/M5 (43.9) and M5/M6 (36.5) joints: each notch takes one
+        # medium hole's room on its wall, and nothing else gives way.
+        box = HexmoHexagon()
+        box.parseArgs(["--radius=220", "--thickness=3", "--h=80", "--trapezoid=1",
+                       "--track_openings=3:-35:43.9:35,5:35:36.5:35"])
+        box.metadata["reproducible"] = True
+        dropped = []
+        orig = box._checkTrackOpenings
+        box._checkTrackOpenings = lambda *a, **kw: (dropped.append(orig(*a, **kw)), dropped[-1])[1]
+        box.open()
+        box.render()
+        box.close()
+        assert [len(d) for d in dropped] == [1, 1]
+        assert all(r == HexmoHexagon._R2 for d in dropped for _, _, r in d)
