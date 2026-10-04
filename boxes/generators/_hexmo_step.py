@@ -649,6 +649,11 @@ def ring_track_ends(ring="N"):
 _CURVE_STEPS = 6
 # Two path ends closer than this (mm) join.
 _JOIN = 1e-3
+# An outline whose own ends are this close (mm) is closed with a straight
+# line: some panels are drawn a fraction of a millimetre short of closing
+# (e.g. the trapezoid with FingerJoint_extra_length), and without closing it
+# the panel would be lost and its holes taken for outlines.
+_BRIDGE = 1.0
 
 
 def _is_cut(rgb):
@@ -742,8 +747,11 @@ def _close_loops(chains):
                 pending.pop(i)
                 grown = True
                 break
-        if math.dist(_start(cur), _end(cur)) < _JOIN:
+        gap = math.dist(_start(cur), _end(cur))
+        if gap < _JOIN:
             loops.append(cur)
+        elif gap < _BRIDGE:
+            loops.append(cur + [("L", _end(cur), _start(cur))])
     return [_merge_lines(loop) for loop in loops if abs(_area(_polygon(loop))) > 1e-6]
 
 
