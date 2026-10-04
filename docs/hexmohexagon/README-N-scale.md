@@ -324,7 +324,8 @@ curving to edge 5 or edge 3 and ending 17.5 mm on the inside of their curve
 edge 1 → 5 leg at edge 5 (R262). Every pair stays 35 mm apart, and there is no
 edge 3 → 5 track. The turnouts that split the entry line into these three tracks
 can't fit on M6: a Peco turnout is a 124–160 mm straight, and M6's tracks start
-curving 26 mm in. They sit on a HexmoRectangle joined to edge 1 instead.
+curving 26 mm in. They sit on a HexmoRectangle joined to edge 1 instead (see
+**Turnouts** under [Straight modules](#straight-modules-hexmorectangle)).
 
 ```bash
 # Full hexagon: helix-ring M6 (N-scale params)
@@ -478,6 +479,46 @@ than cut through the joint. To keep 3 rows *and* the pass-through, narrow it
 with `--big_hole_shape=rounded_rect` and `--big_hole_width` of up to **57 mm**
 (the supports sit at ±35.2 mm); the hole stays centred and keeps its 70 mm
 height.
+
+**Turnouts (`--turnouts`).** A rectangle is the place for turnouts: they are
+straight-bodied, 124–160 mm long in N, and a hexagon's tracks start curving 26 mm
+in. Each comma-separated entry `toe:from:to` etches one turnout's diverging leg.
+Its toe is `toe` mm along the deck, on the straight track at lateral offset
+`from` (the track lines' own offsets, `+` towards `+y`). The leg curves off and
+settles at offset `to`, keeping it to the end of the deck. The sign of `to −
+from` gives the hand, and every turnout faces the same end, so fit that end to
+the module the tracks fan out into. The through road is the deck's ordinary
+straight line.
+
+The leg follows the turnout's own diverging road, a `--turnout_radius` curve to
+the `--turnout_angle` crossing angle, straight on past the heel
+(`--turnout_length` after the toe), then flexible track: a
+`--turnout_reverse_radius` curve back to parallel. The defaults are Peco's N
+medium turnout (SL-E395/396: 123.7 mm, R457, 14°) and a 300 mm reverse curve,
+which puts the leg 16.9 mm off the through road at the heel and back parallel
+35 mm out about 233 mm after the toe. A tick marks each toe, and with
+`--track_crossing` each leg gets the usual end tick. The generator stops with an
+error if a leg can't spread that far, isn't back parallel before the end of the
+deck, or runs off it.
+
+**The helix ring's entry rectangle** joins M6 edge 1 and splits the entry line
+into M6's three deck tracks. T1 (toe 10 mm in) sends loop A to −35, and T2 (toe
+at T1's heel, 133.7) sends loop B to +35. The centre line runs on as the spur,
+and T2's leg is parallel 367 mm along the 375 mm deck. The lower level passes
+under the deck on the centre line, through both end walls and the short divider
+(`--under_track`, at the same 27.8 mm and 35 mm as M6's edge 1 opening). The two
+long supports sit at ±35.2 mm, right under the loop tracks, and the centre lane
+under both toes is clear for point motors. For a guide plate at the M6 joint,
+use M6's own edge-1 plate: it has windows for all three tracks.
+
+```bash
+# Helix ring entry (N, h=80): two Peco medium turnouts, the lower level underneath.
+curl "http://localhost:4455/HexmoRectangle?render=1&radius=220&thickness=3&h=80\
+&num_rows=3&num_columns=2&big_hole_shape=rounded_rect&big_hole_width=50&big_hole_height=50\
+&track_lines=1&draw_track=1&track_width=17&track_lead_in=26\
+&under_track=1&under_track_height=27.8&under_track_width=35\
+&turnouts=10:0:-35,133.7:0:35" -o hexmo_n_helix_entry.svg
+```
 
 ---
 
