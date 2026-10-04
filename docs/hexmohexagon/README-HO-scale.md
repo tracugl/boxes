@@ -540,6 +540,14 @@ up the cut ends of a split template are always etched, since they are needed to
 reassemble it. Part labels (e.g. `riser 73.2`, `track guide edge 3`) follow the
 standard `--labels` option, and the deck's radius label follows `--track_label`.
 
+## 3D model for CAD (`--format step`)
+
+HexmoHexagon and HexmoRectangle can output the module assembled in 3D, as a
+STEP file for Onshape, FreeCAD, Fusion and so on: choose **Format → step** in
+the web form. The N-scale README has the details: what's in the model, the
+`--step_clearance` option, exporting the whole helix ring, and how to import it
+into Onshape (import to a single document, **Y Axis Up off**).
+
 ---
 
 ## Gotchas

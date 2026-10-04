@@ -30,6 +30,7 @@ from types import SimpleNamespace
 from boxes import Boxes, edges, boolarg
 from boxes.Color import Color
 from boxes.generators._hexmo_big_holes import HexmoBigHoleMixin
+from boxes.generators._hexmo_step_format import HexmoStepFormatMixin
 from boxes.generators._hexmo_track_guide import HexmoTrackGuideMixin
 from boxes.generators._hexmo_track_template import HexmoTrackTemplateMixin
 from boxes.generators._hexmo_track_routes import Arc, Line, offset_segments, segments_polyline
@@ -206,8 +207,8 @@ class _ShortWallTopEdge(edges.BaseEdge):
         e_edge(self._side_gap)
 
 
-class HexmoRectangle(HexmoBigHoleMixin, HexmoTrackGuideMixin, HexmoTrackTemplateMixin,
-                     HexmoUnderTrackMixin, Boxes):
+class HexmoRectangle(HexmoStepFormatMixin, HexmoBigHoleMixin, HexmoTrackGuideMixin,
+                     HexmoTrackTemplateMixin, HexmoUnderTrackMixin, Boxes):
     """Rectangular tray with a 3×N internal grid, compatible with HexmoHexagon stacking.
 
     The number of column compartments N is controlled by ``--num_columns`` (default 0 = auto).
@@ -245,6 +246,8 @@ class HexmoRectangle(HexmoBigHoleMixin, HexmoTrackGuideMixin, HexmoTrackTemplate
     # 
 
     ui_group = "Box"
+    # Which 3D exporter --format step uses (see _hexmo_step_format).
+    _STEP_KIND = "rectangle"
 
     # Alignment-hole geometry constants — identical values to HexmoHexagon so
     # that pins and holes from both box types are interchangeable during assembly.
@@ -462,6 +465,8 @@ class HexmoRectangle(HexmoBigHoleMixin, HexmoTrackGuideMixin, HexmoTrackTemplate
                  "matches HexmoHexagon's --under_track_edges opening.")
         # --under_track_height / --under_track_width, shared with HexmoHexagon.
         self._addUnderTrackArgs()
+        # --format step and --step_clearance (see _hexmo_step_format).
+        self._addStepFormat()
 
     def _hexWallLength(self):
         """Hole-pattern length of the matching HexmoHexagon side wall.
