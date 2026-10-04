@@ -1646,9 +1646,8 @@ class HexmoHexagon(HexmoBigHoleMixin, HexmoTrackGuideMixin, HexmoTrackTemplateMi
 
         @param plan        - Entries from _deckSlotPlan.  A bed slot also
                              carries its riser's ``stations``: their support
-                             slots and a "riser bed" label are cut inside the
-                             slot outline first, so the strip that falls out
-                             is the riser's bed.
+                             slots are cut inside the slot outline first, so
+                             the strip that falls out is the riser's bed.
         @param isTrapezoid - True for the half-hexagon deck, whose callback
                              frame sits one thickness below the true centre
                              (see drawTrackLines).
@@ -1663,12 +1662,6 @@ class HexmoHexagon(HexmoBigHoleMixin, HexmoTrackGuideMixin, HexmoTrackTemplateMi
                 if slot.get("stations"):
                     with self.saved_context():
                         self._riserFingerHoles(slot["stations"], width)
-                    total = sum(seg.length for seg in segments)
-                    (x, y), (dx, dy) = point_at(segments, total / 2)
-                    angle = ((math.degrees(math.atan2(dy, dx)) + 90.0) % 180.0) - 90.0
-                    with self.saved_context():
-                        self.text("riser bed", x, y, angle=angle, align="middle center",
-                                  fontsize=min(5.0, width / 4), color=Color.ETCHING)
                 start, heading, steps = slot_outline(segments, width)
                 self._drawDeckSlotOutline(start, heading, steps)
 

@@ -672,7 +672,7 @@ passes through or the deck slot on its route.
 route, stretch and width as a `--deck_slots` entry, the strip that falls out of
 the slot *is* the bed, so no separate bed part is cut. The bed's support slots
 are cut in the deck inside the slot outline (before it, so the strip doesn't drop
-out first), the strip is etched "riser bed", and the slot stops at the wall's
+out first), and the slot stops at the wall's
 inner face so the strip fits between the walls (the deck left over the wall is
 then one full thickness, cut away once fitted, as before). Make the two entries
 match to use it, e.g. `--deck_slots 3:-17.5-5:-35/35` with
