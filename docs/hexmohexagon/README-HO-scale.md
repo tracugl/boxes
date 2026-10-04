@@ -437,6 +437,92 @@ mating walls line up at any height.
 
 ---
 
+## Helix ring (HO)
+
+The N-scale README describes a **helix ring**: six modules (five trapezoids and one
+hexagon) where a main line runs round the deck as a reversing loop and a spur
+beside it descends one full turn to a lower level. Every option it uses
+(`--track_routes`, `--track_openings`, `--deck_slots`, `--under_track_*`,
+`--support_edges`, `--risers`, `--train_envelope`) takes its sizes as
+parameters, so the same design works in HO. The N README explains each option;
+this section gives the HO numbers.
+
+**Layout** (as in N, scaled by the 80 mm track spacing):
+
+- **M6** (hexagon) is the only connection: edge 1 carries two deck tracks at ±40
+  mm, the two ends of the reversing loop, and the spur's exit underneath, on the
+  centre line. A turnout on the edge 1 → 5 leg starts the spur.
+- **M1–M5** (trapezoids) carry the main line 40 mm outside the centre line and the
+  spur 80 mm inside (M1 moves it in from 40 to 80).
+- Trains run edge 3 → edge 5 through every ring module.
+
+**Numbers** (HO preset: radius 500, 6 mm stock, h = 100, lead-in 23):
+
+| | |
+|---|---|
+| Train envelope (`--train_envelope`) | 70 mm: about 5 mm of track and a 65 mm train |
+| Deck underside / top | 88 / 94 mm above the floor panel |
+| Highest a track can run under the deck | 88 − 70 = 18 mm |
+| Spur radius | R620 (M2–M5, M6 return); R580 where it shifts (M1, M6 turnout) |
+| Main line radius | R740 (M1–M5); R660 on M6's loop legs |
+| Notch / deck slot / riser bed width | 60 mm: HO coaches (~37 mm) plus overhang on R580–R620 |
+| Run, drop, grade | 4.63 m, 76 mm, **1.64 %** |
+| Spur height at the joints (M6/M1 … M5/M6) | 86.6, 74.5, 62.9, 51.3, 39.7, 28.1 |
+| Under M6's deck / out at M6 edge 1 | 18.0, then level at 18 to edge 1 |
+| M6 slots | outbound `@344..` (once 47 mm clear of the loop), return `@..606` |
+
+**Supports.** The preset's 150 mm supports can't fit either side of a 60 mm
+slot, so the helix modules use `support_length=110`. The trapezoids have two
+radial supports on the edge-4 half-spoke: `4@64` under the main line and `4@285`
+past the spur (both on the 120 mm spoke). M6 keeps the three clear of its spur,
+`2,4,6`.
+
+**Height.** At h = 100 the lower level ends up 18 mm above the floor panel, which
+is enough for the risers but leaves little else. The spur then levels off at 18
+once it is under M6's deck: going further down would leave no room for a riser.
+At h = 120 everything sits 20 mm higher (lower level at 38) with the same grade;
+the rest of an HO layout would need the same h so that the deck tops line up.
+
+**Settings for each module** (all at h = 100; every module renders as given):
+
+**M1**
+
+```
+http://localhost:4455/HexmoHexagon?radius=500&h=100&thickness=6&edge_width=60&spoke_width=120&bottom=spoke&top=closed&corner_holes=g2&gap_holes=g2&big_hole_shape=rounded_rect&FingerJoint_play=0.1&FingerJoint_extra_length=0.05&track_lines=1&draw_track=1&track_width=30&track_lead_in=23&support_length=110&train_envelope=70&under_track_width=60&trapezoid=1&support_edges=4@64,4@285&track_routes=3:40-5:40,3:-40-5:-80&track_openings=3:-40:86.6:60,5:80:74.5:60&deck_slots=3:-40-5:-80/60&risers=3:-40-5:-80~86.6..74.5/60
+```
+
+**M2**
+
+```
+http://localhost:4455/HexmoHexagon?radius=500&h=100&thickness=6&edge_width=60&spoke_width=120&bottom=spoke&top=closed&corner_holes=g2&gap_holes=g2&big_hole_shape=rounded_rect&FingerJoint_play=0.1&FingerJoint_extra_length=0.05&track_lines=1&draw_track=1&track_width=30&track_lead_in=23&support_length=110&train_envelope=70&under_track_width=60&trapezoid=1&support_edges=4@64,4@285&track_routes=3:40-5:40,3:-80-5:-80&track_openings=3:-80:74.5:60,5:80:62.9:60&deck_slots=3:-80-5:-80/60&risers=3:-80-5:-80~74.5..62.9/60
+```
+
+**M3**
+
+```
+http://localhost:4455/HexmoHexagon?radius=500&h=100&thickness=6&edge_width=60&spoke_width=120&bottom=spoke&top=closed&corner_holes=g2&gap_holes=g2&big_hole_shape=rounded_rect&FingerJoint_play=0.1&FingerJoint_extra_length=0.05&track_lines=1&draw_track=1&track_width=30&track_lead_in=23&support_length=110&train_envelope=70&under_track_width=60&trapezoid=1&support_edges=4@64,4@285&track_routes=3:40-5:40,3:-80-5:-80&track_openings=3:-80:62.9:60,5:80:51.3:60&deck_slots=3:-80-5:-80/60&risers=3:-80-5:-80~62.9..51.3/60
+```
+
+**M4**
+
+```
+http://localhost:4455/HexmoHexagon?radius=500&h=100&thickness=6&edge_width=60&spoke_width=120&bottom=spoke&top=closed&corner_holes=g2&gap_holes=g2&big_hole_shape=rounded_rect&FingerJoint_play=0.1&FingerJoint_extra_length=0.05&track_lines=1&draw_track=1&track_width=30&track_lead_in=23&support_length=110&train_envelope=70&under_track_width=60&trapezoid=1&support_edges=4@64,4@285&track_routes=3:40-5:40,3:-80-5:-80&track_openings=3:-80:51.3:60,5:80:39.7:60&deck_slots=3:-80-5:-80/60&risers=3:-80-5:-80~51.3..39.7/60
+```
+
+**M5**
+
+```
+http://localhost:4455/HexmoHexagon?radius=500&h=100&thickness=6&edge_width=60&spoke_width=120&bottom=spoke&top=closed&corner_holes=g2&gap_holes=g2&big_hole_shape=rounded_rect&FingerJoint_play=0.1&FingerJoint_extra_length=0.05&track_lines=1&draw_track=1&track_width=30&track_lead_in=23&support_length=110&train_envelope=70&under_track_width=60&trapezoid=1&support_edges=4@64,4@285&track_routes=3:40-5:40,3:-80-5:-80&track_openings=3:-80:39.7:60,5:80:28.1:60&deck_slots=3:-80-5:-80/60&risers=3:-80-5:-80~39.7..28.1/60
+```
+
+**M6**
+
+```
+http://localhost:4455/HexmoHexagon?radius=500&h=100&thickness=6&edge_width=60&spoke_width=120&bottom=spoke&top=closed&corner_holes=g2&gap_holes=g2&big_hole_shape=rounded_rect&FingerJoint_play=0.1&FingerJoint_extra_length=0.05&track_lines=1&draw_track=1&track_width=30&track_lead_in=23&support_length=110&train_envelope=70&under_track_width=60&support_edges=2,4,6&track_routes=1:-40-5:-40,3:-40-1:-40,1:-40-5:40&under_track_edges=1&under_track_height=18&track_openings=5:40:86.6:60,3:-80:28.1:60&deck_slots=1:-40-5:40@344../60,3:80-1:0@..606/60&risers=1:-40-5:40@344..~94..86.6/60,3:80-1:0@..606~28.1..18/60,3:80-1:0@606..~18..18/60
+```
+
+---
+
 ## Gotchas
 
 - **`--outside`**: it is **on** by default in both HexmoHexagon and

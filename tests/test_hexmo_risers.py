@@ -181,3 +181,16 @@ class TestBedWidth:
                                         "--deck_slots=3:-17.5-5:-35/35",
                                         "--risers=3:-17.5-5:-35~73.6..65.9/35"])
         assert {w for w, _ in supports} == {35.0}
+
+
+class TestSameRouteStretches:
+    """A track split into two risers (e.g. level once it is under the deck)."""
+
+    def test_two_stretches_of_one_route_may_meet(self) -> None:
+        supports, floor, bed = render(M1 + [
+            "--risers=3:-17.5-5:-35@..160~72.5..69,3:-17.5-5:-35@160..~69..65.2"])
+        assert len(bed) == 2 and floor == [sum(bed)]
+
+    def test_a_different_route_still_may_not(self) -> None:
+        with pytest.raises(ValueError, match="stand in the track"):
+            render(M1 + ["--risers=3:-17.5-5:-35~72.5..65.2,3:-35-5:-35@40..280~40..40"])
