@@ -640,11 +640,12 @@ exactly. Each entry is `route[@from..to]~h0..h1[/width]`:
 Supports stand 15 mm in from each end of the bed and evenly between, at most
 `--riser_spacing` (default 80) apart; each has its height etched on it. Fit the
 floor panel with its slots under the bed. On a spoke floor (`--bottom spoke`)
-the kite cut-outs would leave nothing for a support to slot into, so wherever a
-support stands over a kite a solid **rib** is left across it: a 15 mm bar along
-the support's slot (the slot plus 6 mm each side), running right across the kite
-to the rim or spoke. The kite is cut as the openings either side of its ribs;
-pieces narrower than 15 mm are left solid. Kites with no support over them, and
+the kite cut-outs would leave nothing for a support to slot into, so a solid
+**spine** is left along each riser's path: a band following the track, the bed's
+width plus 6 mm each side wide. The kites keep their full size apart from that
+band, cut as the openings either side of it, so supports can stand anywhere along
+the track. Pieces narrower than 15 mm are left solid. Where a riser stops inside a
+kite, the spine runs straight on to that kite's edge. Kites the spine misses, and
 the spoke floor without risers, are unchanged. `--bottom closed` works too. A support that would stand in another riser's
 track, on a support wall's slot, or against a side wall is refused.
 

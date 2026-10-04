@@ -34,7 +34,7 @@ from boxes.generators._hexmo_deck_slots import (
     OVERRUN, centreline_points, parse_deck_slots, slot_outline, trim_segments,
 )
 from boxes.generators._hexmo_risers import (
-    parse_risers, point_at, rib_kites, strip_outline, strip_points, support_stations,
+    parse_risers, point_at, spine_kites, strip_outline, strip_points, support_stations,
 )
 from boxes.generators._hexmo_track_openings import (
     SplitJointEdge, parse_track_openings, rect_circle_gap, wall_and_deck_pieces,
@@ -180,8 +180,8 @@ class HexmoHexagon(HexmoBigHoleMixin, HexmoTrackGuideMixin, HexmoTrackTemplateMi
             "--risers", action="store", type=str, default="",
             help="Riser boards for a descending track: a track bed strip along "
                  "the route plus supports cut to height, slotted into the floor "
-                 "panel (on a spoke floor, kites under a support get a solid rib "
-                 "across them).  Comma-separated "
+                 "panel (on a spoke floor, the kites keep a solid spine along the "
+                 "riser's path).  Comma-separated "
                  "'route[@from..to]~h0..h1[/width]': route and stretch as for "
                  "--deck_slots; h0..h1 the track height (bed top) above the floor "
                  "panel at the stretch's start and end; width default "
@@ -849,22 +849,23 @@ class HexmoHexagon(HexmoBigHoleMixin, HexmoTrackGuideMixin, HexmoTrackTemplateMi
         # Corner group-of-8 clusters — same layout as drawAlignmentHoles.
         self._drawCornerGroup8(s, l)
 
-    # Kite ribs under riser supports: margin either side of a support's slot,
-    # and the narrowest kite piece still worth cutting.
-    _RIB_MARGIN = 6.0
+    # Kite spine under a riser: margin either side of the bed's width, how far
+    # its edges run on past the riser's ends, and the narrowest kite piece
+    # still worth cutting.
+    _SPINE_MARGIN = 6.0
+    _SPINE_RUN_ON = 400.0
     _KITE_MIN_PIECE = 15.0
 
-    def _cutKites(self, kites, ribs):
-        """Cut the kite openings, split by ribs under riser supports.
+    def _cutKites(self, kites, spines):
+        """Cut the kite openings, minus a solid spine under each riser.
 
-        @param kites - Convex kite polygons (callback frame).
-        @param ribs  - ``(point, across, length)`` per riser support, in the
-                       same frame (see _kiteRibs); empty for none, which
-                       leaves the kites exactly as before.
+        @param kites  - Kite polygons (callback frame).
+        @param spines - ``(left_edge, right_edge)`` polylines per riser, in the
+                        same frame (see _kiteSpines); empty for none, which
+                        leaves the kites exactly as before.
         """
-        if ribs:
-            kites = rib_kites(kites, ribs, self.thickness + 2 * self._RIB_MARGIN,
-                              self._KITE_MIN_PIECE)
+        if spines:
+            kites = spine_kites(kites, spines, self._KITE_MIN_PIECE)
         for kite in kites:
             self.ctx.move_to(kite[0][0], kite[0][1])
             for x_, y_ in kite[1:]:
@@ -872,18 +873,33 @@ class HexmoHexagon(HexmoBigHoleMixin, HexmoTrackGuideMixin, HexmoTrackTemplateMi
             self.ctx.line_to(kite[0][0], kite[0][1])
             self.ctx.stroke()
 
-    def _kiteRibs(self, riser_plan, isTrapezoid):
-        """Rib lines for the kites: one per riser support, in the kite frame.
+    def _kiteSpines(self, riser_plan, isTrapezoid):
+        """The spine's two edges for each riser, in the kite frame.
 
-        Riser stations are in the true-centre frame; the trapezoid's kites are
-        drawn one thickness below it (see drawTrackLines, "Frame origin").
+        Each spine follows the riser's bed path, the bed's width plus
+        _SPINE_MARGIN each side wide, so every support slot sits inside it.
+        Its edges run straight on _SPINE_RUN_ON past both ends, so a riser
+        stopping inside a kite still splits it cleanly.  Riser paths are in
+        the true-centre frame; the trapezoid's kites are drawn one thickness
+        below it (see drawTrackLines, "Frame origin").
         """
         lift = self.thickness if isTrapezoid else 0.0
-        ribs = []
+        spines = []
         for riser in riser_plan:
-            for (x, y), (dx, dy), _ in riser["stations"]:
-                ribs.append(((x, y + lift), (dy, -dx), riser["width"]))
-        return ribs
+            segments = riser["segments"]
+            total = sum(seg.length for seg in segments)
+            run = self._SPINE_RUN_ON
+            path = trim_segments(segments, -run, total + run)
+            half = riser["width"] / 2 + self._SPINE_MARGIN
+            edges = []
+            for d in (-half, half):          # left edge, right edge
+                shifted = offset_segments(tuple(path), d)
+                if shifted is None:
+                    raise ValueError(
+                        f"{riser['name']}: the bed is too wide for its curve.")
+                edges.append([(x, y + lift) for x, y in segments_polyline(shifted, 32)])
+            spines.append(tuple(edges))
+        return spines
 
     def drawKites(self, r, joint_type, isTrapezoid, ribs=()):
         """Draw six kite-shaped cutouts inside the hexagonal spoke bottom panel.
@@ -924,8 +940,8 @@ class HexmoHexagon(HexmoBigHoleMixin, HexmoTrackGuideMixin, HexmoTrackTemplateMi
                              are drawn (half-hexagon / trapezoid mode).  In
                              trapezoid mode with trapezoid_side_supports=False,
                              the L-shape kites replace the rotated masters.
-        @param ribs        - Riser-support ribs (see _cutKites); a kite under
-                             a support is split either side of a solid rib.
+        @param ribs        - Riser spines (see _cutKites); a kite under a
+                             riser keeps its size minus a solid band along it.
         """
         n = self.n
         edge_width = self.edge_width
@@ -2084,7 +2100,7 @@ class HexmoHexagon(HexmoBigHoleMixin, HexmoTrackGuideMixin, HexmoTrackTemplateMi
             """A spoke face's centre callback: its kites, split by ribs under
             any riser supports, and the risers' floor slots."""
             self.drawKites(r=r, joint_type=joint_type, isTrapezoid=trapezoid,
-                           ribs=self._kiteRibs(riser_plan, trapezoid))
+                           ribs=self._kiteSpines(riser_plan, trapezoid))
             if riser_plan:
                 self.drawRiserFloorHoles(riser_plan, trapezoid)
 

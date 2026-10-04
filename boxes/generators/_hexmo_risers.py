@@ -189,98 +189,128 @@ def strip_points(segments, width, step=2.0):
 
 
 
-# ---------------------------------------------------------------- kite ribs
+# --------------------------------------------------------------- kite spine
 #
 # On a spoke floor the kite cut-outs leave nothing for a riser support to
-# slot into.  Where a support stands over a kite, a solid rib is left across
-# that kite instead: a bar along the support's footprint line (across the
-# track), wide enough for its finger slots plus a margin each side, running
-# right across the kite so both ends join the rim or a spoke.  Kites are
-# convex, so each rib just clips the kite to the two sides of the bar.
+# slot into.  So a solid **spine** is left along each riser's path: a band
+# following the track, the bed's width plus a margin each side wide.  Each
+# kite keeps its full size apart from that band: it is cut along the band's
+# two edges, and the openings either side of it are kept.  Supports can then
+# stand anywhere along the track.
+#
+# A kite is split by one band edge (a polyline that crosses it) by walking
+# its outline between the two crossing points and back along the edge.  The
+# band edges are run straight on well past the riser's ends, so a band that
+# stops inside a kite still crosses it cleanly.
 
-def clip_half_plane(polygon, origin, normal, offset):
-    """Keep the part of a convex polygon where (p − origin)·normal ≥ offset.
-
-    Sutherland–Hodgman clipping against one line.
-
-    @param polygon - Vertices in order.
-    @param origin  - A point on the reference line.
-    @param normal  - Unit normal of the line.
-    @param offset  - Signed distance of the clip line from ``origin``.
-    @returns The clipped polygon (possibly empty).
-    """
-    def side(p):
-        return (p[0] - origin[0]) * normal[0] + (p[1] - origin[1]) * normal[1] - offset
-
-    out = []
-    n = len(polygon)
-    for i in range(n):
-        a, b = polygon[i], polygon[(i + 1) % n]
-        sa, sb = side(a), side(b)
-        if sa >= 0:
-            out.append(a)
-        if (sa >= 0) != (sb >= 0):
-            t = sa / (sa - sb)
-            out.append((a[0] + t * (b[0] - a[0]), a[1] + t * (b[1] - a[1])))
-    return out
-
-
-def min_width(polygon):
-    """Smallest width of a convex polygon (over its edge directions)."""
-    best = math.inf
-    n = len(polygon)
-    for i in range(n):
-        a, b = polygon[i], polygon[(i + 1) % n]
-        length = math.dist(a, b)
-        if length < 1e-9:
+def _side(polyline, p):
+    """+1 if p is left of the polyline (at its nearest segment), −1 if right."""
+    best, sign = math.inf, 1.0
+    for a, b in zip(polyline, polyline[1:]):
+        dx, dy = b[0] - a[0], b[1] - a[1]
+        length2 = dx * dx + dy * dy
+        if length2 < 1e-12:
             continue
-        nx, ny = (b[1] - a[1]) / length, -(b[0] - a[0]) / length
-        best = min(best, max(abs((p[0] - a[0]) * nx + (p[1] - a[1]) * ny) for p in polygon))
-    return best
+        t = max(0.0, min(1.0, ((p[0] - a[0]) * dx + (p[1] - a[1]) * dy) / length2))
+        q = (a[0] + t * dx, a[1] + t * dy)
+        d = math.dist(p, q)
+        if d < best:
+            best = d
+            sign = 1.0 if dx * (p[1] - a[1]) - dy * (p[0] - a[0]) > 0 else -1.0
+    return sign
 
 
-def _inside_convex(polygon, p):
-    """True if p is strictly inside a convex polygon (either winding)."""
-    signs = set()
-    n = len(polygon)
-    for i in range(n):
-        a, b = polygon[i], polygon[(i + 1) % n]
-        cross = (b[0] - a[0]) * (p[1] - a[1]) - (b[1] - a[1]) * (p[0] - a[0])
-        if abs(cross) > 1e-9:
-            signs.add(cross > 0)
-    return len(signs) == 1
+def _crossings(polygon, polyline):
+    """Where a polyline crosses a polygon's outline, in order along the polyline.
 
-
-def rib_kites(kites, ribs, rib_width, min_piece):
-    """Split kites with solid ribs under riser supports.
-
-    @param kites     - Convex kite polygons.
-    @param ribs      - ``(point, across, length)`` per support: its
-                       footprint's centre, the unit direction of the
-                       footprint line (across the track) and its length.
-    @param rib_width - Width of each rib (along the track).
-    @param min_piece - Pieces narrower than this are dropped (left solid).
-    @returns The openings to cut: kites unaffected by any rib unchanged, the
-             others split either side of their ribs.
+    @returns ``[(polyline segment index, polygon edge index, point)]``.
     """
-    out = []
-    half = rib_width / 2.0
-    for kite in kites:
-        pieces = [kite]
-        for point, across, length in ribs:
-            # Only ribs whose footprint (plus the rib margin) reaches the kite.
-            reach = length / 2.0 + half
-            samples = [(point[0] + across[0] * reach * k / 10.0,
-                        point[1] + across[1] * reach * k / 10.0) for k in range(-10, 11)]
-            if not any(_inside_convex(kite, s) for s in samples):
+    hits = []
+    n = len(polygon)
+    for i, (a, b) in enumerate(zip(polyline, polyline[1:])):
+        found = []
+        for j in range(n):
+            c, d = polygon[j], polygon[(j + 1) % n]
+            den = (b[0] - a[0]) * (d[1] - c[1]) - (b[1] - a[1]) * (d[0] - c[0])
+            if abs(den) < 1e-12:
                 continue
-            normal = (-across[1], across[0])     # along the track
-            split = []
-            for piece in pieces:
-                for sign in (1.0, -1.0):
-                    part = clip_half_plane(piece, point, (sign * normal[0], sign * normal[1]), half)
-                    if len(part) >= 3:
-                        split.append(part)
-            pieces = split
-        out += [p for p in pieces if p is kite or min_width(p) >= min_piece]
+            t = ((c[0] - a[0]) * (d[1] - c[1]) - (c[1] - a[1]) * (d[0] - c[0])) / den
+            u = ((c[0] - a[0]) * (b[1] - a[1]) - (c[1] - a[1]) * (b[0] - a[0])) / den
+            if 0 <= t < 1 and 0 <= u < 1:
+                found.append((t, j, (a[0] + t * (b[0] - a[0]), a[1] + t * (b[1] - a[1]))))
+        hits += [(i, j, p) for _, j, p in sorted(found)]
+    return hits
+
+
+def split_by_polyline(polygon, polyline):
+    """Split a polygon in two along a polyline that crosses it once.
+
+    @returns The two pieces, or None if the polyline does not cross the
+             outline exactly twice.
+    """
+    hits = _crossings(polygon, polyline)
+    if len(hits) != 2:
+        return None
+    (i0, j0, p0), (i1, j1, p1) = hits
+    inside = polyline[i0 + 1:i1 + 1]            # the cut, from p0 to p1
+    n = len(polygon)
+
+    def walk(j_from, p_from, j_to, p_to):
+        # Along the outline from p_from (on edge j_from) to p_to (on edge j_to).
+        pts, j = [p_from], j_from
+        while j != j_to:
+            j = (j + 1) % n
+            pts.append(polygon[j])
+        pts.append(p_to)
+        return pts
+
+    piece_a = walk(j1, p1, j0, p0) + inside                  # p1 → p0, then cut p0 → p1
+    piece_b = walk(j0, p0, j1, p1) + list(reversed(inside))  # p0 → p1, then cut back
+    return [piece_a, piece_b]
+
+
+def _keep_side(polygon, polyline, side):
+    """The part(s) of a polygon on one side (+1 left / −1 right) of a polyline."""
+    split = split_by_polyline(polygon, polyline)
+    if split is None:
+        if _crossings(polygon, polyline):
+            return []          # crosses awkwardly: leave it solid
+        return [polygon] if _side(polyline, polygon[0]) == side else []
+    out = []
+    for piece in split:
+        # Judge a piece by its outline points off the cut.
+        probe = [p for p in piece if p not in polyline]
+        probe = probe or piece
+        centre = (sum(p[0] for p in probe) / len(probe), sum(p[1] for p in probe) / len(probe))
+        if _side(polyline, centre) == side:
+            out.append(piece)
     return out
+
+
+def _width(polygon):
+    """Rough width of a piece: 2·area / perimeter (a strip's width)."""
+    pts = polygon + polygon[:1]
+    area = abs(sum(a[0] * b[1] - b[0] * a[1] for a, b in zip(pts, pts[1:]))) / 2
+    perimeter = sum(math.dist(a, b) for a, b in zip(pts, pts[1:]))
+    return 2 * area / perimeter if perimeter else 0.0
+
+
+def spine_kites(kites, spines, min_piece):
+    """Cut a solid spine out of the kites under each riser.
+
+    @param kites     - Kite polygons.
+    @param spines    - ``(left_edge, right_edge)`` polylines per riser: the
+                       band's two edges, in the kites' frame, running in the
+                       direction of travel and well past both ends.
+    @param min_piece - Pieces narrower than this (2·area / perimeter) are
+                       left solid.
+    @returns The openings to cut.  Kites the spines miss are unchanged.
+    """
+    pieces = [list(k) for k in kites]
+    for left, right in spines:
+        out = []
+        for piece in pieces:
+            out += _keep_side(piece, left, +1) + _keep_side(piece, right, -1)
+        pieces = out
+    original = [list(k) for k in kites]
+    return [p for p in pieces if p in original or _width(p) >= min_piece]
