@@ -25,6 +25,7 @@ wall equals the hexagon flat-to-flat distance (``radius × √3``).
 import argparse
 import datetime
 import math
+from types import SimpleNamespace
 
 from boxes import Boxes, edges, boolarg
 from boxes.Color import Color
@@ -1126,53 +1127,23 @@ class HexmoRectangle(HexmoBigHoleMixin, HexmoTrackGuideMixin, HexmoTrackTemplate
                     self.ctx.line_to(x, y + cross_half)
                     self.ctx.stroke()
 
-    def render(self) -> None:
-        """Generate all panels for the HexmoRectangle box (outer shell + 3×N grid).
+    def _rectLayout(self):
+        """The rectangle's sizes and internal grid, shared by render and the 3D export.
 
-        Draws ``5 + 2 + n_div_h`` panels, where ``n_div_h = n_cols − 1``:
-          - 2 × short outer wall  (W × h)  — span the short (radius) axis
-          - 2 × long outer wall   (H × h)  — span the long (radius × √3) axis
-          - 1 × base plate        ((H + 2t) × W)  — rotated so H is horizontal
-          - 2 × vertical divider  (H × h)  — split the box into 3 columns
-          - n_div_h × horizontal divider ((W−2t) × h) — split the box into n_cols columns
-
-        ``n_cols`` is determined by ``--num_columns`` (0 = auto-select from radius):
-          radius ≥ 400 → 5 columns (4 dividers); 300 ≤ radius < 400 → 3 columns (2 dividers);
-          radius < 300 → 2 columns (1 central divider).
-
-        ``--radius`` is always the inner corner-to-corner radius of the matching
-        HexmoHexagon; W is derived from it without any outside-mode adjustment so
-        that the short wall bbox = W regardless of outside mode.  When
-        ``--outside`` is set, ``h`` and ``H`` are adjusted to inner dimensions
-        (matching HexmoHexagon's outside-mode convention); W is unchanged.
-
-        Crossing-joint convention (slot-and-tab):
-          Vertical dividers carry ``SlottedEdge`` on their **bottom** edges:
-          n_cols 'f' sections (finger-tabs for the base plate) separated by
-          n_div_h Slot notches of depth h/2.  Horizontal dividers carry
-          ``SlottedEdge`` on their **top** edges: three 'e' sections separated
-          by two Slot notches of depth h/2.  The two sets of notches interlock
-          at mid-height when the horizontal dividers are lowered over the
-          vertical ones during assembly.
-
-        All outer walls carry fingerHoles callbacks so the divider 'f' end-tabs
-        seat against each outer wall's inner face at the correct grid positions.
-
-        Base plate carries fingerHoles callbacks for all six dividers, covering
-        only the 'f' sections of each divider's bottom edge (not the plain or
-        slotted crossing positions, which float above the base at those spots).
+        @returns SimpleNamespace with ``t``; ``r`` (inner circumradius of the
+                 matching hexagon) and ``apothem``; ``W`` (short-wall panel
+                 width), ``H`` (inner long length), ``h`` (inner height);
+                 ``n_cols``/``n_div_h`` (cells along H and the short dividers
+                 between them), ``n_rows``/``n_div_v`` (lanes across W and the
+                 long supports between them), ``col_w``/``row_h`` (lane and cell
+                 inner sizes), ``sw`` (spoke width, clamped), and ``lane_pos``/
+                 ``div_pos`` (lists: long-support positions across the inner
+                 width, short-divider positions along H, both to their centres).
+        @throws ValueError - On an impossible --num_rows.
         """
         t = self.thickness
         r = self.radius
         h = self.h
-
-        # --- Geometry -----------------------------------------------------------
-        # Derive inner cavity dimensions from the hexagon circumradius r using the
-        # same formulas as HexmoHexagon so that edges mate flush.
-        #
-        # regularPolygon(6, radius=r) returns (r, apothem, side) where:
-        #   side   = r              (for a regular hexagon, side == circumradius)
-        #   apothem = r × cos(30°) = r × √3 / 2  (centre-to-flat-face distance)
 
         # W: the --radius parameter is *always* interpreted as the inner
         # corner-to-corner radius of the matching HexmoHexagon, regardless of
@@ -1198,9 +1169,6 @@ class HexmoRectangle(HexmoBigHoleMixin, HexmoTrackGuideMixin, HexmoTrackTemplate
         # For a regular hexagon, flat-to-flat = 2 × apothem = r × √3.
         H = 2 * apothem
 
-        # Turnout legs (--turnouts), solved and checked before anything is
-        # drawn; etched on the deck by base_cb.
-        turnout_legs = self._turnoutLegs(H, W - 2 * t)
 
         # --- Column-count selection ---------------------------------------------
         # n_cols controls how many compartments the long axis is divided into
@@ -1272,6 +1240,72 @@ class HexmoRectangle(HexmoBigHoleMixin, HexmoTrackGuideMixin, HexmoTrackTemplate
         # equals W − 2t regardless of the user-supplied --spoke_width value.
         if sw > 0:
             sw = min(sw, col_w)
+        div_pos = lambda i: (i + 1) * row_h + (2 * i + 1) * t / 2
+        return SimpleNamespace(
+            t=t, r=r, apothem=apothem, W=W, H=H, h=h,
+            n_cols=n_cols, n_div_h=n_div_h, n_rows=n_rows, n_div_v=n_div_v,
+            col_w=col_w, row_h=row_h, sw=sw,
+            lane_pos=[lane_pos(i) for i in range(n_div_v)],
+            div_pos=[div_pos(i) for i in range(n_div_h)])
+
+    def render(self) -> None:
+        """Generate all panels for the HexmoRectangle box (outer shell + 3×N grid).
+
+        Draws ``5 + 2 + n_div_h`` panels, where ``n_div_h = n_cols − 1``:
+          - 2 × short outer wall  (W × h)  — span the short (radius) axis
+          - 2 × long outer wall   (H × h)  — span the long (radius × √3) axis
+          - 1 × base plate        ((H + 2t) × W)  — rotated so H is horizontal
+          - 2 × vertical divider  (H × h)  — split the box into 3 columns
+          - n_div_h × horizontal divider ((W−2t) × h) — split the box into n_cols columns
+
+        ``n_cols`` is determined by ``--num_columns`` (0 = auto-select from radius):
+          radius ≥ 400 → 5 columns (4 dividers); 300 ≤ radius < 400 → 3 columns (2 dividers);
+          radius < 300 → 2 columns (1 central divider).
+
+        ``--radius`` is always the inner corner-to-corner radius of the matching
+        HexmoHexagon; W is derived from it without any outside-mode adjustment so
+        that the short wall bbox = W regardless of outside mode.  When
+        ``--outside`` is set, ``h`` and ``H`` are adjusted to inner dimensions
+        (matching HexmoHexagon's outside-mode convention); W is unchanged.
+
+        Crossing-joint convention (slot-and-tab):
+          Vertical dividers carry ``SlottedEdge`` on their **bottom** edges:
+          n_cols 'f' sections (finger-tabs for the base plate) separated by
+          n_div_h Slot notches of depth h/2.  Horizontal dividers carry
+          ``SlottedEdge`` on their **top** edges: three 'e' sections separated
+          by two Slot notches of depth h/2.  The two sets of notches interlock
+          at mid-height when the horizontal dividers are lowered over the
+          vertical ones during assembly.
+
+        All outer walls carry fingerHoles callbacks so the divider 'f' end-tabs
+        seat against each outer wall's inner face at the correct grid positions.
+
+        Base plate carries fingerHoles callbacks for all six dividers, covering
+        only the 'f' sections of each divider's bottom edge (not the plain or
+        slotted crossing positions, which float above the base at those spots).
+        """
+        t = self.thickness
+        r = self.radius
+        h = self.h
+
+        # --- Geometry -----------------------------------------------------------
+        # Derive inner cavity dimensions from the hexagon circumradius r using the
+        # same formulas as HexmoHexagon so that edges mate flush.
+        #
+        # regularPolygon(6, radius=r) returns (r, apothem, side) where:
+        #   side   = r              (for a regular hexagon, side == circumradius)
+        #   apothem = r × cos(30°) = r × √3 / 2  (centre-to-flat-face distance)
+
+        # Sizes and the internal grid (see _rectLayout, shared with the 3D export).
+        lay = self._rectLayout()
+        r, h, apothem, W, H = lay.r, lay.h, lay.apothem, lay.W, lay.H
+        n_cols, n_div_h, n_rows, n_div_v = lay.n_cols, lay.n_div_h, lay.n_rows, lay.n_div_v
+        col_w, row_h, sw = lay.col_w, lay.row_h, lay.sw
+        lane_pos = lambda i: lay.lane_pos[i]
+
+        # Turnout legs (--turnouts), solved and checked before anything is
+        # drawn; etched on the deck by base_cb.
+        turnout_legs = self._turnoutLegs(H, W - 2 * t)
         # Extra slot depth added to both crossing-slot sets so panels seat fully
         # despite laser kerf and material-thickness variation.
         tol = self.slot_tolerance
@@ -1362,7 +1396,7 @@ class HexmoRectangle(HexmoBigHoleMixin, HexmoTrackGuideMixin, HexmoTrackTemplate
                           if abs(x - under_x) >= half + big_half + self._MIN_CLEAR]
         # div_pos: H-axis position of horizontal divider i (i = 0..3).
         # Used in long_wall_cb, spoke_cb, and base_cb.
-        div_pos = lambda i: (i + 1) * row_h + (2 * i + 1) * t / 2
+        div_pos = lambda i: lay.div_pos[i]
 
         # --- fingerHoles callbacks ----------------------------------------------
         # Each outer wall's callback is called once (at edge-0, bottom) by cc().

@@ -48,8 +48,9 @@ from dataclasses import dataclass
 
 from boxes.generators._hexmo_deck_slots import trim_segments
 from boxes.generators._hexmo_risers import point_at
+from boxes.generators._hexmo_track_routes import route_geometry
 from boxes.generators._hexmo_track_routes import (
-    EDGE_ANGLES, offset_segments, segments_polyline,
+    EDGE_ANGLES, Arc, Line, offset_segments, segments_polyline,
 )
 
 # Height of the track ribbon (sleepers + rail).  The train envelope above the
@@ -296,14 +297,63 @@ def _risers(bd, riser_plan, t):
     return parts
 
 
+@dataclass
+class TrackPiece:
+    """One stretch of track at a known height.
+
+    A piece that reaches a module edge is run on one thickness further, over
+    the wall to the module's outer face (routes end at the wall's inner face),
+    so the tracks of joined modules meet.
+
+    @ivar name     - Route and stretch, e.g. ``3:-35-5:-35@0..308``.
+    @ivar segments - Centreline pieces, including any run-on over the walls.
+    @ivar h0, h1   - Track base height at the stretch's start and end.
+    @ivar on_riser - True on a riser bed (under or through the deck).
+    @ivar lead     - Run-on at the start (mm), where the stretch proper begins.
+    @ivar length   - Length of the stretch proper.
+    @ivar ends     - ``[(point, height)]`` for each end at a module edge.
+    """
+
+    name: str
+    segments: list
+    h0: float
+    h1: float
+    on_riser: bool
+    lead: float
+    length: float
+    ends: list
+
+    def base(self, s):
+        """Track base height ``s`` mm along the (run-on) segments."""
+        f = min(max((s - self.lead) / (self.length or 1.0), 0.0), 1.0)
+        return self.h0 + (self.h1 - self.h0) * f
+
+
+def _piece(name, segments, heights, on_riser, at_start, at_end, run_on):
+    """A :class:`TrackPiece`, run on by ``run_on`` at each end on a module edge."""
+    segments = [seg for seg in segments if seg.length > 1e-9]
+    length = sum(seg.length for seg in segments)
+    lead = run_on if at_start else 0.0
+    tail = run_on if at_end else 0.0
+    if lead or tail:
+        segments = trim_segments(segments, -lead, length + tail)
+    ends = []
+    if at_start:
+        ends.append((segments[0].p0, heights[0]))
+    if at_end:
+        ends.append((segments[-1].p1, heights[1]))
+    return TrackPiece(name, segments, heights[0], heights[1], on_riser, lead, length, ends)
+
+
 def _track_pieces(box, r, l, t, isTrapezoid, riser_plan):
-    """Every track as ``(name, segments, heights, on_riser)``: on the deck or a riser bed.
+    """Every track as a :class:`TrackPiece`: on the deck, or on a riser bed.
 
     A deck route's stretches carried by a riser are left to the riser, so
     each bit of track appears once, at its real height.
     """
     pieces = []
     deck_top = l + t
+    apothem = r * math.sqrt(3) / 2
     for g in box._trackRouteGeometries(r, isTrapezoid):
         route = (g.start, g.start_offset, g.end, g.end_offset)
         total = sum(s.length for s in g.segments)
@@ -312,13 +362,17 @@ def _track_pieces(box, r, l, t, isTrapezoid, riser_plan):
         cursor = 0.0
         for lo, hi in taken + [(total, total)]:
             if lo - cursor > 0.5:
-                pieces.append((_route_name(route, cursor, lo),
-                               trim_segments(list(g.segments), cursor, lo),
-                               (deck_top, deck_top), False))
+                pieces.append(_piece(_route_name(route, cursor, lo),
+                                     trim_segments(list(g.segments), cursor, lo),
+                                     (deck_top, deck_top), False,
+                                     cursor < 1e-6, lo > total - 1e-6, t))
             cursor = max(cursor, hi)
     for rp in riser_plan:
-        pieces.append((_route_name(rp["route"], *rp["stretch"]), rp["segments"],
-                       rp["heights"], True))
+        lo, hi = rp["stretch"]
+        total = sum(s.length for s in route_geometry(*rp["route"], apothem,
+                                                     box.track_lead_in).segments)
+        pieces.append(_piece(_route_name(rp["route"], lo, hi), rp["segments"], rp["heights"],
+                             True, lo < 1e-6, hi > total - 1e-6, t))
     return pieces
 
 
@@ -329,21 +383,44 @@ CLEARANCE_MODES = ("under", "all", "none")
 
 def _tracks(bd, box, pieces, clearance):
     parts = []
-    for name, segments, (h0, h1), on_riser in pieces:
-        length = sum(seg.length for seg in segments) or 1.0
-
-        def base(s, h0=h0, h1=h1, length=length):
-            return h0 + (h1 - h0) * s / length
-
-        parts.append(Part3D(f"track {name}", "track",
-                            _strip(bd, segments, box.track_width,
-                                   lambda s: base(s) + RAIL_HEIGHT, RAIL_HEIGHT)))
-        if clearance == "all" or (clearance == "under" and on_riser):
+    for piece in pieces:
+        parts.append(Part3D(f"track {piece.name}", "track",
+                            _strip(bd, piece.segments, box.track_width,
+                                   lambda s, p=piece: p.base(s) + RAIL_HEIGHT, RAIL_HEIGHT)))
+        if clearance == "all" or (clearance == "under" and piece.on_riser):
             envelope = box.train_envelope
-            parts.append(Part3D(f"clearance {name}", "clearance",
-                                _strip(bd, segments, box.under_track_width,
-                                       lambda s: base(s) + envelope, envelope - RAIL_HEIGHT)))
+            parts.append(Part3D(f"clearance {piece.name}", "clearance",
+                                _strip(bd, piece.segments, box.under_track_width,
+                                       lambda s, p=piece: p.base(s) + envelope,
+                                       envelope - RAIL_HEIGHT)))
     return parts
+
+
+def _check_clearance(clearance):
+    if clearance not in CLEARANCE_MODES:
+        raise ValueError(f"clearance must be one of {', '.join(CLEARANCE_MODES)} "
+                         f"(got {clearance!r}).")
+
+
+def _hexmo_plans(box):
+    """The plans render() makes, in the same order: ``(r, l, t, openings, slots, risers)``."""
+    r, l, t = _frame(box)
+    isTrapezoid = box.trapezoid
+    opening_plan = box._trackOpeningPlan(isTrapezoid, l)
+    notches = {}
+    for edge, entries in opening_plan.items():
+        cut = [(o.position, o.width, l - o.height) for o, notch in entries if notch]
+        if cut:
+            notches[edge] = cut
+    slot_plan = box._deckSlotPlan(r, isTrapezoid, notches)
+    riser_plan = box._riserPlan(r, isTrapezoid, l, notches)
+    return r, l, t, opening_plan, slot_plan, riser_plan
+
+
+def hexmo_pieces(box):
+    """A HexmoHexagon's tracks as :class:`TrackPiece` (no solids built)."""
+    r, l, t, _, _, riser_plan = _hexmo_plans(box)
+    return _track_pieces(box, r, l, t, box.trapezoid, riser_plan)
 
 
 def hexmo_parts(box, clearance="under"):
@@ -355,30 +432,194 @@ def hexmo_parts(box, clearance="under"):
                        ``none``.
     @returns List of :class:`Part3D`.
     @throws ValueError - From the generator's own checks (the same settings
-                         that refuse to render refuse to export).
+                         that refuse to render refuse to export), or an
+                         unknown ``clearance``.
     @throws ImportError - When the optional build123d dependency is missing.
     """
-    if clearance not in CLEARANCE_MODES:
-        raise ValueError(f"clearance must be one of {', '.join(CLEARANCE_MODES)} "
-                         f"(got {clearance!r}).")
+    _check_clearance(clearance)
     bd = _bd()
-    r, l, t = _frame(box)
+    r, l, t, opening_plan, slot_plan, riser_plan = _hexmo_plans(box)
     isTrapezoid = box.trapezoid
-    # The same plans render() makes, in the same order.
-    opening_plan = box._trackOpeningPlan(isTrapezoid, l)
-    notches = {}
-    for edge, entries in opening_plan.items():
-        cut = [(o.position, o.width, l - o.height) for o, notch in entries if notch]
-        if cut:
-            notches[edge] = cut
-    slot_plan = box._deckSlotPlan(r, isTrapezoid, notches)
-    riser_plan = box._riserPlan(r, isTrapezoid, l, notches)
     return (_panels(bd, box, r, l, t, isTrapezoid, slot_plan)
             + _walls(bd, box, r, l, t, isTrapezoid, opening_plan)
             + _supports(bd, box, r, l, t, isTrapezoid)
             + _risers(bd, riser_plan, t)
             + _tracks(bd, box, _track_pieces(box, r, l, t, isTrapezoid, riser_plan),
                       clearance))
+
+
+# ---------------------------------------------------------------- rectangle
+
+def _shift(seg, dx, dy):
+    """A ``Line``/``Arc`` moved by (dx, dy)."""
+    if isinstance(seg, Line):
+        return Line((seg.p0[0] + dx, seg.p0[1] + dy), (seg.p1[0] + dx, seg.p1[1] + dy))
+    return Arc((seg.centre[0] + dx, seg.centre[1] + dy), seg.radius, seg.start_angle, seg.sweep)
+
+
+def _rect_frame(box):
+    """``(lay, ground, deck_underside)`` for a HexmoRectangle.
+
+    The rectangle has no floor panel: its walls stand on the ground, one
+    thickness below the hexagons' floor-panel top (z = 0), and reach up to the
+    deck, whose top is level with the hexagons' at the same ``--h``.
+    """
+    if not hasattr(box, "edges"):
+        box.open()
+    lay = box._rectLayout()
+    ground = -lay.t
+    return lay, ground, ground + lay.h
+
+
+def rect_pieces(box):
+    """A HexmoRectangle's deck tracks as :class:`TrackPiece`, centred frame.
+
+    The frame has x along the long axis, from −(H/2 + t) to +(H/2 + t), and
+    y across it, both centred; the turnouts face +x.
+    """
+    lay, _, underside = _rect_frame(box)
+    t, H, inner = lay.t, lay.H, lay.W - 2 * lay.t
+    deck_top = underside + t
+    pieces = []
+    if box.track_lines:
+        for off in box._trackOffsets():
+            pieces.append(_piece(f"straight {off:g}", [Line((-H / 2, off), (H / 2, off))],
+                                 (deck_top, deck_top), False, True, True, t))
+        for k, leg in enumerate(box._turnoutLegs(H, inner), 1):
+            moved = [_shift(seg, -H / 2, -inner / 2) for seg in leg]
+            pieces.append(_piece(f"turnout {k} leg", moved, (deck_top, deck_top), False,
+                                 False, True, t))
+    return pieces
+
+
+def rect_parts(box, clearance="under"):
+    """Build the assembled parts of a HexmoRectangle (centred frame, see rect_pieces).
+
+    @param box       - A HexmoRectangle with its arguments parsed.
+    @param clearance - As for :func:`hexmo_parts` (a rectangle has no risers,
+                       so ``under`` gives none).
+    @returns List of :class:`Part3D`.
+    """
+    _check_clearance(clearance)
+    bd = _bd()
+    lay, ground, underside = _rect_frame(box)
+    t, W, H = lay.t, lay.W, lay.H
+    inner = W - 2 * t
+    x_out = H / 2 + t
+
+    def slab(x0, x1, y0, y1, z0, z1):
+        return _prism(bd, [(x0, y0), (x1, y0), (x1, y1), (x0, y1)], z0, z1)
+
+    under = None
+    if box.under_track:
+        under = box._underTrackSpan(box._hexWallHeight())
+
+    def with_passage(solid, x):
+        # The lower level's opening through an end wall or short divider.
+        if under is None:
+            return solid
+        return solid - _box(bd, (x, 0.0, (under[0] + under[1]) / 2),
+                            (4 * t, box.under_track_width, under[1] - under[0]), 0)
+
+    parts = [Part3D("deck", "panel", slab(-x_out, x_out, -W / 2, W / 2, underside, underside + t))]
+    for k, sign in enumerate((-1, 1), 1):
+        y = sign * (W / 2 - t / 2)
+        parts.append(Part3D(f"long wall {k}", "wall",
+                            slab(-x_out, x_out, y - t / 2, y + t / 2, ground, underside)))
+    for k, sign in enumerate((-1, 1), 1):
+        x = sign * (H / 2 + t / 2)
+        parts.append(Part3D(f"end wall {k}", "wall", with_passage(
+            slab(x - t / 2, x + t / 2, -inner / 2, inner / 2, ground, underside), x)))
+    for k, pos in enumerate(lay.lane_pos, 1):
+        y = -inner / 2 + pos
+        parts.append(Part3D(f"long support {k}", "support",
+                            slab(-H / 2, H / 2, y - t / 2, y + t / 2, ground, underside)))
+    bottom = ground + (t if lay.sw > 0 else 0.0)      # dividers sit on the spoke
+    for k, pos in enumerate(lay.div_pos, 1):
+        x = -H / 2 + pos
+        parts.append(Part3D(f"divider {k}", "support", with_passage(
+            slab(x - t / 2, x + t / 2, -inner / 2, inner / 2, bottom, underside), x)))
+    if lay.sw > 0:
+        parts.append(Part3D("spoke", "panel",
+                            slab(-H / 2, H / 2, -lay.sw / 2, lay.sw / 2, ground, ground + t)))
+    return parts + _tracks(bd, box, rect_pieces(box), clearance)
+
+
+# --------------------------------------------------------------------- ring
+
+def _ring_layout(ring):
+    """Each module of a helix ring with its placement.
+
+    Every module sits two outer apothems from the ring centre, edge 4 facing
+    it, turned so M(n)'s edge 5 meets M(n+1)'s edge 3: M6 at the top (90°),
+    M1 at 150°, … M5 at 30°.  The entry rectangle runs on from M6 edge 1,
+    turnout end first.
+
+    @param ring - Key of :data:`_hexmo_helix_ring.RINGS`, e.g. ``"N"``.
+    @returns ``[(name, box, kind, angle°, (dx, dy))]``: place a part by
+             turning it ``angle`` about z, then moving it by (dx, dy).
+    @throws KeyError - For an unknown ring.
+    """
+    from boxes.generators._hexmo_helix_ring import RINGS
+    from boxes.generators.hexmohexagon import HexmoHexagon
+    from boxes.generators.hexmorectangle import HexmoRectangle
+    modules, entry_args = RINGS[ring]
+    layout = []
+    m6_centre = a_out = None
+    for k, name in enumerate(["M6", "M1", "M2", "M3", "M4", "M5"]):
+        box = HexmoHexagon()
+        box.parseArgs(modules[name])
+        r, _, t = _frame(box)
+        a_out = (r + t / math.cos(math.radians(30))) * math.sqrt(3) / 2
+        alpha = 90 + 60 * k
+        centre = (2 * a_out * math.cos(math.radians(alpha)),
+                  2 * a_out * math.sin(math.radians(alpha)))
+        if name == "M6":
+            m6_centre = centre
+        layout.append((name, box, "hexmo", alpha - 90, centre))
+    entry = HexmoRectangle()
+    entry.parseArgs(entry_args)
+    lay, _, _ = _rect_frame(entry)
+    reach = a_out + lay.H / 2 + lay.t
+    layout.append(("entry", entry, "rect", -90, (m6_centre[0], m6_centre[1] + reach)))
+    return layout
+
+
+def _place_point(point, angle, offset):
+    a = math.radians(angle)
+    x, y = point
+    return (x * math.cos(a) - y * math.sin(a) + offset[0],
+            x * math.sin(a) + y * math.cos(a) + offset[1])
+
+
+def ring_parts(ring="N", clearance="under"):
+    """Every part of a helix ring, placed, each name prefixed by its module.
+
+    @param ring      - Key of :data:`_hexmo_helix_ring.RINGS`.
+    @param clearance - As for :func:`hexmo_parts`.
+    @returns List of :class:`Part3D`.
+    """
+    bd = _bd()
+    parts = []
+    for name, box, kind, angle, offset in _ring_layout(ring):
+        built = hexmo_parts(box, clearance) if kind == "hexmo" else rect_parts(box, clearance)
+        where = bd.Location((offset[0], offset[1], 0), (0, 0, angle))
+        parts += [Part3D(f"{name} {p.name}", p.kind, where * p.solid) for p in built]
+    return parts
+
+
+def ring_track_ends(ring="N"):
+    """Where every track meets a module edge, placed: ``[(module, (x, y), height)]``.
+
+    For checking that joined modules' tracks meet (same place, same height).
+    """
+    ends = []
+    for name, box, kind, angle, offset in _ring_layout(ring):
+        pieces = hexmo_pieces(box) if kind == "hexmo" else rect_pieces(box)
+        for piece in pieces:
+            for point, height in piece.ends:
+                ends.append((name, _place_point(point, angle, offset), height))
+    return ends
 
 
 def assembly(parts, label="hexmo module"):
@@ -406,29 +647,43 @@ def export_step_file(box, path, clearance="under"):
     bd.export_step(assembly(hexmo_parts(box, clearance)), str(path))
 
 
-def main(argv=None):
-    """``python -m boxes.generators._hexmo_step OUT.step [--clearance=MODE] [generator args…]``.
+def export_ring_step_file(path, ring="N", clearance="under"):
+    """Write a whole helix ring (six modules and the entry) to one STEP file."""
+    bd = _bd()
+    bd.export_step(assembly(ring_parts(ring, clearance), label=f"helix ring {ring}"), str(path))
 
-    ``--clearance`` (``under``, ``all`` or ``none``) is the exporter's own;
-    every other option goes to the generator.
+
+def main(argv=None):
+    """Command line.
+
+    * ``OUT.step [--clearance=MODE] [generator args…]`` — one HexmoHexagon;
+    * ``OUT.step --ring=N [--clearance=MODE]`` — the whole helix ring.
+
+    ``--clearance`` (``under``, ``all`` or ``none``) and ``--ring`` are the
+    exporter's own; every other option goes to the generator.
     """
     argv = sys.argv[1:] if argv is None else argv
     if not argv or argv[0].startswith("-"):
         print(__doc__.split("\n\n")[0])
         print("usage: python -m boxes.generators._hexmo_step OUT.step "
-              "[--clearance=under|all|none] [--option=value …]")
+              "[--ring=N] [--clearance=under|all|none] [--option=value …]")
         return 2
-    clearance = "under"
+    clearance, ring = "under", None
     rest = []
     for arg in argv[1:]:
         if arg.startswith("--clearance="):
             clearance = arg.split("=", 1)[1]
+        elif arg.startswith("--ring="):
+            ring = arg.split("=", 1)[1]
         else:
             rest.append(arg)
-    from boxes.generators.hexmohexagon import HexmoHexagon
-    box = HexmoHexagon()
-    box.parseArgs(rest)
-    export_step_file(box, argv[0], clearance)
+    if ring:
+        export_ring_step_file(argv[0], ring, clearance)
+    else:
+        from boxes.generators.hexmohexagon import HexmoHexagon
+        box = HexmoHexagon()
+        box.parseArgs(rest)
+        export_step_file(box, argv[0], clearance)
     print(f"wrote {argv[0]}")
     return 0
 
