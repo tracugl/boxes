@@ -451,9 +451,11 @@ this section gives the HO numbers.
 
 **Layout** (as in N, scaled by the 80 mm track spacing):
 
-- **M6** (hexagon) is the only connection: edge 1 carries two deck tracks at ±40
-  mm, the two ends of the reversing loop, and the spur's exit underneath, on the
-  centre line. A turnout on the edge 1 → 5 leg starts the spur.
+- **M6** (hexagon) is the only connection. Edge 1 carries three deck tracks
+  80 mm apart: the two ends of the reversing loop at ±80 and the spur on the
+  centre line. The spur's lower-level exit is underneath, on the same centre line.
+  The turnouts that split the entry line into those three tracks sit on a
+  HexmoRectangle joined to edge 1, because M6's tracks start curving 23 mm in.
 - **M1–M5** (trapezoids) carry the main line 40 mm outside the centre line and the
   spur 80 mm inside (M1 moves it in from 40 to 80).
 - Trains run edge 3 → edge 5 through every ring module.
@@ -465,13 +467,13 @@ this section gives the HO numbers.
 | Train envelope (`--train_envelope`) | 70 mm: about 5 mm of track and a 65 mm train |
 | Deck underside / top | 88 / 94 mm above the floor panel |
 | Highest a track can run under the deck | 88 − 70 = 18 mm |
-| Spur radius | R620 (M2–M5, M6 return); R580 where it shifts (M1, M6 turnout) |
-| Main line radius | R740 (M1–M5); R660 on M6's loop legs |
+| Spur radius | R620 (M2–M5, M6 return); R580 where it shifts (M1); R660 on M6 |
+| Main line radius | R740 (M1–M5); R580 on M6's loop legs |
 | Notch / deck slot / riser bed width | 60 mm: HO coaches (~37 mm) plus overhang on R580–R620 |
 | Run, drop, grade | 4.63 m, 76 mm, **1.64 %** |
 | Spur height at the joints (M6/M1 … M5/M6) | 86.6, 74.5, 62.9, 51.3, 39.7, 28.1 |
-| Under M6's deck / out at M6 edge 1 | 18.0, then level at 18 to edge 1 |
-| M6 slots | outbound `@344..` (once 47 mm clear of the loop), return `@..606` |
+| Under M6's deck / out at M6 edge 1 | 18.0 by the end of the return slot (1.88 % on that stretch), then level at 18 to edge 1 |
+| M6 slots | outbound `@359..` (once clear of the return below), return `@..536` (clear of the spur's deck stretch) |
 
 **Supports.** The preset's 150 mm supports can't fit either side of a 60 mm
 slot, so the helix modules use `support_length=110`. The trapezoids have two
@@ -520,7 +522,7 @@ http://localhost:4455/HexmoHexagon?radius=500&h=100&thickness=6&edge_width=60&sp
 **M6**
 
 ```
-http://localhost:4455/HexmoHexagon?radius=500&h=100&thickness=6&edge_width=60&spoke_width=120&bottom=spoke&top=closed&corner_holes=g2&gap_holes=g2&big_hole_shape=rounded_rect&FingerJoint_play=0.1&FingerJoint_extra_length=0.05&track_lines=1&draw_track=1&track_width=30&track_lead_in=23&support_length=110&train_envelope=70&under_track_width=60&support_edges=2,4,6&track_routes=1:-40-5:-40,3:-40-1:-40,1:-40-5:40&under_track_edges=1&under_track_height=18&track_openings=5:40:86.6:60,3:-80:28.1:60&deck_slots=1:-40-5:40@344../60,3:80-1:0@..606/60&risers=1:-40-5:40@344..~94..86.6/60,3:80-1:0@..606~28.1..18/60,3:80-1:0@606..~18..18/60
+http://localhost:4455/HexmoHexagon?radius=500&h=100&thickness=6&edge_width=60&spoke_width=120&bottom=spoke&top=closed&corner_holes=g2&gap_holes=g2&big_hole_shape=rounded_rect&FingerJoint_play=0.1&FingerJoint_extra_length=0.05&track_lines=1&draw_track=1&track_width=30&track_lead_in=23&support_length=110&train_envelope=70&under_track_width=60&support_edges=2,4,6&track_routes=1:-80-5:-40,3:-40-1:-80,1:0-5:40&under_track_edges=1&under_track_height=18&track_openings=5:40:86.6:60,3:-80:28.1:60&deck_slots=1:0-5:40@359../60,3:80-1:0@..536/60&risers=1:0-5:40@359..~94..86.6/60,3:80-1:0@..536~28.1..18/60,3:80-1:0@536..~18..18/60
 ```
 
 ### Helper-part text (`--part_text`)
