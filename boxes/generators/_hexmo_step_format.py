@@ -141,12 +141,10 @@ class HexmoStepFormatMixin:
             return super().close()
         if self.ctx is None:
             return None
-        self.format = "svg"
-        try:
-            super().close()                 # finish (and discard) the SVG
-        finally:
-            self.format = STEP
         frames, self._step_frames = self._step_frames, None
+        # Build the 3D parts before finishing the SVG: finishing moves every
+        # drawn path into final sheet coordinates in place, after which the
+        # recorded part frames would no longer match them.
         try:
             if self.step_detail == "exact":
                 build = (_hexmo_step.exact_rect_parts if self._STEP_KIND == "rectangle"
@@ -163,6 +161,11 @@ class HexmoStepFormatMixin:
             raise ValueError(
                 "--format step needs the optional 'step' dependency (build123d and "
                 f"the OpenCascade kernel): pip install .[step]  ({err})") from None
+        self.format = "svg"
+        try:
+            super().close()                 # finish (and discard) the SVG
+        finally:
+            self.format = STEP
         data = BytesIO()
         bd.export_step(_hexmo_step.assembly(parts, label=type(self).__name__), data)
         data.seek(0)

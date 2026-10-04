@@ -89,6 +89,22 @@ class TestOutput:
         box.open()
         assert box.burn == 0.2
 
+    def test_web_path_places_parts_like_the_library(self, tmp_path) -> None:
+        # The parts must be built before the SVG is finished (finishing moves
+        # every drawn path); the downloaded model sits exactly where the
+        # library's does.
+        bd = pytest.importorskip("build123d")
+        from boxes.generators._hexmo_step import exact_hexmo_parts
+        data = output(HexmoHexagon, HELIX_RING_N["M1"] + ["--format=step"])
+        path = tmp_path / "m1.step"
+        path.write_bytes(data)
+        web = bd.import_step(str(path)).bounding_box()
+        box = HexmoHexagon()
+        box.parseArgs(HELIX_RING_N["M1"])
+        lib = bd.Compound([p.solid for p in exact_hexmo_parts(box)]).bounding_box()
+        for a, b in ((web.min, lib.min), (web.max, lib.max)):
+            assert (a.X, a.Y, a.Z) == pytest.approx((b.X, b.Y, b.Z), abs=0.05)
+
     def test_clearance_option(self) -> None:
         pytest.importorskip("build123d")
         data = output(HexmoHexagon, HELIX_RING_N["M6"] + ["--format=step",
