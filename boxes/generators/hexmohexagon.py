@@ -1324,7 +1324,7 @@ class HexmoHexagon(HexmoBigHoleMixin, HexmoTrackGuideMixin, HexmoTrackTemplateMi
                 raise ValueError(
                     f"--track_openings: a track at {opening.height:g} mm is not "
                     f"below the deck underside ({l:g} mm above the floor panel).")
-            notch = opening.height + self._UNDER_TRACK_ENVELOPE > l - t
+            notch = opening.height + self.train_envelope > l - t
             plan.setdefault(opening.edge, []).append((opening, notch))
         return plan
 
@@ -1736,6 +1736,7 @@ class HexmoHexagon(HexmoBigHoleMixin, HexmoTrackGuideMixin, HexmoTrackTemplateMi
                    spec.lo, spec.hi, width)
             plan.append({"segments": segments, "width": width,
                          "stations": stations, "name": name,
+                         "route": (spec.start, spec.start_offset, spec.end, spec.end_offset),
                          "bed_in_slot": key in self._slotBedKeys()})
         self._checkRiserFootprints(r, isTrapezoid, plan)
         return plan
@@ -1792,7 +1793,12 @@ class HexmoHexagon(HexmoBigHoleMixin, HexmoTrackGuideMixin, HexmoTrackTemplateMi
                 foot = [(ends[0][0] + (ends[1][0] - ends[0][0]) * k / 10,
                          ends[0][1] + (ends[1][1] - ends[0][1]) * k / 10) for k in range(11)]
                 for j, other, w in paths:
-                    if j != i and min(math.dist(p, q) for p in foot for q in other) < w / 2 + t / 2 + clear:
+                    # Another stretch of the same route carries the same track
+                    # (e.g. a riser split where it goes under the deck), so its
+                    # supports may stand right up to it.
+                    if j == i or plan[j]["route"] == rp["route"]:
+                        continue
+                    if min(math.dist(p, q) for p in foot for q in other) < w / 2 + t / 2 + clear:
                         raise ValueError(
                             f"{rp['name']}: a support at ({point[0]:.0f}, {point[1]:.0f}) "
                             f"would stand in the track of {plan[j]['name']}.")

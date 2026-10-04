@@ -14,8 +14,8 @@ and a width::
   opening's bottom edge.
 * **width** (optional): along the wall; default ``--under_track_width``.
 
-The opening must leave room for the track and a 40 mm train
-(``_UNDER_TRACK_ENVELOPE``, 43 mm) above the track height:
+The opening must leave room for the track and train above the track height
+(``--train_envelope``: 43 mm by default, a 40 mm N train on 3 mm of track):
 
 * If that still fits one material thickness under the deck, the opening is a
   closed hole from the track height up to one thickness under the deck, like

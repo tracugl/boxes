@@ -189,3 +189,34 @@ class TestRectangle:
             # (With a spoke, two rows are already refused for the spoke's sake.)
             rendered(HexmoRectangle, N_RECT + ["--under_track=1", "--num_rows=2",
                                                "--spoke_width=0"])
+
+
+class TestTrainEnvelope:
+    """--train_envelope: the room a lower track needs above its track height."""
+
+    def test_default_is_43(self) -> None:
+        box = HexmoHexagon()
+        box.parseArgs(N_HEX)
+        assert box.train_envelope == 43.0
+
+    def test_sets_the_automatic_opening_height(self) -> None:
+        _, (opening,), _ = rendered(HexmoHexagon, N_HEX + ["--under_track_edges=1",
+                                                           "--train_envelope=60"])
+        bottom, top = hex_span(opening)
+        assert bottom == pytest.approx(top - 60)
+
+    def test_decides_hole_or_notch(self) -> None:
+        # A track at 40 mm: with 43 mm a train fits under one thickness of wall
+        # below the deck (40 + 43 ≤ 91), so it is a closed hole; with 70 it does
+        # not, so it becomes a notch (no hole is cut for it).
+        from boxes.generators.hexmohexagon import HexmoHexagon as Hex
+        def opening_holes(envelope):
+            _, openings, _ = rendered(Hex, N_HEX + ["--track_openings=1:0:40:30",
+                                                   f"--train_envelope={envelope}"])
+            return len(openings)
+        assert opening_holes(43) == 1
+        assert opening_holes(70) == 0
+
+    def test_must_be_positive(self) -> None:
+        with pytest.raises(ValueError, match="train_envelope"):
+            rendered(HexmoHexagon, N_HEX + ["--under_track_edges=1", "--train_envelope=0"])
