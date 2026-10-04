@@ -52,7 +52,7 @@ SCALES = {
               "3:35-1:0@186..~31..27.8/35"]),
     "HO": dict(
         radius=500, t=6, lead=23, spacing=80, bed=60, track=30, deck_under=88, envelope=70,
-        spur=(1, 0, 5, 40), spur_from=359, ret=(3, 80, 1, 0), ret_to=536, ret_height=18.0,
+        spur=(1, 0, 5, 40), spur_from=327, ret=(3, 80, 1, 0), ret_to=490, ret_height=18.0,
         loops=((1, -80, 5, -40), (3, -40, 1, -80)),
         args=["--radius=500", "--h=100", "--thickness=6", "--edge_width=60", "--spoke_width=120",
               "--bottom=spoke", "--top=closed", "--corner_holes=g2", "--gap_holes=g2",
@@ -60,10 +60,10 @@ SCALES = {
               "--support_length=110", "--train_envelope=70", "--under_track_width=60",
               "--support_edges=2,4,6", "--track_routes=1:-80-5:-40,3:-40-1:-80,1:0-5:40",
               "--under_track_edges=1", "--under_track_height=18",
-              "--track_openings=5:40:86.6:60,3:-80:28.1:60",
-              "--deck_slots=1:0-5:40@359../60,3:80-1:0@..536/60",
-              "--risers=1:0-5:40@359..~94..86.6/60,3:80-1:0@..536~28.1..18/60,"
-              "3:80-1:0@536..~18..18/60"]),
+              "--track_openings=5:40:88:60,3:-80:26.6:60",
+              "--deck_slots=1:0-5:40@327../60,3:80-1:0@..490/60",
+              "--risers=1:0-5:40@327..~94..88/60,3:80-1:0@..490~26.6..18/60,"
+              "3:80-1:0@490..~18..18/60"]),
 }
 
 
