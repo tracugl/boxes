@@ -105,6 +105,15 @@ docker compose exec web /app/env/bin/pip install pytest lxml
 
 (Upstream's documented way is `pip install --group dev`, but that needs pip ≥ 25.1 and the image's venv has an older pip.)
 
+The 3D (STEP) export needs the optional `step` extra (build123d and the OpenCascade kernel, `cadquery-ocp`), which needs the system OpenGL libraries the slim image lacks. After a rebuild, if you need it:
+
+```bash
+docker compose exec -u root web sh -c "apt-get update -qq && apt-get install -y -qq libgl1 libglu1-mesa libxrender1 libxext6"
+docker compose exec web /app/env/bin/pip install 'build123d>=0.13'
+```
+
+Without it, `tests/test_hexmo_step.py` is skipped. To export a module: `docker compose exec web sh -c "cd /app && /app/env/bin/python -m boxes.generators._hexmo_step temp/out.step --radius=220 …"`.
+
 Run the Hexmo tests inside the container:
 
 ```bash

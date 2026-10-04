@@ -1694,7 +1694,10 @@ class HexmoHexagon(HexmoBigHoleMixin, HexmoTrackGuideMixin, HexmoTrackTemplateMi
                              a bed reaching an edge must fit its notch.
         @returns List of dicts: ``segments`` (bed centreline, deck frame),
                  ``width``, ``stations`` (``(point, direction, height)`` per
-                 support, height = track height there) and ``name``.
+                 support, height = track height there), ``name``, ``route``
+                 (the route's ends and offsets), ``stretch`` (``(lo, hi)`` mm
+                 along it), ``heights`` (track height at each end) and
+                 ``bed_in_slot``.
         @throws ValueError - On a malformed entry, a spoke bottom, a height
                              out of range, or a support that would stand in
                              another riser's track, on a support wall's slot,
@@ -1739,6 +1742,9 @@ class HexmoHexagon(HexmoBigHoleMixin, HexmoTrackGuideMixin, HexmoTrackTemplateMi
             plan.append({"segments": segments, "width": width,
                          "stations": stations, "name": name,
                          "route": (spec.start, spec.start_offset, spec.end, spec.end_offset),
+                         # Where along the route the bed runs, and its track
+                         # height at each end (the 3D export slopes the bed).
+                         "stretch": (lo, hi), "heights": (spec.h0, spec.h1),
                          "bed_in_slot": key in self._slotBedKeys()})
         self._checkRiserFootprints(r, isTrapezoid, plan)
         return plan
