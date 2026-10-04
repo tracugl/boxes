@@ -176,7 +176,8 @@ class TestStripAtTheDeckEdge:
         box.parseArgs(M1 + [M1_SLOT])
         box.open()
         notches = {3: [(-17.5, 26.0, 7.5)], 5: [(35.0, 26.0, 15.0)]}
-        ((segments, _),) = box._deckSlotPlan(R_IN, True, notches)
+        (slot,) = box._deckSlotPlan(R_IN, True, notches)
+        segments = slot["segments"]
         # Routes end at the wall's inner face (the apothem); the slot runs
         # 1 mm past it, and the deck one thickness (3 mm), leaving 2 mm.
         for point, edge_angle in ((segments[0].p0, 330), (segments[-1].p1, 210)):

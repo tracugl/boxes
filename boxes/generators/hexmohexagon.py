@@ -1541,16 +1541,21 @@ class HexmoHexagon(HexmoBigHoleMixin, HexmoTrackGuideMixin, HexmoTrackTemplateMi
         @param isTrapezoid - True for the half-hexagon deck.
         @param notches     - Edge → ``[(position, width, depth)]`` wall notches
                              (see _trackOpeningPlan), where the deck edge is plain.
-        @returns List of ``(segments, width)``: each slot's trimmed centreline
-                 in the deck frame (hex centre, y up) and its width.
+        @returns List of dicts: ``segments`` (the slot's trimmed centreline in
+                 the deck frame, hex centre, y up), ``width``, and ``bed``
+                 (True when a riser runs along exactly this slot, so the
+                 slot's cut-out is that riser's bed; see _slotBedKeys).
         @throws ValueError - On a malformed entry, an edge the deck lacks, a
                              slot reaching a deck edge with no notch under it,
                              or one crossing a support slot.
         """
         apothem = r * math.sqrt(3.0) / 2.0
+        bed_keys = self._slotBedKeys()
         plan = []
         for slot in parse_deck_slots(self.deck_slots, self.under_track_width):
             name = f"--deck_slots {slot.start}-{slot.end}"
+            bed = (slot.start, slot.start_offset, slot.end, slot.end_offset,
+                   slot.lo, slot.hi, slot.width) in bed_keys
             if isTrapezoid and not {slot.start, slot.end} <= self._TRAPEZOID_EDGES:
                 raise ValueError(f"{name}: the trapezoid only has edges 3, 4 and 5.")
             geometry = route_geometry(slot.start, slot.start_offset, slot.end,
@@ -1567,12 +1572,16 @@ class HexmoHexagon(HexmoBigHoleMixin, HexmoTrackGuideMixin, HexmoTrackTemplateMi
             # over the top of the wall, so a narrow strip of deck is left
             # across the slot's mouth on purpose: it keeps an edge-to-edge
             # slotted deck in one piece, and is cut away once it is in place.
+            # A slot whose cut-out is a riser bed stops exactly at the wall's
+            # inner face instead, so the bed fits between the walls (the
+            # strip left over the wall is then one full thickness).
+            overrun = 0.0 if bed else OVERRUN
             ends = []
             if lo <= 1e-6:
-                lo = -OVERRUN
+                lo = -overrun
                 ends.append((slot.start, geometry.segments[0].p0))
             if hi >= total - 1e-6:
-                hi = total + OVERRUN
+                hi = total + overrun
                 ends.append((slot.end, geometry.segments[-1].p1))
             for edge, point in ends:
                 position = edge_position(edge, point, apothem)
@@ -1585,8 +1594,27 @@ class HexmoHexagon(HexmoBigHoleMixin, HexmoTrackGuideMixin, HexmoTrackTemplateMi
                         f"--track_openings for it, or stop the slot short of the edge.")
             segments = trim_segments(geometry.segments, lo, hi)
             self._checkDeckSlotClearsSupports(r, isTrapezoid, segments, slot.width, name)
-            plan.append((segments, slot.width))
+            plan.append({"segments": segments, "width": slot.width, "bed": bed})
         return plan
+
+    def _slotBedKeys(self):
+        """Riser/deck-slot pairs where the slot's cut-out is the riser's bed.
+
+        A riser and a deck slot pair up when they run along exactly the same
+        route (edges and offsets), over the same stretch, at the same width.
+        The strip that falls out of the slot is then the bed: its support
+        slots are cut in the deck inside the slot outline, and no separate
+        bed part is drawn.
+
+        @returns Set of ``(start, start_offset, end, end_offset, from, to,
+                 width)`` keys found in both --risers and --deck_slots.
+        """
+        slots = {(sl.start, sl.start_offset, sl.end, sl.end_offset, sl.lo, sl.hi, sl.width)
+                 for sl in parse_deck_slots(self.deck_slots, self.under_track_width)}
+        risers = {(rs.start, rs.start_offset, rs.end, rs.end_offset, rs.lo, rs.hi,
+                   rs.width or self.track_width)
+                  for rs in parse_risers(self.risers)}
+        return slots & risers
 
     def _checkDeckSlotClearsSupports(self, r, isTrapezoid, segments, width, name):
         """Refuse a deck slot that crosses a support's finger slot.
@@ -1616,7 +1644,11 @@ class HexmoHexagon(HexmoBigHoleMixin, HexmoTrackGuideMixin, HexmoTrackTemplateMi
     def drawDeckSlots(self, plan, isTrapezoid):
         """Cut the deck slots (see _deckSlotPlan), from the deck's centre frame.
 
-        @param plan        - ``[(segments, width)]`` from _deckSlotPlan.
+        @param plan        - Entries from _deckSlotPlan.  A bed slot also
+                             carries its riser's ``stations``: their support
+                             slots and a "riser bed" label are cut inside the
+                             slot outline first, so the strip that falls out
+                             is the riser's bed.
         @param isTrapezoid - True for the half-hexagon deck, whose callback
                              frame sits one thickness below the true centre
                              (see drawTrackLines).
@@ -1626,7 +1658,17 @@ class HexmoHexagon(HexmoBigHoleMixin, HexmoTrackGuideMixin, HexmoTrackTemplateMi
         with self.saved_context():
             if isTrapezoid:
                 self.moveTo(0, self.thickness)
-            for segments, width in plan:
+            for slot in plan:
+                segments, width = slot["segments"], slot["width"]
+                if slot.get("stations"):
+                    with self.saved_context():
+                        self._riserFingerHoles(slot["stations"], width)
+                    total = sum(seg.length for seg in segments)
+                    (x, y), (dx, dy) = point_at(segments, total / 2)
+                    angle = ((math.degrees(math.atan2(dy, dx)) + 90.0) % 180.0) - 90.0
+                    with self.saved_context():
+                        self.text("riser bed", x, y, angle=angle, align="middle center",
+                                  fontsize=min(5.0, width / 4), color=Color.ETCHING)
                 start, heading, steps = slot_outline(segments, width)
                 self._drawDeckSlotOutline(start, heading, steps)
 
@@ -1697,8 +1739,11 @@ class HexmoHexagon(HexmoBigHoleMixin, HexmoTrackGuideMixin, HexmoTrackTemplateMi
                 point, direction = point_at(segments, s)
                 height = spec.h0 + (spec.h1 - spec.h0) * s / length
                 stations.append((point, direction, height))
+            key = (spec.start, spec.start_offset, spec.end, spec.end_offset,
+                   spec.lo, spec.hi, width)
             plan.append({"segments": segments, "width": width,
-                         "stations": stations, "name": name})
+                         "stations": stations, "name": name,
+                         "bed_in_slot": key in self._slotBedKeys()})
         self._checkRiserFootprints(r, isTrapezoid, plan)
         return plan
 
@@ -1805,6 +1850,20 @@ class HexmoHexagon(HexmoBigHoleMixin, HexmoTrackGuideMixin, HexmoTrackTemplateMi
         its track height etched on it.
         """
         segments, width = riser["segments"], riser["width"]
+        if not riser.get("bed_in_slot"):
+            self._drawRiserBed(riser, segments, width, move)
+        t = self.thickness
+        for _, _, height in riser["stations"]:
+            body = height - t
+            label = f"{height:.1f}"
+            self.rectangularWall(
+                width, body, "fefe", move="right", label=f"riser {label}",
+                callback=[lambda b=body, txt=label: self.text(
+                    txt, width / 2, b / 2, align="middle center",
+                    fontsize=min(4.0, b / 3), color=Color.ETCHING)])
+
+    def _drawRiserBed(self, riser, segments, width, move):
+        """The separate bed strip, for a riser whose bed is not a slot's cut-out."""
         points = strip_points(segments, width)
         minx = min(p[0] for p in points)
         miny = min(p[1] for p in points)
@@ -1824,15 +1883,6 @@ class HexmoHexagon(HexmoBigHoleMixin, HexmoTrackGuideMixin, HexmoTrackTemplateMi
                 else:
                     self.corner(step[1], step[2])
             self.move(tw, th, move, label=f"riser bed {riser['name'][9:]}")
-        t = self.thickness
-        for _, _, height in riser["stations"]:
-            body = height - t
-            label = f"{height:.1f}"
-            self.rectangularWall(
-                width, body, "fefe", move="right", label=f"riser {label}",
-                callback=[lambda b=body, txt=label: self.text(
-                    txt, width / 2, b / 2, align="middle center",
-                    fontsize=min(4.0, b / 3), color=Color.ETCHING)])
 
     def drawRouteTrackGuides(self, s, l, r, isTrapezoid):
         """One track-guide plate per edge that --track_routes crosses.
@@ -2212,6 +2262,15 @@ class HexmoHexagon(HexmoBigHoleMixin, HexmoTrackGuideMixin, HexmoTrackTemplateMi
         slot_plan = self._deckSlotPlan(r, isTrapezoid, notches)
         # Riser boards (--risers): bed strips and supports, checked up front.
         riser_plan = self._riserPlan(r, isTrapezoid, l, notches)
+        # A slot whose cut-out is a riser's bed cuts that riser's support
+        # slots inside it (see _slotBedKeys); pair them up in order.
+        bed_risers = [rp for rp in riser_plan if rp["bed_in_slot"]]
+        for slot in slot_plan:
+            if slot["bed"]:
+                match = next(rp for rp in bed_risers
+                             if rp["width"] == slot["width"]
+                             and math.dist(rp["segments"][0].p0, slot["segments"][0].p0) < 1e-6)
+                slot["stations"] = match["stations"]
 
         # Register custom finger-joint edge objects.  Each call mutates self.edges
         # as a side effect; the returned settings object is not used afterwards,

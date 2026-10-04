@@ -668,6 +668,18 @@ support that would stand in another riser's track, on a support wall's slot, or
 against a side wall is refused, and so is a bed wider than the wall notch it
 passes through or the deck slot on its route.
 
+**The deck slot's cut-out is the bed.** When a riser runs along exactly the same
+route, stretch and width as a `--deck_slots` entry, the strip that falls out of
+the slot *is* the bed, so no separate bed part is cut. The bed's support slots
+are cut in the deck inside the slot outline (before it, so the strip doesn't drop
+out first), the strip is etched "riser bed", and the slot stops at the wall's
+inner face so the strip fits between the walls (the deck left over the wall is
+then one full thickness, cut away once fitted, as before). Make the two entries
+match to use it, e.g. `--deck_slots 3:-17.5-5:-35/35` with
+`--risers 3:-17.5-5:-35~73.6..65.9/35`. Where a track carries on under the deck
+past the end of its slot (M6's return), give that stretch its own riser entry;
+it gets a separate bed.
+
 For the helix ring the notches, the deck slot and the bed are all 35 mm, which
 leaves room for long N coaches overhanging on the R227–R245 spur curves (about
 34 mm swept). At h=80 the spur heights are 73.6 (M6/M1), 65.9, 58.6, 51.2, 43.9
