@@ -14,10 +14,14 @@ part or all of its length, at a set width::
   ``@..262`` from the start).  Default: the whole route;
 * ``/WIDTH`` (optional): default ``--under_track_width``.
 
-A slot that reaches a deck edge is run 1 mm past it so it opens cleanly.  The
-wall below must be notched there (``--track_openings``), which also leaves
-that deck edge plain; otherwise the slot would cut through the deck's finger
-slots.  A slot must also keep clear of the deck's support slots, since a
+A slot that reaches a deck edge is run ``OVERRUN`` past the wall's inner
+face, where routes end.  The deck reaches one material thickness further,
+over the top of the wall, so a narrow strip of deck (thickness − OVERRUN) is
+left across the slot's mouth.  That is on purpose: a slot from edge to edge
+would otherwise cut the deck in two, and the strip holds it together until it
+is fitted, then is cut away.  The wall below must be notched there
+(``--track_openings``), which also leaves that deck edge plain; otherwise the
+slot would cut through the deck's finger slots.  A slot must also keep clear of the deck's support slots, since a
 support wall standing there would block the track anyway.
 
 **Cutting.**  The outline is drawn with the turtle, like
@@ -41,7 +45,8 @@ _SLOT_RE = re.compile(
     rf"(?:@\s*(?P<lo>{_NUMBER})?\s*\.\.\s*(?P<hi>{_NUMBER})?\s*)?"
     rf"(?:/\s*(?P<width>{_NUMBER})\s*)?$")
 
-# How far a slot that reaches a deck edge is run past it, so it opens cleanly.
+# How far past the wall's inner face a slot reaching a deck edge is run.  It
+# stops short of the deck's outer edge, leaving a strip to cut once fitted.
 OVERRUN = 1.0
 
 
