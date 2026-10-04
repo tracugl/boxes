@@ -741,6 +741,7 @@ class HexmoHexagon(HexmoBigHoleMixin, HexmoTrackGuideMixin, HexmoTrackTemplateMi
         # in y.  Each big hole spans centre ± r1.
         features = [(y - r1, y + r1) for y in big_ys]
         under_rect = None
+        dropped = set()
         if under_track or openings:
             # Validate before drawing anything, so an error never leaves half
             # a wall.  Openings take the place of any big hole they would
@@ -756,8 +757,8 @@ class HexmoHexagon(HexmoBigHoleMixin, HexmoTrackGuideMixin, HexmoTrackTemplateMi
             big_ys = [y for y in big_ys
                       if all(rect_circle_gap(rect, (l / 2, y, r1)) >= self._UNDER_TRACK_CLEAR
                              for rect in rects)]
-            self._checkTrackOpenings(s, l, rects, under_rect,
-                                     [(l / 2, y, r1) for y in big_ys])
+            dropped = self._checkTrackOpenings(s, l, rects, under_rect,
+                                               [(l / 2, y, r1) for y in big_ys])
             features = sorted([(y - r1, y + r1) for y in big_ys]
                               + [(y0, y1) for _, _, y0, y1 in rects]
                               + ([(under_rect[2], under_rect[3])] if under_rect else []))
@@ -785,8 +786,14 @@ class HexmoHexagon(HexmoBigHoleMixin, HexmoTrackGuideMixin, HexmoTrackTemplateMi
         for y_lo, y_hi in zip(lo_bounds, hi_bounds):
             self._drawGapFeatures(l, y_lo, y_hi)
 
-        # Corner group-of-8 clusters (see _drawCornerGroup8 for layout details).
-        self._drawCornerGroup8(s, l)
+        # Corner group-of-8 clusters (see _drawCornerGroup8 for layout details),
+        # less any medium (cable) hole a track opening has taken the room of.
+        if dropped:
+            for x, y, r in self._cornerGroupHoles(s, l):
+                if (x, y, r) not in dropped:
+                    self.hole(x, y, r)
+        else:
+            self._drawCornerGroup8(s, l)
 
     def drawAlignmentHolesLong(self, s, l, text):
         """Cut and etch alignment features into the trapezoid long back wall.
@@ -1347,26 +1354,35 @@ class HexmoHexagon(HexmoBigHoleMixin, HexmoTrackGuideMixin, HexmoTrackTemplateMi
     def _checkTrackOpenings(self, s, l, rects, under_rect, big_holes):
         """Keep every track opening clear of the wall's other holes.
 
+        Medium holes (the 25 mm cable holes) give way instead of refusing.
+
         @param s          - Wall pattern length (the frame of the holes).
         @param l          - Wall body height.
         @param rects      - Track openings, ``(x0, x1, y0, y1)`` in the wall
                             frame (x up the wall, y along it).
         @param under_rect - The under-deck opening's rectangle, or None.
         @param big_holes  - Big holes still to be drawn, ``(x, y, r)``.
+        @returns The corner-group medium holes to leave out: an opening that
+                 needs their room takes it.  They carry cables, not
+                 registration (the small pins do that), and both walls at a
+                 joint lose the same one, so the walls still match.
         @throws ValueError - If an opening comes within _TRACK_OPENING_CLEAR mm
-                             of a corner-group or big hole, another opening, or
+                             of a small pin or big hole, another opening, or
                              runs off the wall.
         """
         clear = self._TRACK_OPENING_CLEAR
         holes = [(x, y, r) for x, y, r in self._cornerGroupHoles(s, l)] + list(big_holes)
         others = list(rects) + ([under_rect] if under_rect else [])
+        dropped = set()
         for i, rect in enumerate(rects):
             x0, x1, y0, y1 = rect
             if y0 < clear or y1 > s - clear:
                 raise ValueError("--track_openings: an opening runs off the end of the wall.")
             for hole in holes:
                 gap = rect_circle_gap(rect, hole)
-                if gap < clear:
+                if gap < clear and hole[2] == self._R2 and hole not in big_holes:
+                    dropped.add(hole)
+                elif gap < clear:
                     raise ValueError(
                         f"--track_openings: an opening at {y0 + (y1 - y0) / 2 - s / 2:+.1f} mm "
                         f"comes within {gap:.1f} mm of the wall's corner/registration "
@@ -1380,6 +1396,7 @@ class HexmoHexagon(HexmoBigHoleMixin, HexmoTrackGuideMixin, HexmoTrackTemplateMi
                     raise ValueError(
                         "--track_openings: two openings on one wall overlap or come "
                         f"within {clear:g} mm of each other.")
+        return dropped
 
     # Half-spokes as drawn by drawSupportHoles: (spoke angle, side, edge).
     # Side −1 is the "lower" slot (towards −y before rotation), +1 the upper.
@@ -1630,12 +1647,14 @@ class HexmoHexagon(HexmoBigHoleMixin, HexmoTrackGuideMixin, HexmoTrackTemplateMi
     # Minimum solid material between a riser support and anything else.
     _RISER_CLEAR = 2.0
 
-    def _riserPlan(self, r, isTrapezoid, l):
+    def _riserPlan(self, r, isTrapezoid, l, notches=None):
         """Solve and check --risers.
 
         @param r           - Inner hexagon circumradius (the deck's).
         @param isTrapezoid - True for the half-hexagon.
         @param l           - Wall body height (floor panel top to deck underside).
+        @param notches     - Edge → ``[(position, width, depth)]`` wall notches;
+                             a bed reaching an edge must fit its notch.
         @returns List of dicts: ``segments`` (bed centreline, deck frame),
                  ``width``, ``stations`` (``(point, direction, height)`` per
                  support, height = track height there) and ``name``.
@@ -1671,6 +1690,8 @@ class HexmoHexagon(HexmoBigHoleMixin, HexmoTrackGuideMixin, HexmoTrackTemplateMi
             segments = trim_segments(geometry.segments, lo, hi)
             length = hi - lo
             width = spec.width or self.track_width
+            self._checkRiserBedWidth(spec, geometry, lo, hi, total, width, name,
+                                     apothem, notches or {})
             stations = []
             for s in support_stations(length, self.riser_spacing):
                 point, direction = point_at(segments, s)
@@ -1680,6 +1701,35 @@ class HexmoHexagon(HexmoBigHoleMixin, HexmoTrackGuideMixin, HexmoTrackTemplateMi
                          "stations": stations, "name": name})
         self._checkRiserFootprints(r, isTrapezoid, plan)
         return plan
+
+    def _checkRiserBedWidth(self, spec, geometry, lo, hi, total, width, name,
+                            apothem, notches):
+        """Refuse a bed wider than the notch or deck slot it runs through.
+
+        A bed reaching a deck edge passes through the wall notch there, and
+        a bed on the same route as a deck slot lies in that slot.
+        """
+        ends = []
+        if lo <= 1e-6:
+            ends.append((spec.start, geometry.segments[0].p0))
+        if hi >= total - 1e-6:
+            ends.append((spec.end, geometry.segments[-1].p1))
+        for edge, point in ends:
+            position = edge_position(edge, point, apothem)
+            fits = [w for pos, w, _ in notches.get(edge, [])
+                    if abs(position - pos) <= (w - width) / 2 + 1e-6]
+            if notches.get(edge) and not fits:
+                raise ValueError(
+                    f"{name}: the {width:g} mm bed is wider than the wall notch it "
+                    f"passes through at edge {edge}; widen the notch (--track_openings) "
+                    "or narrow the bed.")
+        for slot in parse_deck_slots(self.deck_slots, self.under_track_width):
+            same = (slot.start, slot.start_offset, slot.end, slot.end_offset) == (
+                spec.start, spec.start_offset, spec.end, spec.end_offset)
+            if same and slot.width < width:
+                raise ValueError(
+                    f"{name}: the {width:g} mm bed is wider than its {slot.width:g} mm "
+                    "deck slot; widen the slot (--deck_slots) or narrow the bed.")
 
     def _checkRiserFootprints(self, r, isTrapezoid, plan):
         """Refuse riser supports that stand where something else is.
@@ -2161,7 +2211,7 @@ class HexmoHexagon(HexmoBigHoleMixin, HexmoTrackGuideMixin, HexmoTrackTemplateMi
         # Deck slots (--deck_slots), also checked before anything is drawn.
         slot_plan = self._deckSlotPlan(r, isTrapezoid, notches)
         # Riser boards (--risers): bed strips and supports, checked up front.
-        riser_plan = self._riserPlan(r, isTrapezoid, l)
+        riser_plan = self._riserPlan(r, isTrapezoid, l, notches)
 
         # Register custom finger-joint edge objects.  Each call mutates self.edges
         # as a side effect; the returned settings object is not used afterwards,

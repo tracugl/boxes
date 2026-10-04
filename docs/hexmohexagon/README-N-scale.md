@@ -574,16 +574,18 @@ opening is a closed hole up to one thickness under the deck. Otherwise it is a
 both split round it, so they still mate finger for finger. The deck itself stays
 closed until the deck slot along the track is cut. A notched or holed wall is
 labelled with its edge; fit it with the opening over the track. Openings keep
-2 mm clear of the wall's other holes (big holes that would come closer are left
-out), and are refused if they reach the corner or registration holes, overlap,
-or put the track too near the floor or above the deck.
+2 mm clear of the wall's other holes. Big holes, and the 25 mm medium (cable)
+holes at each end of the wall, that would come closer are left out instead; both
+walls at a joint lose the same one, so they still match. An opening is refused if
+it reaches a small pin hole, overlaps another opening, or puts the track too near
+the floor or above the deck.
 
 ```bash
 # Helix ring M1 at h=80.  Trains run edge 3 → edge 5 through every ring module,
 # so the spur enters at edge 3 (from M6, 17.5 mm towards edge 4) and leaves at
 # edge 5 (to M2, 35 mm towards edge 4); both are notches.
 curl "http://localhost:4455/HexmoHexagon?render=1&radius=220&thickness=3&h=80\
-&trapezoid=1&track_openings=3:-17.5:72.5:26,5:35:65.2:26" -o hexmo_n_m1.svg
+&trapezoid=1&track_openings=3:-17.5:73.6:35,5:35:65.9:35" -o hexmo_n_m1.svg
 ```
 
 ### Deck slots along a descending track (`--deck_slots`)
@@ -593,7 +595,7 @@ Each entry is `route[@from..to][/width]`:
 
 - `route` — as in `--track_routes` (`A:offset-B:offset`; offsets default to 0);
 - `@from..to` — the stretch, in mm along the route from its start; leave either
-  end off for the route's end (`@157..`, `@..262`). Default: the whole route;
+  end off for the route's end (`@211..`, `@..234`). Default: the whole route;
 - `/width` — default `--under_track_width`.
 
 A slot that reaches a deck edge runs 1 mm past the wall's inner face, where the
@@ -618,8 +620,8 @@ track running below the deck must not pass through one.
   to, e.g. `2,4,6`. Default: all of them (1–6 on the hexagon; 4, or 3, 4, 5 with
   `--trapezoid_side_supports`, on the trapezoid). When set it overrides
   `--trapezoid_side_supports`. Each entry can also give its own position and a
-  quarter turn, `E[@position][/90]`: `4@45/90` is a support on the edge-4
-  half-spoke, centred 45 mm out, turned to run across the half-spoke instead of
+  quarter turn, `E[@position][/90]`: `4@30/90` is a support on the edge-4
+  half-spoke, centred 30 mm out, turned to run across the half-spoke instead of
   along it. An edge can be listed more than once.
 - `--support_position` — distance (mm) from the centre to the middle of every
   support. Default: half the apothem (about 94 mm). Refused if a support would
@@ -630,10 +632,11 @@ so they still fit. A support that would reach the centre, a side wall, the
 trapezoid's long wall or another support is refused, and so is one whose slot
 would stand over a kite on a spoke floor (it must be on a spoke or the rim).
 
-For the helix ring: the trapezoids (M1–M5) use `--support_edges 4@125,4@45/90`.
-The support at 125 mm sits past the spur, under the inner part of the deck. The
-turned one at 45 mm sits under the main line, between it and the spur, and on a
-spoke floor its slot lands on the centre spoke. M6 keeps the three supports clear
+For the helix ring: the trapezoids (M1–M5) use `--support_edges 4@132,4@30/90`.
+The support at 132 mm sits past the spur's 35 mm slot (and clear of the riser
+support standing on the same line mid-module), under the inner part of the deck. The turned one at 30 mm sits right under the main line (on M1 the spur
+runs closer to the centre, so with a 35 mm slot it must be within about 44 mm),
+and on a spoke floor its slot lands on the centre spoke. M6 keeps the three supports clear
 of its spur, `--support_edges 2,4,6`.
 
 ### Riser boards (`--risers`)
@@ -660,26 +663,36 @@ width plus 6 mm each side wide. The kites keep their full size apart from that
 band, cut as the openings either side of it, so supports can stand anywhere along
 the track. Pieces narrower than 15 mm are left solid. Where a riser stops inside a
 kite, the spine runs straight on to that kite's edge. Kites the spine misses, and
-the spoke floor without risers, are unchanged. `--bottom closed` works too. A support that would stand in another riser's
-track, on a support wall's slot, or against a side wall is refused.
+the spoke floor without risers, are unchanged. `--bottom closed` works too. A
+support that would stand in another riser's track, on a support wall's slot, or
+against a side wall is refused, and so is a bed wider than the wall notch it
+passes through or the deck slot on its route.
+
+For the helix ring the notches, the deck slot and the bed are all 35 mm, which
+leaves room for long N coaches overhanging on the R227–R245 spur curves (about
+34 mm swept). At h=80 the spur heights are 73.6 (M6/M1), 65.9, 58.6, 51.2, 43.9
+and 36.5 (M5/M6), 31.0 where it goes under M6's deck and 27.7 at M6 edge 1: a
+steady 2.34 %. M6's slots run `1:-17.5-5:17.5@211..` and `3:35-1:0@..234`, where
+a 35 mm slot keeps clear of the deck tracks.
 
 ```bash
-# Helix ring M1 at h=80, with the spur's riser (72.5 at edge 3 to 65.2 at edge 5).
+# Helix ring M1 at h=80, with the spur's riser (73.6 at edge 3 to 65.9 at edge 5),
+# all 35 mm wide.
 curl "http://localhost:4455/HexmoHexagon?render=1&radius=220&thickness=3&h=80\
-&trapezoid=1&bottom=spoke&support_length=55&support_edges=4@125,4@45/90\
+&trapezoid=1&bottom=spoke&support_length=55&support_edges=4@132,4@30/90\
 &track_routes=3:17.5-5:17.5,3:-17.5-5:-35\
-&track_openings=3:-17.5:72.5:26,5:35:65.2:26&deck_slots=3:-17.5-5:-35/26\
-&risers=3:-17.5-5:-35~72.5..65.2" -o hexmo_n_m1_riser.svg
+&track_openings=3:-17.5:73.6:35,5:35:65.9:35&deck_slots=3:-17.5-5:-35/35\
+&risers=3:-17.5-5:-35~73.6..65.9/35" -o hexmo_n_m1_riser.svg
 ```
 
 ```bash
 # Helix ring M1 at h=80: main line 17.5 mm out, the spur moving in from 17.5 to
 # 35 mm inside, its notches and its slot, with the support moved out past it.
 curl "http://localhost:4455/HexmoHexagon?render=1&radius=220&thickness=3&h=80\
-&trapezoid=1&support_length=55&support_position=125\
+&trapezoid=1&support_length=55&support_edges=4@132,4@30/90\
 &track_routes=3:17.5-5:17.5,3:-17.5-5:-35\
-&track_openings=3:-17.5:72.5:26,5:35:65.2:26\
-&deck_slots=3:-17.5-5:-35/26" -o hexmo_n_m1_slot.svg
+&track_openings=3:-17.5:73.6:35,5:35:65.9:35\
+&deck_slots=3:-17.5-5:-35/35" -o hexmo_n_m1_slot.svg
 ```
 
 ---

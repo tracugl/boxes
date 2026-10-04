@@ -156,4 +156,28 @@ class TestRefused:
 
     def test_support_in_another_track(self) -> None:
         with pytest.raises(ValueError, match="stand in the track"):
-            render(M1 + ["--risers=3:-17.5-5:-35~72.5..65.2,3:-35-5:-35~40..40"])
+            render(M1 + ["--risers=3:-17.5-5:-35~72.5..65.2,3:-35-5:-35@40..280~40..40"])
+
+
+class TestBedWidth:
+    """A bed may not be wider than the notch or deck slot it runs through."""
+
+    def test_wider_than_the_notch(self) -> None:
+        with pytest.raises(ValueError, match="wider than the wall notch"):
+            render(M1 + ["--risers=3:-17.5-5:-35~72.5..65.2/30"])
+
+    def test_wider_than_the_deck_slot(self) -> None:
+        args = [a for a in M1 if not a.startswith(("--track_openings", "--deck_slots"))]
+        with pytest.raises(ValueError, match="wider than its 26 mm deck slot"):
+            render(args + ["--track_openings=3:-17.5:72.5:35,5:35:65.2:35",
+                           "--deck_slots=3:-17.5-5:-35/26",
+                           "--risers=3:-17.5-5:-35~72.5..65.2/30"])
+
+    def test_35mm_everywhere(self) -> None:
+        args = [a for a in M1 if not a.startswith(("--track_openings", "--deck_slots",
+                                                   "--support_position"))]
+        supports, _, _ = render(args + ["--support_edges=4@132,4@30/90",
+                                        "--track_openings=3:-17.5:73.6:35,5:35:65.9:35",
+                                        "--deck_slots=3:-17.5-5:-35/35",
+                                        "--risers=3:-17.5-5:-35~73.6..65.9/35"])
+        assert {w for w, _ in supports} == {35.0}
