@@ -23,15 +23,33 @@ import argparse
 import copy
 import datetime
 import math
+import re
 
-from boxes import Boxes, edges, boolarg
+from boxes import Boxes, edges, boolarg, holeCol, restore
 from boxes.Color import *
 from boxes.generators._hexmo_big_holes import HexmoBigHoleMixin
 from boxes.generators._hexmo_track_guide import HexmoTrackGuideMixin
 from boxes.generators._hexmo_track_template import HexmoTrackTemplateMixin
+from boxes.generators._hexmo_under_track import HexmoUnderTrackMixin
+from boxes.generators._hexmo_deck_slots import (
+    OVERRUN, centreline_points, parse_deck_slots, slot_outline, trim_segments,
+)
+from boxes.generators._hexmo_risers import (
+    parse_risers, point_at, point_in_convex, spine_kites, strip_outline, strip_points,
+    support_stations,
+)
+from boxes.generators._hexmo_track_openings import (
+    SplitJointEdge, parse_track_openings, rect_circle_gap, wall_and_deck_pieces,
+)
+from boxes.generators._hexmo_track_routes import (
+    EDGE_ANGLES, Arc, Line, RouteSpec, edge_position, expand_routes, offset_segments,
+    parse_track_routes, route_geometry, route_template_steps,
+    segments_polyline, template_key,
+)
 
 
-class HexmoHexagon(HexmoBigHoleMixin, HexmoTrackGuideMixin, HexmoTrackTemplateMixin, Boxes):
+class HexmoHexagon(HexmoBigHoleMixin, HexmoTrackGuideMixin, HexmoTrackTemplateMixin,
+                   HexmoUnderTrackMixin, Boxes):
     """Box with a regular hexagon or half hexagon as the base. """
 
     ui_group = "Box"
@@ -79,6 +97,22 @@ class HexmoHexagon(HexmoBigHoleMixin, HexmoTrackGuideMixin, HexmoTrackTemplateMi
             "--supports", action="store", type=boolarg, default=True,
             help="add internal support walls and matching finger-joint slots in the top and bottom panels.")
         self.argparser.add_argument(
+            "--support_edges", action="store", type=str, default="",
+            help="Which half-spokes get a support wall, by the edge each points "
+                 "to (numbered as for --track_routes), comma-separated, e.g. "
+                 "'2,4,6' to keep every other one clear of a lower track.  Each "
+                 "entry may add its own position and a quarter turn, "
+                 "'E[@position][/90]', e.g. '4@125,4@45/90'.  Empty (default): "
+                 "all of them (1-6 on the hexagon; 4, or 3,4,5 with "
+                 "--trapezoid_side_supports, on the trapezoid).  When set it "
+                 "overrides --trapezoid_side_supports.")
+        self.argparser.add_argument(
+            "--support_position", action="store", type=float, default=0.0,
+            help="Distance (mm) from the hexagon centre to the middle of every "
+                 "support wall, along its half-spoke.  0 (default): half the "
+                 "apothem, as before.  Move them out (e.g. towards the inner "
+                 "wall) to clear a track passing nearer the centre.")
+        self.argparser.add_argument(
             "--corner_holes", action="store", type=str, default="g6",
             choices=["g6", "g2"],
             help="Small-hole cluster around each end registration medium hole.  "
@@ -116,6 +150,49 @@ class HexmoHexagon(HexmoBigHoleMixin, HexmoTrackGuideMixin, HexmoTrackTemplateMi
                  "clamped by rectangularHole, so out-of-range numbers are safe.")
         # --big_hole_width / --big_hole_height, shared with HexmoRectangle.
         self._addBigHoleSizeArgs()
+        self.argparser.add_argument(
+            "--under_track_edges", action="store", type=str, default="",
+            help="Under-deck track opening: the edges (comma-separated, numbered "
+                 "as for --track_routes) whose side walls get it instead of the "
+                 "centre big hole, e.g. '1'.  A lower track can then run under "
+                 "the deck through those walls.  Each such wall is labelled with "
+                 "its edge.  The trapezoid only has edges 3, 4 and 5.")
+        # --under_track_height / --under_track_width, shared with HexmoRectangle.
+        self._addUnderTrackArgs()
+        self.argparser.add_argument(
+            "--track_openings", action="store", type=str, default="",
+            help="Openings for tracks that cross a joint below deck level (e.g. a "
+                 "descending spur), comma-separated 'edge:position:height[:width]'. "
+                 "position: mm along the edge from its midpoint, anticlockwise "
+                 "seen from above (to the right, facing the wall from outside). "
+                 "height: the track base above the floor panel (the opening's "
+                 "bottom).  width: default --under_track_width.  If a 40 mm train "
+                 "on that track still fits one thickness under the deck it is a "
+                 "closed hole; otherwise a notch open at the top of the wall, "
+                 "with the deck's edge left plain over it.  E.g. '5:17.5:92.5:26'.")
+        self.argparser.add_argument(
+            "--deck_slots", action="store", type=str, default="",
+            help="Open slots cut through the deck along a descending track, "
+                 "comma-separated 'route[@from..to][/width]'.  route: as in "
+                 "--track_routes (offsets default 0).  from..to: the stretch in "
+                 "mm along the route from its start, either end optional "
+                 "(default the whole route).  width: default --under_track_width. "
+                 " A slot reaching a deck edge needs a --track_openings notch "
+                 "there, and slots must keep clear of the support slots.  E.g. "
+                 "'1:-17.5-5:17.5@157..'.")
+        self.argparser.add_argument(
+            "--risers", action="store", type=str, default="",
+            help="Riser boards for a descending track: a track bed strip along "
+                 "the route plus supports cut to height, slotted into the floor "
+                 "panel (on a spoke floor, the kites keep a solid spine along the "
+                 "riser's path).  Comma-separated "
+                 "'route[@from..to]~h0..h1[/width]': route and stretch as for "
+                 "--deck_slots; h0..h1 the track height (bed top) above the floor "
+                 "panel at the stretch's start and end; width default "
+                 "--track_width.  E.g. '3:-17.5-5:-35~72.5..65.2'.")
+        self.argparser.add_argument(
+            "--riser_spacing", action="store", type=float, default=80.0,
+            help="Largest gap (mm) between neighbouring riser supports.")
         self.argparser.add_argument(
             "--trapezoid", action="store", type=boolarg, default=False,
             help="If true, only draw a half-hexagon.")
@@ -218,6 +295,20 @@ class HexmoHexagon(HexmoBigHoleMixin, HexmoTrackGuideMixin, HexmoTrackTemplateMi
             help="Full hexagon: draw the top curve, from edge 6 (upper-left) to "
                  "edge 2 (upper-right).")
         self.argparser.add_argument(
+            "--track_routes", action="store", type=str, default="",
+            help="Any track routes, replacing --track_left/middle/right/top "
+                 "(and the trapezoid's own curve) when set.  Comma-separated "
+                 "'A:offset-B:offset' entries, edges numbered as above, e.g. "
+                 "'1:-17.5-5:-17.5, 3:-17.5-1:-17.5, 1:-17.5-5:17.5'.  Edges two "
+                 "apart get a curve (the largest that keeps --track_lead_in at "
+                 "both ends), opposite edges a straight, or an S-curve if the "
+                 "two offsets differ; adjacent edges are refused.  On a curve a "
+                 "positive offset is towards its outside, on a straight to the "
+                 "right of travel from A to B.  Leave the offsets off ('4-6') to "
+                 "draw the --track_line_count family.  Routes from the same "
+                 "edge and offset share their lead-in, like a turnout.  The "
+                 "trapezoid only has edges 3, 4 and 5.")
+        self.argparser.add_argument(
             "--draw_center", action="store", type=boolarg, default=False,
             help="When --track_lines is on, etch the track centreline arc(s) "
                  "themselves (the --track_line_count parallel curves).  Off by "
@@ -281,10 +372,8 @@ class HexmoHexagon(HexmoBigHoleMixin, HexmoTrackGuideMixin, HexmoTrackTemplateMi
         #   full hexagon                            → 6  (3 axes × 2 half-spokes)
         #   trapezoid, side supports enabled        → 3  (3 downward half-spokes)
         #   trapezoid, side supports disabled       → 1  (only 0° axis spoke)
-        if isTrapezoid:
-            n_supports = 3 if self.trapezoid_side_supports else 1
-        else:
-            n_supports = 6
+        # One identical wall per supported half-spoke (see _supportLayout).
+        n_supports = len(self._supportLayout(self.radius, isTrapezoid))
 
         def draw_holes():
             """Place through-holes on one support panel.
@@ -396,13 +485,9 @@ class HexmoHexagon(HexmoBigHoleMixin, HexmoTrackGuideMixin, HexmoTrackTemplateMi
 
         H = r * math.sqrt(3) / 2.0  # apothem — also the y-distance from origin to centre
 
-        # Choose which spoke axes receive slots.  The three axes are 60° apart.
-        # In trapezoid mode without side supports, the ±60° axes are skipped
-        # so the bottom panel matches the single-wall drawSupports layout.
-        if isTrapezoid and not self.trapezoid_side_supports:
-            spoke_angles = (0,)
-        else:
-            spoke_angles = (0, 60, -60)
+        # Which half-spokes get a slot, and how far out (--support_edges,
+        # --support_position; see _supportLayout).
+        layout = self._supportLayout(r, isTrapezoid)
 
         # For each spoke axis, shift the coordinate origin to the hex centre
         # and rotate to align with the spoke, then draw the slot(s).
@@ -415,18 +500,18 @@ class HexmoHexagon(HexmoBigHoleMixin, HexmoTrackGuideMixin, HexmoTrackTemplateMi
         # places the centre at y = H + thickness + burn from V0 — identical in both
         # modes.  No special trapezoid correction is needed here.
 
-        for spoke_angle in spoke_angles:
+        for spoke_angle, side, _, d, turned in layout:
             with self.saved_context():
                 # Translate to the hex centre then rotate to the spoke axis.
                 self.moveTo(r / 2, H, spoke_angle)
-                # Lower slot: midpoint at (0, -H/2) in centre-relative coords.
-                # This slot falls in the trapezoid's half (below the hex centre)
-                # and is always drawn.
-                self.fingerHolesAt(0, -H / 2 - sl / 2, sl, angle=90)
-                if not isTrapezoid:
-                    # Upper slot: midpoint at (0, +H/2) — above the hex centre.
-                    # Only present in full-hexagon mode; outside the trapezoid panel.
-                    self.fingerHolesAt(0,  H / 2 - sl / 2, sl, angle=90)
+                # Lower slot (side −1): midpoint at (0, −d) in centre-relative
+                # coords, in the trapezoid's half.  Upper slot (side +1, full
+                # hexagon only): midpoint at (0, +d).  d is H/2 by default.
+                # A turned support's slot runs across the axis instead.
+                if turned:
+                    self.fingerHolesAt(-sl / 2, side * d, sl, angle=0)
+                else:
+                    self.fingerHolesAt(0, side * d - sl / 2, sl, angle=90)
 
     def _drawCornerGroup8(self, s, l):
         """Draw the corner registration clusters shared by all side-panel variants.
@@ -579,7 +664,7 @@ class HexmoHexagon(HexmoBigHoleMixin, HexmoTrackGuideMixin, HexmoTrackTemplateMi
             self.hole(x_mid, y_bot_r2, r2)  # bottom medium
             self.hole(x_mid, y_top_r2, r2)  # top medium
 
-    def drawAlignmentHoles(self, s, l, text):
+    def drawAlignmentHoles(self, s, l, text, under_track=False, openings=()):
         """Cut and etch alignment features into a side panel for stacking hexagons.
 
         The corner group-of-8 clusters at both panel ends are always drawn at
@@ -598,9 +683,21 @@ class HexmoHexagon(HexmoBigHoleMixin, HexmoTrackGuideMixin, HexmoTrackTemplateMi
         At radius=300 this produces corner-8 → G2s → G2m → BIG → G2m → G2s
         → corner-8, matching the intended pattern exactly.
 
-        @param s    - Pre-shrink panel height (original side0, before subtracting 2*t).
-        @param l    - Panel width (slant length l from render()).
-        @param text - Unused; kept for API compatibility.
+        With ``under_track`` the centre big hole is replaced by the under-deck
+        track opening (see :mod:`_hexmo_under_track`).  Any other big hole that
+        would come within the minimum clearance of it is dropped too, and the
+        gap filling works around the opening as it does around a big hole.
+
+        @param s           - Pre-shrink panel height (original side0, before subtracting 2*t).
+        @param l           - Panel width (slant length l from render()).
+        @param text        - Unused; kept for API compatibility.
+        @param under_track - Cut the under-deck track opening on this wall.
+        @param openings    - Track openings (--track_openings) on this wall, as
+                             ``((x0, x1, y0, y1), closed)`` in this frame (x up
+                             the wall, y along it).  Closed ones are cut here;
+                             notches (``closed`` False) are cut by the wall's top
+                             edge, but still clear the big holes and gap filling.
+        @throws ValueError - From the under-deck and track-opening checks.
         """
         sp = self._SPACER
         r2 = self._R2
@@ -640,21 +737,63 @@ class HexmoHexagon(HexmoBigHoleMixin, HexmoTrackGuideMixin, HexmoTrackTemplateMi
                 step = available / (n - 1)
                 big_ys = [y_floor + i * step for i in range(n)]
 
+        # Interior features along the wall, as (lower edge, upper edge) spans
+        # in y.  Each big hole spans centre ± r1.
+        features = [(y - r1, y + r1) for y in big_ys]
+        under_rect = None
+        dropped = set()
+        if under_track or openings:
+            # Validate before drawing anything, so an error never leaves half
+            # a wall.  Openings take the place of any big hole they would
+            # come too close to (the under-deck one replaces the centre hole).
+            if under_track:
+                self._checkUnderTrackClearsCorners(s)
+                bottom, top = self._underTrackSpan(l)
+                half = self.under_track_width / 2
+                under_rect = (bottom, top, s / 2 - half, s / 2 + half)
+                big_ys = [y for y in big_ys
+                          if abs(y - s / 2) >= half + r1 + self._UNDER_TRACK_CLEAR]
+            rects = [rect for rect, _ in openings]
+            big_ys = [y for y in big_ys
+                      if all(rect_circle_gap(rect, (l / 2, y, r1)) >= self._UNDER_TRACK_CLEAR
+                             for rect in rects)]
+            dropped = self._checkTrackOpenings(s, l, rects, under_rect,
+                                               [(l / 2, y, r1) for y in big_ys])
+            features = sorted([(y - r1, y + r1) for y in big_ys]
+                              + [(y0, y1) for _, _, y0, y1 in rects]
+                              + ([(under_rect[2], under_rect[3])] if under_rect else []))
+            if under_rect:
+                self._drawUnderTrackOpening(s / 2, under_rect[0], under_rect[1],
+                                            along_x=False)
+            for (x0, x1, y0, y1), closed in openings:
+                # Notches are cut by the wall's top edge, not here.
+                if closed:
+                    self.rectangularHole(
+                        (x0 + x1) / 2, (y0 + y1) / 2, x1 - x0, y1 - y0,
+                        r=max(0.0, self.big_hole_roundness) * min(x1 - x0, y1 - y0) / 2,
+                        center_x=True, center_y=True)
+
         # Draw the big through-holes along the vertical centre line.
         for y in big_ys:
             self._drawBigHole(l / 2, y, r1, along_x=False)
 
         # Fill every gap with sub-groups via _drawGapFeatures.
         # Boundaries: the corner group's inner edge is 3·sp + r2 (top of the
-        # medium hole).  Each big hole contributes its outer edge at centre ± r1.
+        # medium hole), and each interior feature contributes its outer edges.
         corner_inner = 3 * sp + r2
-        lo_bounds = [corner_inner]      + [y + r1 for y in big_ys]
-        hi_bounds = [y - r1 for y in big_ys] + [s - corner_inner]
+        lo_bounds = [corner_inner]      + [hi for _, hi in features]
+        hi_bounds = [lo for lo, _ in features] + [s - corner_inner]
         for y_lo, y_hi in zip(lo_bounds, hi_bounds):
             self._drawGapFeatures(l, y_lo, y_hi)
 
-        # Corner group-of-8 clusters (see _drawCornerGroup8 for layout details).
-        self._drawCornerGroup8(s, l)
+        # Corner group-of-8 clusters (see _drawCornerGroup8 for layout details),
+        # less any medium (cable) hole a track opening has taken the room of.
+        if dropped:
+            for x, y, r in self._cornerGroupHoles(s, l):
+                if (x, y, r) not in dropped:
+                    self.hole(x, y, r)
+        else:
+            self._drawCornerGroup8(s, l)
 
     def drawAlignmentHolesLong(self, s, l, text):
         """Cut and etch alignment features into the trapezoid long back wall.
@@ -725,7 +864,78 @@ class HexmoHexagon(HexmoBigHoleMixin, HexmoTrackGuideMixin, HexmoTrackTemplateMi
         # Corner group-of-8 clusters — same layout as drawAlignmentHoles.
         self._drawCornerGroup8(s, l)
 
-    def drawKites(self, r, joint_type, isTrapezoid):
+    # Kite spine under a riser: margin either side of the bed's width, how far
+    # its edges run on past the riser's ends, and the narrowest kite piece
+    # still worth cutting.
+    _SPINE_MARGIN = 6.0
+    _SPINE_RUN_ON = 400.0
+    _KITE_MIN_PIECE = 15.0
+
+    def _cutKites(self, kites, spines):
+        """Cut the kite openings, minus a solid spine under each riser.
+
+        @param kites  - Kite polygons (callback frame).
+        @param spines - ``(left_edge, right_edge)`` polylines per riser, in the
+                        same frame (see _kiteSpines); empty for none, which
+                        leaves the kites exactly as before.
+        """
+        if spines:
+            kites = spine_kites(kites, spines, self._KITE_MIN_PIECE)
+        for kite in kites:
+            self.ctx.move_to(kite[0][0], kite[0][1])
+            for x_, y_ in kite[1:]:
+                self.ctx.line_to(x_, y_)
+            self.ctx.line_to(kite[0][0], kite[0][1])
+            self.ctx.stroke()
+
+    def _kiteSpines(self, riser_plan, isTrapezoid):
+        """The spine's two edges for each riser, in the kite frame.
+
+        Each spine follows the riser's bed path, the bed's width plus
+        _SPINE_MARGIN each side wide, so every support slot sits inside it.
+        Its edges run straight on _SPINE_RUN_ON past both ends, so a riser
+        stopping inside a kite still splits it cleanly.  Riser paths are in
+        the true-centre frame; the trapezoid's kites are drawn one thickness
+        below it (see drawTrackLines, "Frame origin").
+        """
+        lift = self.thickness if isTrapezoid else 0.0
+        spines = []
+        for riser in riser_plan:
+            segments = riser["segments"]
+            total = sum(seg.length for seg in segments)
+            run = self._SPINE_RUN_ON
+            path = trim_segments(segments, -run, total + run)
+            half = riser["width"] / 2 + self._SPINE_MARGIN
+            edges = []
+            for d in (-half, half):          # left edge, right edge
+                shifted = offset_segments(tuple(path), d)
+                if shifted is None:
+                    raise ValueError(
+                        f"{riser['name']}: the bed is too wide for its curve.")
+                edges.append([(x, y + lift) for x, y in segments_polyline(shifted, 32)])
+            spines.append(tuple(edges))
+        return spines
+
+    def drawKites(self, r, joint_type, isTrapezoid, ribs=()):
+        """Draw the kite-shaped cutouts inside a spoke panel.
+
+        See _kitePolygons for the shapes.  If the frame or spokes would
+        degenerate, the panel is drawn as a plain closed polygon instead.
+
+        @param r           - Inner corner radius of the hexagon bottom panel.
+        @param joint_type  - Two-character edge string (e.g. 'yY') passed
+                             through to regularPolygonWall on fallback.
+        @param isTrapezoid - Half-hexagon (trapezoid) mode.
+        @param ribs        - Riser spines (see _cutKites); a kite under a
+                             riser keeps its size minus a solid band along it.
+        """
+        kites = self._kitePolygons(r, isTrapezoid)
+        if kites is None:
+            self.regularPolygonWall(corners=self.n, r=r, edges=joint_type[1], move="right")
+            return
+        self._cutKites(kites, ribs)
+
+    def _kitePolygons(self, r, isTrapezoid):
         """Draw six kite-shaped cutouts inside the hexagonal spoke bottom panel.
 
         Each kite is derived from a master shape aligned with the flat-top
@@ -758,12 +968,13 @@ class HexmoHexagon(HexmoBigHoleMixin, HexmoTrackGuideMixin, HexmoTrackTemplateMi
         as the x-axis mirror of kite 2 rather than a rotation.
 
         @param r           - Inner corner radius of the hexagon bottom panel.
-        @param joint_type  - Two-character edge string (e.g. 'yY') passed
-                             through to regularPolygonWall on fallback.
         @param isTrapezoid - When True, only the two kites in the flat half
                              are drawn (half-hexagon / trapezoid mode).  In
                              trapezoid mode with trapezoid_side_supports=False,
                              the L-shape kites replace the rotated masters.
+        @returns The kite polygons in the spoke face's centre-callback frame,
+                 or None when the frame or spokes would degenerate (the face is
+                 then drawn solid instead; see drawKites).
         """
         n = self.n
         edge_width = self.edge_width
@@ -775,18 +986,18 @@ class HexmoHexagon(HexmoBigHoleMixin, HexmoTrackGuideMixin, HexmoTrackTemplateMi
         A_inner = A_outer - edge_width  # apothem inset by the frame width
         if A_inner <= 0:
             # Frame width consumes the entire panel — fall back to solid hex.
-            self.regularPolygonWall(corners=n, r=r, edges=joint_type[1], move="right")
-            return
+            return None
         R_inner = A_inner / cos30                   # inner corner radius after frame
 
-        widen_kites = isTrapezoid and not self.trapezoid_side_supports
+        # The widened L-shaped kites leave no spokes towards edges 3 and 5, so
+        # they are only used when there are no side supports to stand there.
+        widen_kites = isTrapezoid and not self._trapezoidHasSideSupports()
 
         # Original full-hex s (half the chord length of the kite base).
         s = (A_inner / sqrt3) - (spoke_width / 2.0)
         if s <= 0:
             # Spokes are too wide to fit — fall back to solid hex.
-            self.regularPolygonWall(corners=n, r=r, edges=joint_type[1], move="right")
-            return
+            return None
 
         if widen_kites:
             # L-shaped kites for trapezoid mode with the side supports removed.
@@ -805,8 +1016,7 @@ class HexmoHexagon(HexmoBigHoleMixin, HexmoTrackGuideMixin, HexmoTrackTemplateMi
             # Degenerate guard: frame widths would overlap and leave nothing
             # for the kite cutout.
             if edge_width >= A_inner or spoke_width >= R_inner:
-                self.regularPolygonWall(corners=n, r=r, edges=joint_type[1], move="right")
-                return
+                return None
 
             # P3 at the 90° corner where the central-spoke wall meets the
             # long-wall frame.
@@ -844,13 +1054,7 @@ class HexmoHexagon(HexmoBigHoleMixin, HexmoTrackGuideMixin, HexmoTrackTemplateMi
             kite_3 = [(-p1_x, p1_y), (-p2_x, p2_y),
                       (-p3_x, p3_y), (-p4_x, p4_y)]
 
-            for kite in (kite_2, kite_3):
-                self.ctx.move_to(kite[0][0], kite[0][1])
-                for x_, y_ in kite[1:]:
-                    self.ctx.line_to(x_, y_)
-                self.ctx.line_to(kite[0][0], kite[0][1])
-                self.ctx.stroke()
-            return
+            return [kite_2, kite_3]
 
         # ── Original rotation-based kite (full hex + trapezoid with sides) ──
         # Define the master kite with its apex pointing upward (+y direction).
@@ -871,6 +1075,7 @@ class HexmoHexagon(HexmoBigHoleMixin, HexmoTrackGuideMixin, HexmoTrackTemplateMi
         # Produce one kite per hex face by rotating the master in 60° steps.
         kites = [rotate_points(kite_master, 60 * i) for i in range(6)]
 
+        drawn = []
         for kite_counter, kite in enumerate(kites):
             # In trapezoid mode only kites 2 and 3 are drawn.  The master kite
             # has its apex at +y (upward), so after the 30° alignment rotation:
@@ -884,274 +1089,169 @@ class HexmoHexagon(HexmoBigHoleMixin, HexmoTrackGuideMixin, HexmoTrackTemplateMi
             # and 3 fall within its boundary.
             if isTrapezoid and kite_counter not in (2, 3):
                 continue
+            drawn.append(kite)
+        return drawn
 
-            self.ctx.move_to(kite[0][0], kite[0][1])
-            for x_, y_ in kite[1:]:
-                self.ctx.line_to(x_, y_)
-            self.ctx.line_to(kite[0][0], kite[0][1])
-            self.ctx.stroke()
+    # Old full-hexagon toggles, as routes (edge numbering: see --track_routes).
+    # Each draws the --track_line_count family; the order keeps the drawing
+    # (and template) order of the original implementation.
+    _TOGGLE_ROUTES = (("track_left", 6, 4), ("track_right", 4, 2),
+                      ("track_top", 2, 6), ("track_middle", 4, 1))
+    # Edges the trapezoid (lower half-hexagon) actually has.
+    _TRAPEZOID_EDGES = {3, 4, 5}
+
+    def _trackRoutes(self, isTrapezoid):
+        """The concrete routes this module's track is drawn along.
+
+        --track_routes wins when set.  Otherwise the trapezoid draws its one
+        curve (edge 5 → edge 3) and the full hexagon draws whichever of
+        --track_left/right/top/middle are on, each as the --track_line_count
+        family.
+
+        @param isTrapezoid - True for the half-hexagon deck.
+        @returns ``(routes, explicit)``: ``(start, start_offset, end,
+                 end_offset)`` tuples, and whether they came from
+                 --track_routes (explicit routes must all fit; family routes
+                 too tight to draw are skipped, as before).
+        @throws ValueError - On a malformed --track_routes, or one using an
+                             edge the trapezoid does not have.
+        """
+        specs = parse_track_routes(self.track_routes)
+        explicit = bool(specs)
+        if explicit and isTrapezoid:
+            missing = sorted({e for s in specs for e in (s.start, s.end)}
+                             - self._TRAPEZOID_EDGES)
+            if missing:
+                raise ValueError(
+                    f"--track_routes: the trapezoid has no edge {missing[0]}; it "
+                    "only has edges 3, 4 and 5 (and its curve runs 5–3).")
+        if not explicit:
+            if isTrapezoid:
+                specs = [RouteSpec(5, 3, None, None)]
+            else:
+                specs = [RouteSpec(a, b, None, None)
+                         for opt, a, b in self._TOGGLE_ROUTES if getattr(self, opt)]
+        return expand_routes(specs, self._trackOffsets()), explicit
+
+    def _trackRouteGeometries(self, r, isTrapezoid):
+        """Solve every route for this deck (see :mod:`_hexmo_track_routes`).
+
+        @param r           - Inner hexagon circumradius (the deck's).
+        @param isTrapezoid - True for the half-hexagon deck.
+        @returns List of :class:`RouteGeometry`, in drawing order.
+        @throws ValueError - If an explicit --track_routes entry cannot be
+                             drawn (adjacent edges, offsets too large).
+        """
+        apothem = r * math.sqrt(3.0) / 2.0
+        routes, explicit = self._trackRoutes(isTrapezoid)
+        geometries = []
+        for start, so, end, eo in routes:
+            try:
+                geometries.append(route_geometry(start, so, end, eo, apothem,
+                                                 self.track_lead_in))
+            except ValueError:
+                if explicit:
+                    raise
+                # A family offset so far inside that the curve collapses was
+                # always silently skipped; keep doing so.
+        return geometries
 
     def drawHexTrackTemplates(self, r, isTrapezoid=False):
         """Cut the --track_template pieces for this module's track routes.
 
-        Every curve route on a module (the trapezoid's single curve, or the
-        full hexagon's left/right/top) has the same radius per track, so one
-        curve template per track offset covers them all.  It runs lead-in
-        (L) + 60° arc + lead-in, at the radius ``drawTrackLines`` etches:
-        ``ρ = (A − L)·√3 + offset`` with ``A = r·√3/2``.  On the full hexagon
-        with --track_middle, one straight template (apothem to apothem, ``2·A``)
-        is added; every track's straight is the same length.
+        Each route's template follows its centreline exactly: lead-in, arc
+        and lead-out for a curve, the straight for a straight, both arcs of
+        an S-curve.  Routes that give the same piece (mirror images or
+        reversals, such as the full hexagon's left/right/top curves at one
+        offset) share a template, since a template can be turned over or
+        round.  A piece too tight to cut (an arc radius within half the
+        template width of zero) is skipped.
 
         @param r           - Inner hexagon circumradius (as for drawTrackLines).
         @param isTrapezoid - True for the half-hexagon deck.
-        @throws ValueError - Propagated from the template width checks.
+        @throws ValueError - Propagated from the template width checks or an
+                             explicit --track_routes entry that cannot be drawn.
         """
-        apothem = r * math.sqrt(3.0) / 2.0
-        lead_in = self.track_lead_in
-        rho_center = (apothem - lead_in) * math.sqrt(3.0)
         half = self._templateWidth() / 2.0
         gauge = f"{self.track_gauge:g}mm"
-        curves = isTrapezoid or self.track_left or self.track_right or self.track_top
-        if curves:
-            lead = [("line", lead_in)] if lead_in > 0 else []
-            for off in self._trackOffsets():
-                rho = rho_center + off
-                if rho - half <= 0:
-                    continue   # too tight to cut, as drawTrackLines skips rho ≤ 0
-                self.drawTrackTemplate(lead + [("arc", -60.0, rho)] + lead,
-                                       f"R{rho:.0f} {gauge}", move="right")
-        if not isTrapezoid and self.track_middle:
-            self.drawTrackTemplate([("line", 2 * apothem)], f"straight {gauge}",
-                                   move="right")
+        seen = set()
+        for geometry in self._trackRouteGeometries(r, isTrapezoid):
+            steps = route_template_steps(geometry)
+            key = template_key(steps)
+            if key in seen:
+                continue
+            seen.add(key)
+            arcs = [st for st in steps if st[0] == "arc"]
+            if any(st[2] - half <= 0 for st in arcs):
+                continue
+            if not arcs:
+                label = f"straight {gauge}"
+            elif len(arcs) == 1:
+                label = f"R{geometry.radius:.0f} {gauge}"
+            else:
+                label = f"S R{geometry.radius:.0f} {gauge}"
+            self.drawTrackTemplate(list(steps), label, move="right")
 
     def drawTrackLines(self, r, isTrapezoid=False):
-        """Etch the model-railway track curve onto the deck as an alignment guide.
+        """Etch the model-railway track onto the deck as an alignment guide.
 
         Six hexagon modules joined edge-to-edge in a ring form one closed loop
-        of track; each module carries a 60° arc of that loop.  Two independent
-        derivations (see the scale READMEs) give the loop radius as
+        of track; each module carries a 60° arc of that loop.  The loop radius
+        is ``1.5 · R`` (R = the hexagon circumradius, ``--radius``; see the
+        scale READMEs), with the arc meeting each edge square at its midpoint
+        so neighbouring modules join smoothly.
 
-            track_radius = 1.5 · R
+        **Routes.**  Every track drawn is a *route* between two edges (see
+        :mod:`boxes.generators._hexmo_track_routes` for the geometry): a
+        straight lead-in of ``--track_lead_in`` (L), one 60° arc, and a
+        lead-out, for edges two apart; a straight (or S-curve) for opposite
+        edges.  The trapezoid's curve is the route edge 5 → edge 3; the full
+        hexagon's ``--track_left`` 6→4, ``--track_right`` 4→2, ``--track_top``
+        2→6 and ``--track_middle`` 4→1; or ``--track_routes`` lists any
+        others, with their own offset at each end.  With equal offsets a curve
+        is concentric with the ring: radius ``(A − L)·√3 + offset`` with
+        ``A = R·√3/2``, i.e. ``1.5·R − √3·L`` on the centreline.  Unequal
+        offsets give the largest arc that keeps L at both ends.
 
-        where R is the hexagon circumradius (the ``--radius`` parameter).  The
-        arc crosses the module between the midpoints of the two edges that are
-        120° apart, meeting each edge perpendicularly so neighbouring modules
-        join smoothly.
+        **Parallel tracks.**  A route given without offsets is drawn once per
+        ``--track_line_count`` offset (``--track_spacing``, ``--track_offset``,
+        ``--track_center_offset``), so the family stays parallel and each
+        track meets the edge at its own offset.
 
-        **Geometry (in the callback[0] frame, origin = hexagon centre).**  In
-        trapezoid mode the two 120°-apart edges are the two lower slanted sides
-        (edge-midpoint directions 210° and 330°), whose bisector points straight
-        down (−y, toward the short bottom edge).  Placing the arc centre C on
-        that bisector and requiring the arc to be tangent to the radial (edge
-        normal) direction at each entry point fixes
+        **What is etched.**  ``--draw_center`` etches each route's centreline;
+        ``--draw_track`` etches the two footprint edges ``± --track_width/2``
+        either side (the route shifted sideways: lines move, arcs change
+        radius about the same centre, so the edges stay parallel).  Both may
+        be on together.  A footprint arc that would collapse is skipped.
 
-            C = (0, −√3·R)              (distance √3·R from the hex centre)
+        **Radius label.**  With ``--track_label``, each curve's radius is
+        etched at the middle of its arc (at the join of an S-curve's two
+        arcs): millimetres just outside the centreline, inches (1 dp) just
+        inside, sized from ``--track_width`` so both sit inside the footprint
+        and are hidden once track is laid.
 
-        which is exactly the ring centre once six modules are assembled.  From C
-        the two edge midpoints subtend 60°→120°, i.e. a 60° arc whose apex sits
-        at (0, −(√3 − 1.5)·R) ≈ (0, −0.23·R), just below the hex centre.  This
-        matches the ``track curve radius = 1.5 × R`` relationship exactly.
+        **Transition ticks.**  With ``--track_crossing``, a short tick across
+        the track marks every point where a straight meets an arc.
 
-        **Straight lead-in.**  ``--track_lead_in`` (L) inserts a straight section
-        of length L at each edge crossing, running along the edge normal (the
-        perpendicular-crossing direction), with the curve beginning at its inner
-        end.  The crossing points stay pinned to the edge midpoints so
-        neighbouring modules still join, which forces the tangent points inward
-        by L: the arc centre moves to C = (0, −2·(A − L)) and its radius shrinks
-        to (A − L)·√3 = 1.5·R − √3·L, where A = R·√3/2 is the apothem.  The arc
-        still subtends 60°→120° about C (the construction is self-similar), and
-        the lead-in straight of length L along the normal lands exactly back on
-        the edge midpoint.  L = 0 recovers the pure edge-to-edge arc above.
-
-        **Parallel centrelines.**  ``--track_line_count`` concentric centreline
-        arcs are drawn about the same centre C, sharing the 60°→120° angular span
-        so they stay parallel and each meets the module edge on the same radial
-        line as the primary centreline (i.e. neighbouring modules' lines still
-        join).  Centreline ``i`` is offset radially by ``(i − (N−1)/2) ·
-        spacing``: an odd N puts one line on the centreline (offset 0) with the
-        rest paired either side; an even N straddles it (offsets ±spacing/2,
-        ±3·spacing/2, …).
-
-        **Centre vs. track.**  Two independent toggles decide what is etched
-        around each centreline radius ρ:
-
-          - ``--draw_center`` etches ρ itself (the bare centreline guide).
-          - ``--draw_track`` treats ρ as the *middle* of a physical track of
-            width ``--track_width`` and etches the two footprint edges at
-            ρ ± track_width/2 — where the actual track/roadbed will be laid.
-
-        Both may be enabled at once (centreline plus its two edges).  Every arc
-        is concentric about C, so all of them stay mutually parallel and join
-        across module boundaries.  Any arc whose radius would collapse to ≤ 0
-        (a very large offset on a small hexagon) is skipped.
-
-        **Radius label.**  When ``--track_label`` is on, each track's resulting
-        curve radius ρ is etched as text at the centreline apex — millimetres
-        just outside the centreline, inches (1 dp) just inside — with the font
-        sized from ``--track_width`` so both lines fall inside the track
-        footprint and are hidden once track is laid.
-
-        **Transition ticks.**  When ``--track_crossing`` is on (and a lead-in is
-        present), a short radial tick is etched at each point where a straight
-        lead-in meets the curve, crossing the track at right angles to mark the
-        straight/curve transition.
-
-        **Generalisation to the full hexagon.**  The trapezoid draws one curve —
-        its lower pair of edges, bisector pointing straight down (270°).  The
-        same construction works for any 120°-apart edge pair by pointing the
-        bisector at their mid-direction β: the arc centre becomes C = O + 2·(A −
-        L)·(cos β, sin β), the endpoints sit at (β+210°) and (β+150°) about C,
-        and the outward lead-in directions are the two edge normals β∓60°.  On a
-        flat-top hexagon (edge 1 top = 90°, 2 = 30°, 3 = 330°, 4 bottom = 270°,
-        5 = 210°, 6 = 150°) the selectable routes are: ``--track_left`` 4→6
-        (β = 210°), ``--track_right`` 4→2 (β = 330°), ``--track_top`` 6→2
-        (β = 90°), and ``--track_middle`` 4→1, a straight diameter through the
-        centre (edges 180° apart, so no finite radius — drawn as straight lines
-        with no radius label or transition tick).
-
-        **Frame origin.**  Fired from callback[0].  ``regularPolygonWall`` fires
-        it at the true hexagon centre (``apothem + t`` above the edge-0 path),
-        but ``drawTrapezoidWall`` fires it at the join-edge outer face — only
-        ``apothem`` above V0, one thickness ``t`` *below* the true centre (the
-        kites are built around that frame, so callback[0] itself is left
-        alone).  Every edge's fingers are centred on the path-edge midpoint,
-        which lies on the edge normal through the *true* centre; drawing from
-        the trapezoid's lower origin would slide each crossing ``t·√3/2`` along
-        the slanted edges, off the middle finger.  In trapezoid mode the origin
-        is therefore shifted up by ``t`` before drawing — the same
-        ``apothem + t`` centre that ``drawSupportHoles`` uses on this panel.
+        **Frame origin.**  Fired from callback[0].  ``regularPolygonWall``
+        fires it at the true hexagon centre, but ``drawTrapezoidWall`` fires
+        it at the join-edge outer face, one thickness ``t`` below the true
+        centre (the kites are built around that frame, so callback[0] itself
+        is left alone).  Every edge's fingers are centred on the path-edge
+        midpoint, on the edge normal through the *true* centre, so in
+        trapezoid mode the origin is shifted up by ``t`` before drawing — the
+        same ``apothem + t`` centre that ``drawSupportHoles`` uses.
 
         Drawn in ``Color.ETCHING`` inside a saved context so the engrave colour
         does not leak into subsequent cut paths.
 
-        @param r           - Hexagon circumradius (== track-geometry R), in mm.
-        @param isTrapezoid - True for the half-hexagon deck (draws the single
-                             lower curve); False for the full hexagon (draws the
-                             --track_left/middle/right/top routes selected).
-
+        @param r           - Inner hexagon circumradius (the deck's), in mm.
+        @param isTrapezoid - True for the half-hexagon deck.
+        @throws ValueError - If an explicit --track_routes entry cannot be drawn.
         """
-        n_lines = self.track_line_count
-        if n_lines < 1:
+        if self.track_line_count < 1:
             return
-
-        half_width = self.track_width / 2.0
-        lead_in = self.track_lead_in
-        apothem = r * math.sqrt(3.0) / 2.0
-        rho_center = (apothem - lead_in) * math.sqrt(3.0)  # 1.5·R − √3·L
-        SEGMENTS = 64  # polyline resolution — plenty for a smooth engraved arc
-
-        # Crossing-tick half-length: spans the track (rail to rail) when the
-        # footprint edges are drawn, plus a small overhang so the tick clearly
-        # crosses every line; a bare centreline gets just the overhang each side.
-        cross_half = (half_width if self.draw_track else 0.0) + 6.0
-
-        # Label font scales with the physical track width so the text always fits
-        # inside the track footprint (and is hidden once track is laid), sizing
-        # itself up for HO and down for N.  At 0.35·width a single line centred in
-        # a half-band [0, width/2] spans width·[0.075, 0.425] — clear of both the
-        # centreline and the rail edge.
-        label_fontsize = self.track_width * 0.35
-        label_band = self.track_width / 4.0  # centre of each half of the width band
-
-        offsets = self._trackOffsets()
-
-        def draw_curve(bisector_deg):
-            """Draw the full track family for a 120°-edge-pair with the given
-            bisector direction β (pointing from the hex centre toward the arc
-            centre C).  See the docstring for the generalised geometry."""
-            br = bisector_deg
-            # Arc centre C on the bisector; endpoints at β±... about C; the two
-            # outward lead-in directions are the edge normals β∓60°.
-            cx = 2.0 * (apothem - lead_in) * math.cos(math.radians(br))
-            cy = 2.0 * (apothem - lead_in) * math.sin(math.radians(br))
-            ang_a = math.radians(br + 210.0)          # endpoint A about C
-            ang_b = math.radians(br + 150.0)          # endpoint B about C
-            dir_a = (math.cos(math.radians(br - 60.0)), math.sin(math.radians(br - 60.0)))
-            dir_b = (math.cos(math.radians(br + 60.0)), math.sin(math.radians(br + 60.0)))
-            u_apex = (math.cos(math.radians(br + 180.0)), math.sin(math.radians(br + 180.0)))
-            # Text angle aligned with the track (tangent at the apex), normalised
-            # to (−90°, 90°] so the label reads upright.
-            text_angle = ((br + 90.0 + 90.0) % 180.0) - 90.0
-
-            def line(rho):
-                if rho <= 0:
-                    return
-                ax = cx + rho * math.cos(ang_a)
-                ay = cy + rho * math.sin(ang_a)
-                bx = cx + rho * math.cos(ang_b)
-                by = cy + rho * math.sin(ang_b)
-                self.ctx.move_to(ax + lead_in * dir_a[0], ay + lead_in * dir_a[1])
-                self.ctx.line_to(ax, ay)
-                for step in range(1, SEGMENTS + 1):
-                    a = ang_a + (ang_b - ang_a) * step / SEGMENTS
-                    self.ctx.line_to(cx + rho * math.cos(a), cy + rho * math.sin(a))
-                self.ctx.line_to(bx + lead_in * dir_b[0], by + lead_in * dir_b[1])
-                self.ctx.stroke()
-
-            def crossing(rho):
-                if rho <= 0:
-                    return
-                for ang in (ang_a, ang_b):
-                    ca, sa = math.cos(ang), math.sin(ang)
-                    r_lo = max(0.0, rho - cross_half)
-                    r_hi = rho + cross_half
-                    self.ctx.move_to(cx + r_lo * ca, cy + r_lo * sa)
-                    self.ctx.line_to(cx + r_hi * ca, cy + r_hi * sa)
-                    self.ctx.stroke()
-
-            for off in offsets:
-                rho = rho_center + off
-                if self.draw_center:
-                    line(rho)
-                if self.draw_track:
-                    line(rho - half_width)
-                    line(rho + half_width)
-                if (self.track_crossing and lead_in > 0
-                        and (self.draw_center or self.draw_track)):
-                    crossing(rho)
-                if (self.track_label and rho > 0 and label_fontsize > 0
-                        and (self.draw_center or self.draw_track)):
-                    # Apex of the centreline arc, then labels offset radially into
-                    # each half of the width band: millimetres on the outer side,
-                    # inches (1 dp) on the inner side, rotated to follow the track.
-                    apex_x = cx + rho * u_apex[0]
-                    apex_y = cy + rho * u_apex[1]
-                    # stroke=True paints the glyph outlines in the ETCHING
-                    # stroke colour with no fill, so lasers that vector-etch by
-                    # stroke colour (ignoring fill) still trace these labels.
-                    with self.saved_context():
-                        self.text(
-                            f"{rho:.0f} mm",
-                            x=apex_x + label_band * u_apex[0],
-                            y=apex_y + label_band * u_apex[1],
-                            angle=text_angle, align="middle center",
-                            fontsize=label_fontsize, color=Color.ETCHING,
-                            stroke=True)
-                    with self.saved_context():
-                        self.text(
-                            f'{rho / 25.4:.1f}"',
-                            x=apex_x - label_band * u_apex[0],
-                            y=apex_y - label_band * u_apex[1],
-                            angle=text_angle, align="middle center",
-                            fontsize=label_fontsize, color=Color.ETCHING,
-                            stroke=True)
-
-        def draw_straight():
-            """Middle route (edge 4 → edge 1): a straight vertical diameter through
-            the centre.  Edges 180° apart give no finite radius, so there is no
-            arc, radius label, or transition tick — just the straight line(s), the
-            footprint edges, and the parallel offsets, running full apothem to
-            apothem (y = −A … +A) offset in x."""
-            def sline(xoff):
-                self.ctx.move_to(xoff, -apothem)
-                self.ctx.line_to(xoff, apothem)
-                self.ctx.stroke()
-            for off in offsets:
-                if self.draw_center:
-                    sline(off)
-                if self.draw_track:
-                    sline(off - half_width)
-                    sline(off + half_width)
+        geometries = self._trackRouteGeometries(r, isTrapezoid)
 
         with self.saved_context():
             self.set_source_color(Color.ETCHING)
@@ -1160,18 +1260,754 @@ class HexmoHexagon(HexmoBigHoleMixin, HexmoTrackGuideMixin, HexmoTrackTemplateMi
                 # true hex centre (see "Frame origin" above); lift the origin
                 # so the crossings land on each slanted edge's middle finger.
                 self.moveTo(0, self.thickness)
-                # The half-hexagon deck: its single lower curve (bisector 270°).
-                draw_curve(270.0)
+            for geometry in geometries:
+                self._drawTrackRoute(geometry)
+
+    def _underTrackEdges(self, isTrapezoid):
+        """Edges whose side walls get the under-deck track opening.
+
+        @param isTrapezoid - True for the half-hexagon (edges 3, 4, 5 only).
+        @returns Sorted list of edge numbers (empty when the option is unset).
+        @throws ValueError - On anything but comma-separated edge numbers 1–6,
+                             or an edge the trapezoid does not have.
+        """
+        text = self.under_track_edges.strip()
+        if not text:
+            return []
+        edges = set()
+        for item in text.split(","):
+            item = item.strip()
+            if not item.isdigit() or not 1 <= int(item) <= 6:
+                raise ValueError(
+                    f"--under_track_edges: {item!r} is not an edge number 1–6.")
+            edges.add(int(item))
+        if isTrapezoid and not edges <= self._TRAPEZOID_EDGES:
+            raise ValueError(
+                "--under_track_edges: the trapezoid only has edges 3, 4 and 5 "
+                f"(got {', '.join(str(e) for e in sorted(edges))}).")
+        return sorted(edges)
+
+    # Deck side index → edge number, in the order the deck panel draws its
+    # sides (anticlockwise from the bottom).  The trapezoid's third side is
+    # its long join edge, which has no edge number.
+    _DECK_SIDE_EDGES = (4, 3, 2, 1, 6, 5)
+    _TRAPEZOID_DECK_SIDE_EDGES = (4, 3, None, 5)
+    # Minimum solid material between a track opening and any other hole.
+    _TRACK_OPENING_CLEAR = 2.0
+
+    def _trackOpeningPlan(self, isTrapezoid, l):
+        """Parse and classify --track_openings.
+
+        @param isTrapezoid - True for the half-hexagon (edges 3, 4, 5 only).
+        @param l           - Wall body height: floor panel top to deck underside.
+        @returns Dict edge → list of ``(opening, notch)``, where ``notch`` is
+                 True when a 40 mm train on that track would not fit under
+                 one thickness of wall below the deck.
+        @throws ValueError - On a malformed entry, an edge the module does not
+                             have, or a track height too near the floor or
+                             above the deck underside.
+        """
+        t = self.thickness
+        plan = {}
+        for opening in parse_track_openings(self.track_openings,
+                                            self.under_track_width):
+            if isTrapezoid and opening.edge not in self._TRAPEZOID_EDGES:
+                raise ValueError(
+                    f"--track_openings: the trapezoid has no edge {opening.edge}; "
+                    "it only has edges 3, 4 and 5.")
+            if opening.height < t:
+                raise ValueError(
+                    f"--track_openings: a track at {opening.height:g} mm would cut "
+                    f"into the floor joint; keep it at least {t:g} mm above the "
+                    "floor panel.")
+            if opening.height >= l:
+                raise ValueError(
+                    f"--track_openings: a track at {opening.height:g} mm is not "
+                    f"below the deck underside ({l:g} mm above the floor panel).")
+            notch = opening.height + self.train_envelope > l - t
+            plan.setdefault(opening.edge, []).append((opening, notch))
+        return plan
+
+    def _deckEdges(self, char, isTrapezoid, deck_length, wall_length, notches):
+        """Deck edge types, split where a wall below is notched.
+
+        @param char        - The deck's joint edge character (e.g. 'Z').
+        @param isTrapezoid - Selects the side → edge numbering.
+        @param deck_length - Deck side length.
+        @param wall_length - Wall top-edge length.
+        @param notches     - Edge → list of ``(position, width, depth)``.
+        @returns ``char`` when nothing is notched, else one edge per deck side.
+        """
+        if not notches:
+            return char
+        sides = self._TRAPEZOID_DECK_SIDE_EDGES if isTrapezoid else self._DECK_SIDE_EDGES
+        base = self.edges[char]
+        edges = []
+        for edge in sides:
+            if edge in notches:
+                _, deck = wall_and_deck_pieces(wall_length, deck_length, notches[edge])
+                edges.append(SplitJointEdge(self, base, deck))
             else:
-                # Full hexagon: the routes selected by the four toggles.
-                if self.track_left:
-                    draw_curve(210.0)   # edge 4 → edge 6
-                if self.track_right:
-                    draw_curve(330.0)   # edge 4 → edge 2
-                if self.track_top:
-                    draw_curve(90.0)    # edge 6 → edge 2
-                if self.track_middle:
-                    draw_straight()     # edge 4 → edge 1
+                edges.append(base)
+        return edges
+
+    def _checkTrackOpenings(self, s, l, rects, under_rect, big_holes):
+        """Keep every track opening clear of the wall's other holes.
+
+        Medium holes (the 25 mm cable holes) give way instead of refusing.
+
+        @param s          - Wall pattern length (the frame of the holes).
+        @param l          - Wall body height.
+        @param rects      - Track openings, ``(x0, x1, y0, y1)`` in the wall
+                            frame (x up the wall, y along it).
+        @param under_rect - The under-deck opening's rectangle, or None.
+        @param big_holes  - Big holes still to be drawn, ``(x, y, r)``.
+        @returns The corner-group medium holes to leave out: an opening that
+                 needs their room takes it.  They carry cables, not
+                 registration (the small pins do that), and both walls at a
+                 joint lose the same one, so the walls still match.
+        @throws ValueError - If an opening comes within _TRACK_OPENING_CLEAR mm
+                             of a small pin or big hole, another opening, or
+                             runs off the wall.
+        """
+        clear = self._TRACK_OPENING_CLEAR
+        holes = [(x, y, r) for x, y, r in self._cornerGroupHoles(s, l)] + list(big_holes)
+        others = list(rects) + ([under_rect] if under_rect else [])
+        dropped = set()
+        for i, rect in enumerate(rects):
+            x0, x1, y0, y1 = rect
+            if y0 < clear or y1 > s - clear:
+                raise ValueError("--track_openings: an opening runs off the end of the wall.")
+            for hole in holes:
+                gap = rect_circle_gap(rect, hole)
+                if gap < clear and hole[2] == self._R2 and hole not in big_holes:
+                    dropped.add(hole)
+                elif gap < clear:
+                    raise ValueError(
+                        f"--track_openings: an opening at {y0 + (y1 - y0) / 2 - s / 2:+.1f} mm "
+                        f"comes within {gap:.1f} mm of the wall's corner/registration "
+                        f"holes (needs {clear:g}); move it or narrow it.")
+            for j, other in enumerate(others):
+                if j == i:
+                    continue
+                ox0, ox1, oy0, oy1 = other
+                gap = max(oy0 - y1, y0 - oy1, ox0 - x1, x0 - ox1)
+                if gap < clear:
+                    raise ValueError(
+                        "--track_openings: two openings on one wall overlap or come "
+                        f"within {clear:g} mm of each other.")
+        return dropped
+
+    # Half-spokes as drawn by drawSupportHoles: (spoke angle, side, edge).
+    # Side −1 is the "lower" slot (towards −y before rotation), +1 the upper.
+    # The edge is the one that half-spoke points to: the 0° axis runs to edges
+    # 4 and 1, +60° to 3 and 6, −60° to 5 and 2.
+    _HALF_SPOKES = ((0.0, -1.0, 4), (0.0, 1.0, 1), (60.0, -1.0, 3),
+                    (60.0, 1.0, 6), (-60.0, -1.0, 5), (-60.0, 1.0, 2))
+    # Minimum gap between a support's ends and the centre or the side wall.
+    _SUPPORT_END_CLEAR = 2.0
+
+    def _supportLayout(self, r, isTrapezoid):
+        """The supports: which half-spoke each is on, how far out, and its turn.
+
+        Shared by drawSupports (one wall each), drawSupportHoles (the deck's
+        and bottom panel's slots) and the deck-slot and riser checks, so they
+        always agree.  Without --support_edges / --support_position it is
+        exactly the original layout: one radial support per half-spoke,
+        centred half the apothem out.
+
+        --support_edges entries are ``E[@position][/turn]``: the edge the
+        half-spoke points to, optionally the distance (mm) from the centre to
+        the support's middle (default --support_position, or half the
+        apothem), and optionally ``/90`` to turn it a quarter turn, so it runs
+        across the half-spoke instead of along it.  An edge may be listed more
+        than once, e.g. ``4@125,4@45/90``.
+
+        @param r           - Inner hexagon circumradius (the panels').
+        @param isTrapezoid - True for the half-hexagon (lower half-spokes only).
+        @returns ``[(spoke angle, side, edge, d, turned)]`` in drawing order.
+        @throws ValueError - On a malformed entry, an edge the module lacks, a
+                             support reaching the centre or a wall, two
+                             supports too close, or (spoke floor) a support
+                             slot over a kite.
+        """
+        apothem = r * math.sqrt(3.0) / 2.0
+        default_d = self.support_position or apothem / 2.0
+        by_edge = {hs[2]: hs for hs in self._HALF_SPOKES}
+        entries = []
+        if self.support_edges.strip():
+            for item in self.support_edges.split(","):
+                match = re.fullmatch(
+                    r"\s*([1-6])\s*(?:@\s*(\d+(?:\.\d*)?|\.\d+))?\s*(?:/\s*(0|90))?\s*", item)
+                if not match:
+                    raise ValueError(
+                        f"--support_edges: {item.strip()!r} is not "
+                        "'<edge 1–6>[@<position>][/90]', e.g. '4@45/90'.")
+                edge = int(match[1])
+                d = float(match[2]) if match[2] else default_d
+                entries.append((edge, d, match[3] == "90"))
+            edges = {e for e, _, _ in entries}
+            if isTrapezoid and not edges <= self._TRAPEZOID_EDGES:
+                raise ValueError(
+                    "--support_edges: the trapezoid only has half-spokes towards "
+                    f"edges 3, 4 and 5 (got {', '.join(map(str, sorted(edges)))}).")
+            # Drawing order: the half-spoke order of drawSupportHoles, then as listed.
+            order = [hs[2] for hs in self._HALF_SPOKES]
+            entries.sort(key=lambda e: order.index(e[0]))
+        else:
+            if isTrapezoid:
+                edges = {3, 4, 5} if self.trapezoid_side_supports else {4}
+            else:
+                edges = {1, 2, 3, 4, 5, 6}
+            entries = [(hs[2], default_d, False) for hs in self._HALF_SPOKES if hs[2] in edges]
+        supports = [by_edge[e][:3] + (d, turned) for e, d, turned in entries]
+        if self.support_edges.strip() or self.support_position:
+            self._checkSupports(r, isTrapezoid, supports)
+        return supports
+
+    def _trapezoidHasSideSupports(self):
+        """Whether the trapezoid has supports towards edges 3 or 5.
+
+        Either --trapezoid_side_supports, or --support_edges listing 3 or 5
+        (which overrides it).  The spoke floor's kites follow this.
+        """
+        if self.support_edges.strip():
+            return bool(re.search(r"(?:^|,)\s*[35]\s*(?:[@/,]|$)", self.support_edges))
+        return bool(self.trapezoid_side_supports)
+
+    def _supportPoints(self, support, n=20):
+        """Points along a support's slot, in the true-centre frame (y up)."""
+        _, _, edge, d, turned = support
+        sl = self.support_length
+        th = math.radians(EDGE_ANGLES[edge])
+        axis = (math.cos(th), math.sin(th))
+        if turned:
+            across = (-axis[1], axis[0])
+            centre = (axis[0] * d, axis[1] * d)
+            return [(centre[0] + across[0] * sl * (k / n - 0.5),
+                     centre[1] + across[1] * sl * (k / n - 0.5)) for k in range(n + 1)]
+        return [(axis[0] * (d - sl / 2 + sl * k / n), axis[1] * (d - sl / 2 + sl * k / n))
+                for k in range(n + 1)]
+
+    def _checkSupports(self, r, isTrapezoid, supports):
+        """Refuse supports that run into the centre, a wall, each other or a kite."""
+        t, sl = self.thickness, self.support_length
+        clear = self._SUPPORT_END_CLEAR
+        apothem = r * math.sqrt(3.0) / 2.0
+        edges = sorted(self._TRAPEZOID_EDGES) if isTrapezoid else range(1, 7)
+        points = [self._supportPoints(sp) for sp in supports]
+        for sp, pts in zip(supports, points):
+            name = f"the {sl:g} mm support towards edge {sp[2]} at {sp[3]:g}"
+            if not sp[4] and sp[3] - sl / 2.0 < t:
+                raise ValueError(
+                    f"--support_edges/--support_position: {name} would reach within "
+                    f"{t:g} mm of the centre, where supports meet; use at least "
+                    f"{t + sl / 2:.1f}.")
+            for edge in edges:
+                th = math.radians(EDGE_ANGLES[edge])
+                inside = min(apothem - (p[0] * math.cos(th) + p[1] * math.sin(th)) for p in pts)
+                if inside < t + clear:
+                    raise ValueError(
+                        f"--support_edges/--support_position: {name} would run into "
+                        f"the side wall at edge {edge}.")
+            if isTrapezoid and max(p[1] for p in pts) > -(t + clear):
+                raise ValueError(
+                    f"--support_edges: {name} would run into the trapezoid's long wall.")
+        for i in range(len(supports)):
+            for j in range(i + 1, len(supports)):
+                gap = min(math.dist(p, q) for p in points[i] for q in points[j])
+                if gap < t + clear and supports[i][3] - sl / 2 >= t:
+                    raise ValueError(
+                        f"--support_edges: the supports towards edges {supports[i][2]} "
+                        f"and {supports[j][2]} would run into each other.")
+        if self.bottom == "spoke":
+            kites = self._kitePolygons(r, isTrapezoid)
+            lift = t if isTrapezoid else 0.0      # kites sit t below the true centre
+            for sp, pts in zip(supports, points):
+                for kite in kites or []:
+                    if any(point_in_convex(kite, (x, y + lift)) for x, y in pts):
+                        raise ValueError(
+                            f"--support_edges: the {sl:g} mm support towards edge "
+                            f"{sp[2]} at {sp[3]:g} would stand over a kite cut-out in the "
+                            "spoke floor; move it onto a spoke or the rim.")
+
+    # Minimum solid material between a deck slot and a support slot.
+    _DECK_SLOT_CLEAR = 2.0
+
+    def _deckSlotPlan(self, r, isTrapezoid, notches):
+        """Solve and check --deck_slots.
+
+        @param r           - Inner hexagon circumradius (the deck's).
+        @param isTrapezoid - True for the half-hexagon deck.
+        @param notches     - Edge → ``[(position, width, depth)]`` wall notches
+                             (see _trackOpeningPlan), where the deck edge is plain.
+        @returns List of dicts: ``segments`` (the slot's trimmed centreline in
+                 the deck frame, hex centre, y up), ``width``, and ``bed``
+                 (True when a riser runs along exactly this slot, so the
+                 slot's cut-out is that riser's bed; see _slotBedKeys).
+        @throws ValueError - On a malformed entry, an edge the deck lacks, a
+                             slot reaching a deck edge with no notch under it,
+                             or one crossing a support slot.
+        """
+        apothem = r * math.sqrt(3.0) / 2.0
+        bed_keys = self._slotBedKeys()
+        plan = []
+        for slot in parse_deck_slots(self.deck_slots, self.under_track_width):
+            name = f"--deck_slots {slot.start}-{slot.end}"
+            bed = (slot.start, slot.start_offset, slot.end, slot.end_offset,
+                   slot.lo, slot.hi, slot.width) in bed_keys
+            if isTrapezoid and not {slot.start, slot.end} <= self._TRAPEZOID_EDGES:
+                raise ValueError(f"{name}: the trapezoid only has edges 3, 4 and 5.")
+            geometry = route_geometry(slot.start, slot.start_offset, slot.end,
+                                      slot.end_offset, apothem, self.track_lead_in)
+            total = sum(seg.length for seg in geometry.segments)
+            lo = 0.0 if slot.lo is None else slot.lo
+            hi = total if slot.hi is None else slot.hi
+            if not (0 <= lo < hi <= total + 1e-6):
+                raise ValueError(f"{name}: the stretch {lo:g}..{hi:g} is not within "
+                                 f"the route's {total:.1f} mm.")
+            # A slot reaching a deck edge runs OVERRUN past the wall's inner
+            # face (where routes end), and needs the wall below notched (deck
+            # edge plain) right there.  The deck reaches one thickness further,
+            # over the top of the wall, so a narrow strip of deck is left
+            # across the slot's mouth on purpose: it keeps an edge-to-edge
+            # slotted deck in one piece, and is cut away once it is in place.
+            # A slot whose cut-out is a riser bed stops exactly at the wall's
+            # inner face instead, so the bed fits between the walls (the
+            # strip left over the wall is then one full thickness).
+            overrun = 0.0 if bed else OVERRUN
+            ends = []
+            if lo <= 1e-6:
+                lo = -overrun
+                ends.append((slot.start, geometry.segments[0].p0))
+            if hi >= total - 1e-6:
+                hi = total + overrun
+                ends.append((slot.end, geometry.segments[-1].p1))
+            for edge, point in ends:
+                position = edge_position(edge, point, apothem)
+                fits = any(abs(position - pos) <= (w - slot.width) / 2 + 1e-6
+                           for pos, w, _ in notches.get(edge, []))
+                if not fits:
+                    raise ValueError(
+                        f"{name} reaches edge {edge} at {position:+.1f} mm, where the "
+                        f"wall has no notch at least {slot.width:g} mm wide; add "
+                        f"--track_openings for it, or stop the slot short of the edge.")
+            segments = trim_segments(geometry.segments, lo, hi)
+            self._checkDeckSlotClearsSupports(r, isTrapezoid, segments, slot.width, name)
+            plan.append({"segments": segments, "width": slot.width, "bed": bed})
+        return plan
+
+    def _slotBedKeys(self):
+        """Riser/deck-slot pairs where the slot's cut-out is the riser's bed.
+
+        A riser and a deck slot pair up when they run along exactly the same
+        route (edges and offsets), over the same stretch, at the same width.
+        The strip that falls out of the slot is then the bed: its support
+        slots are cut in the deck inside the slot outline, and no separate
+        bed part is drawn.
+
+        @returns Set of ``(start, start_offset, end, end_offset, from, to,
+                 width)`` keys found in both --risers and --deck_slots.
+        """
+        slots = {(sl.start, sl.start_offset, sl.end, sl.end_offset, sl.lo, sl.hi, sl.width)
+                 for sl in parse_deck_slots(self.deck_slots, self.under_track_width)}
+        risers = {(rs.start, rs.start_offset, rs.end, rs.end_offset, rs.lo, rs.hi,
+                   rs.width or self.track_width)
+                  for rs in parse_risers(self.risers)}
+        return slots & risers
+
+    def _checkDeckSlotClearsSupports(self, r, isTrapezoid, segments, width, name):
+        """Refuse a deck slot that crosses a support's finger slot.
+
+        The supports are walls under the deck along the spoke axes; the deck
+        carries their finger slots (see drawSupportHoles), which a deck slot
+        must not cut through.  A support standing there would also block the
+        track below.
+
+        @throws ValueError - If the slot comes within _DECK_SLOT_CLEAR mm of one.
+        """
+        if not self.supports:
+            return
+        sl = self.support_length
+        centre = centreline_points(segments)
+        reach = width / 2.0 + self.thickness / 2.0 + self._DECK_SLOT_CLEAR
+        for support in self._supportLayout(r, isTrapezoid):
+            edge, d = support[2], support[3]
+            for p in self._supportPoints(support):
+                if min(math.dist(p, q) for q in centre) < reach:
+                    raise ValueError(
+                        f"{name} crosses the support towards edge {edge} at "
+                        f"{d:g} mm from the centre.  A support there would block "
+                        "the track; leave it out or move it with --support_edges "
+                        "(or --support_position), or use --supports 0.")
+
+    def drawDeckSlots(self, plan, isTrapezoid):
+        """Cut the deck slots (see _deckSlotPlan), from the deck's centre frame.
+
+        @param plan        - Entries from _deckSlotPlan.  A bed slot also
+                             carries its riser's ``stations``: their support
+                             slots are cut inside the slot outline first, so
+                             the strip that falls out is the riser's bed.
+        @param isTrapezoid - True for the half-hexagon deck, whose callback
+                             frame sits one thickness below the true centre
+                             (see drawTrackLines).
+        """
+        if not plan:
+            return
+        with self.saved_context():
+            if isTrapezoid:
+                self.moveTo(0, self.thickness)
+            for slot in plan:
+                segments, width = slot["segments"], slot["width"]
+                if slot.get("stations"):
+                    with self.saved_context():
+                        self._riserFingerHoles(slot["stations"], width)
+                start, heading, steps = slot_outline(segments, width)
+                self._drawDeckSlotOutline(start, heading, steps)
+
+    @restore
+    @holeCol
+    def _drawDeckSlotOutline(self, start, heading, steps):
+        """Trace one slot outline with the turtle (burn-compensated, like
+        rectangularHole: clockwise, starting one burn width inside the hole)."""
+        forward = math.radians(heading - 90.0)
+        self.moveTo(start[0] + self.burn * math.cos(forward),
+                    start[1] + self.burn * math.sin(forward), heading)
+        for step in steps:
+            if step[0] == "edge":
+                self.edge(step[1])
+            else:
+                self.corner(step[1], step[2])
+
+    # Minimum solid material between a riser support and anything else.
+    _RISER_CLEAR = 2.0
+
+    def _riserPlan(self, r, isTrapezoid, l, notches=None):
+        """Solve and check --risers.
+
+        @param r           - Inner hexagon circumradius (the deck's).
+        @param isTrapezoid - True for the half-hexagon.
+        @param l           - Wall body height (floor panel top to deck underside).
+        @param notches     - Edge → ``[(position, width, depth)]`` wall notches;
+                             a bed reaching an edge must fit its notch.
+        @returns List of dicts: ``segments`` (bed centreline, deck frame),
+                 ``width``, ``stations`` (``(point, direction, height)`` per
+                 support, height = track height there) and ``name``.
+        @throws ValueError - On a malformed entry, a spoke bottom, a height
+                             out of range, or a support that would stand in
+                             another riser's track, on a support wall's slot,
+                             or against a side wall.
+        """
+        specs = parse_risers(self.risers)
+        if not specs:
+            return []
+        t = self.thickness
+        apothem = r * math.sqrt(3.0) / 2.0
+        plan = []
+        for spec in specs:
+            name = f"--risers {spec.start}-{spec.end}"
+            if isTrapezoid and not {spec.start, spec.end} <= self._TRAPEZOID_EDGES:
+                raise ValueError(f"{name}: the trapezoid only has edges 3, 4 and 5.")
+            for height in (spec.h0, spec.h1):
+                if not 3 * t <= height <= l + t:
+                    raise ValueError(
+                        f"{name}: a track height of {height:g} mm is out of range; "
+                        f"it must be from {3 * t:g} (room for a support) up to the "
+                        f"deck top, {l + t:g} mm above the floor panel.")
+            geometry = route_geometry(spec.start, spec.start_offset, spec.end,
+                                      spec.end_offset, apothem, self.track_lead_in)
+            total = sum(seg.length for seg in geometry.segments)
+            lo = 0.0 if spec.lo is None else spec.lo
+            hi = total if spec.hi is None else spec.hi
+            if not (0 <= lo < hi <= total + 1e-6):
+                raise ValueError(f"{name}: the stretch {lo:g}..{hi:g} is not within "
+                                 f"the route's {total:.1f} mm.")
+            segments = trim_segments(geometry.segments, lo, hi)
+            length = hi - lo
+            width = spec.width or self.track_width
+            self._checkRiserBedWidth(spec, geometry, lo, hi, total, width, name,
+                                     apothem, notches or {})
+            stations = []
+            for s in support_stations(length, self.riser_spacing):
+                point, direction = point_at(segments, s)
+                height = spec.h0 + (spec.h1 - spec.h0) * s / length
+                stations.append((point, direction, height))
+            key = (spec.start, spec.start_offset, spec.end, spec.end_offset,
+                   spec.lo, spec.hi, width)
+            plan.append({"segments": segments, "width": width,
+                         "stations": stations, "name": name,
+                         "route": (spec.start, spec.start_offset, spec.end, spec.end_offset),
+                         "bed_in_slot": key in self._slotBedKeys()})
+        self._checkRiserFootprints(r, isTrapezoid, plan)
+        return plan
+
+    def _checkRiserBedWidth(self, spec, geometry, lo, hi, total, width, name,
+                            apothem, notches):
+        """Refuse a bed wider than the notch or deck slot it runs through.
+
+        A bed reaching a deck edge passes through the wall notch there, and
+        a bed on the same route as a deck slot lies in that slot.
+        """
+        ends = []
+        if lo <= 1e-6:
+            ends.append((spec.start, geometry.segments[0].p0))
+        if hi >= total - 1e-6:
+            ends.append((spec.end, geometry.segments[-1].p1))
+        for edge, point in ends:
+            position = edge_position(edge, point, apothem)
+            fits = [w for pos, w, _ in notches.get(edge, [])
+                    if abs(position - pos) <= (w - width) / 2 + 1e-6]
+            if notches.get(edge) and not fits:
+                raise ValueError(
+                    f"{name}: the {width:g} mm bed is wider than the wall notch it "
+                    f"passes through at edge {edge}; widen the notch (--track_openings) "
+                    "or narrow the bed.")
+        for slot in parse_deck_slots(self.deck_slots, self.under_track_width):
+            same = (slot.start, slot.start_offset, slot.end, slot.end_offset) == (
+                spec.start, spec.start_offset, spec.end, spec.end_offset)
+            if same and slot.width < width:
+                raise ValueError(
+                    f"{name}: the {width:g} mm bed is wider than its {slot.width:g} mm "
+                    "deck slot; widen the slot (--deck_slots) or narrow the bed.")
+
+    def _checkRiserFootprints(self, r, isTrapezoid, plan):
+        """Refuse riser supports that stand where something else is.
+
+        A support's footprint is a line across its track, the bed's width
+        long.  It must keep clear of every other riser's track (which would
+        run into it), of the support walls' floor slots, and of the side walls.
+        """
+        clear = self._RISER_CLEAR
+        t = self.thickness
+        apothem = r * math.sqrt(3.0) / 2.0
+        paths = [(i, centreline_points(rp["segments"]), rp["width"]) for i, rp in enumerate(plan)]
+        walls = []
+        if self.supports:
+            walls = [self._supportPoints(sp) for sp in self._supportLayout(r, isTrapezoid)]
+        edges = sorted(self._TRAPEZOID_EDGES) if isTrapezoid else range(1, 7)
+        for i, rp in enumerate(plan):
+            half = rp["width"] / 2.0
+            for point, (dx, dy), _ in rp["stations"]:
+                ends = [(point[0] + half * dy, point[1] - half * dx),
+                        (point[0] - half * dy, point[1] + half * dx)]
+                foot = [(ends[0][0] + (ends[1][0] - ends[0][0]) * k / 10,
+                         ends[0][1] + (ends[1][1] - ends[0][1]) * k / 10) for k in range(11)]
+                for j, other, w in paths:
+                    # Another stretch of the same route carries the same track
+                    # (e.g. a riser split where it goes under the deck), so its
+                    # supports may stand right up to it.
+                    if j == i or plan[j]["route"] == rp["route"]:
+                        continue
+                    if min(math.dist(p, q) for p in foot for q in other) < w / 2 + t / 2 + clear:
+                        raise ValueError(
+                            f"{rp['name']}: a support at ({point[0]:.0f}, {point[1]:.0f}) "
+                            f"would stand in the track of {plan[j]['name']}.")
+                for wall in walls:
+                    if min(math.dist(p, q) for p in foot for q in wall) < t + clear:
+                        raise ValueError(
+                            f"{rp['name']}: a support at ({point[0]:.0f}, {point[1]:.0f}) "
+                            "lands on a support wall's slot; move the supports with "
+                            "--support_position or --support_edges.")
+                for edge in edges:
+                    th = math.radians(EDGE_ANGLES[edge])
+                    inside = min(apothem - (p[0] * math.cos(th) + p[1] * math.sin(th))
+                                 for p in ends)
+                    if inside < t + clear:
+                        raise ValueError(
+                            f"{rp['name']}: a support at ({point[0]:.0f}, {point[1]:.0f}) "
+                            f"runs into the wall at edge {edge}; shorten the stretch.")
+
+    def _riserFingerHoles(self, stations, width):
+        """Finger holes across the track at each support station (current frame)."""
+        half = width / 2.0
+        for point, (dx, dy), _ in stations:
+            # Start on the right of the track and run across it to the left.
+            start = (point[0] + half * dy, point[1] - half * dx)
+            angle = math.degrees(math.atan2(dx, -dy))
+            self.fingerHolesAt(start[0], start[1], width, angle=angle)
+
+    def drawRiserFloorHoles(self, plan, isTrapezoid):
+        """Floor-panel slots for every riser support (floor centre callback).
+
+        Drawn in the deck's orientation (seen from above), so fit the floor
+        panel with this face up; the slots then sit under the bed.
+        """
+        with self.saved_context():
+            if isTrapezoid:
+                self.moveTo(0, self.thickness)
+            for riser in plan:
+                self._riserFingerHoles(riser["stations"], riser["width"])
+
+    def drawRiser(self, riser, move="right"):
+        """Cut one riser: the bed strip (with its support slots), then each support.
+
+        The bed is drawn in the deck frame, shifted so its bounding box sits
+        at the part's origin.  Its outline starts one burn width outside the
+        start cap, so boxes' corner compensation keeps it true to size.
+        Each support is a rectangle the bed's width wide and as tall as the
+        bed's underside at that point, finger-jointed top and bottom, with
+        its track height etched on it.
+        """
+        segments, width = riser["segments"], riser["width"]
+        if not riser.get("bed_in_slot"):
+            self._drawRiserBed(riser, segments, width, move)
+        t = self.thickness
+        for _, _, height in riser["stations"]:
+            body = height - t
+            label = f"{height:.1f}"
+            self.rectangularWall(
+                width, body, "fefe", move="right", label=f"riser {label}",
+                callback=[lambda b=body, txt=label: self.text(
+                    txt, width / 2, b / 2, align="middle center",
+                    fontsize=min(4.0, b / 3), color=Color.ETCHING)])
+
+    def _drawRiserBed(self, riser, segments, width, move):
+        """The separate bed strip, for a riser whose bed is not a slot's cut-out."""
+        points = strip_points(segments, width)
+        minx = min(p[0] for p in points)
+        miny = min(p[1] for p in points)
+        tw = max(p[0] for p in points) - minx
+        th = max(p[1] for p in points) - miny
+        if not self.move(tw, th, move, True):
+            self.moveTo(-minx, -miny)
+            with self.saved_context():
+                self._riserFingerHoles(riser["stations"], width)
+            start, heading, steps = strip_outline(segments, width)
+            back = math.radians(heading + 90.0)     # −forward: outwards from the cap
+            self.moveTo(start[0] + self.burn * math.cos(back),
+                        start[1] + self.burn * math.sin(back), heading)
+            for step in steps:
+                if step[0] == "edge":
+                    self.edge(step[1])
+                else:
+                    self.corner(step[1], step[2])
+            self.move(tw, th, move, label=f"riser bed {riser['name'][9:]}")
+
+    def drawRouteTrackGuides(self, s, l, r, isTrapezoid):
+        """One track-guide plate per edge that --track_routes crosses.
+
+        With --track_routes each edge can carry its own set of tracks at its
+        own positions, so one plate no longer fits every wall.  Each plate is
+        labelled with its edge.  Its windows sit where the routes cross that
+        edge, measured anticlockwise (seen from above) from the edge midpoint.
+        Routes that leave from the same point, like a turnout's two routes,
+        share a window.  Facing the wall from outside, anticlockwise is to the
+        right, so when the windows are not symmetric the plate is etched
+        "edge N side ->", naming the neighbouring edge on that side ("long
+        edge side ->" for the trapezoid's edge 3).
+
+        @param s           - Wall reference length (``side_orig``).
+        @param l           - Wall body height.
+        @param r           - Inner hexagon circumradius (as for drawTrackLines).
+        @param isTrapezoid - True for the half-hexagon deck.
+        @throws ValueError - From the route geometry or a window that does not fit.
+        """
+        apothem = r * math.sqrt(3.0) / 2.0
+        by_edge = {}
+        for geometry in self._trackRouteGeometries(r, isTrapezoid):
+            ends = ((geometry.start, geometry.segments[0].p0),
+                    (geometry.end, geometry.segments[-1].p1))
+            for edge, point in ends:
+                # Rounded so that shared starts collapse to one window and a
+                # symmetric pair compares as symmetric.
+                position = round(edge_position(edge, point, apothem), 6) + 0.0
+                by_edge.setdefault(edge, set()).add(position)
+        for edge in sorted(by_edge):
+            neighbour = 6 if edge == 1 else edge - 1   # anticlockwise neighbour
+            # On the trapezoid, edge 3's anticlockwise neighbour (edge 2 on the
+            # full hexagon) is cut away: the long join edge is there instead.
+            side = ("long edge" if isTrapezoid and neighbour not in self._TRAPEZOID_EDGES
+                    else f"edge {neighbour}")
+            self.drawTrackGuide(s, l, move="right", offsets=sorted(by_edge[edge]),
+                                label=f"track guide edge {edge}",
+                                arrow=f"{side} side ->")
+
+    # Polyline steps per arc: plenty for a smooth engraved curve.
+    _ARC_STEPS = 64
+
+    def _drawTrackRoute(self, geometry):
+        """Etch one route: centreline and/or footprint, ticks and label.
+
+        @param geometry - A solved :class:`RouteGeometry`.
+        """
+        half_width = self.track_width / 2.0
+        visible = self.draw_center or self.draw_track
+
+        def stroke(segments):
+            points = segments_polyline(segments, self._ARC_STEPS)
+            self.ctx.move_to(*points[0])
+            for point in points[1:]:
+                self.ctx.line_to(*point)
+            self.ctx.stroke()
+
+        if self.draw_center:
+            stroke(geometry.segments)
+        if self.draw_track:
+            for d in (-half_width, half_width):
+                shifted = offset_segments(geometry.segments, d)
+                if shifted is not None:
+                    stroke(shifted)
+        if self.track_crossing and visible:
+            self._drawTransitionTicks(geometry.segments, half_width)
+        if self.track_label and visible and geometry.radius is not None:
+            self._drawRadiusLabel(geometry)
+
+    def _drawTransitionTicks(self, segments, half_width):
+        """Tick across the track wherever a straight meets an arc.
+
+        The tick runs along the arc's radius there, so it crosses the track
+        square.  It spans the footprint (when drawn) plus 6 mm each side.
+
+        @param segments   - The route's pieces.
+        @param half_width - Half of --track_width.
+        """
+        cross_half = (half_width if self.draw_track else 0.0) + 6.0
+        for i, seg in enumerate(segments):
+            if not isinstance(seg, Arc):
+                continue
+            before = segments[i - 1] if i > 0 else None
+            after = segments[i + 1] if i + 1 < len(segments) else None
+            for neighbour, point in ((before, seg.p0), (after, seg.p1)):
+                if not (isinstance(neighbour, Line) and neighbour.length > 1e-9):
+                    continue
+                ux = (point[0] - seg.centre[0]) / seg.radius
+                uy = (point[1] - seg.centre[1]) / seg.radius
+                r_lo = max(0.0, seg.radius - cross_half)
+                r_hi = seg.radius + cross_half
+                self.ctx.move_to(seg.centre[0] + r_lo * ux, seg.centre[1] + r_lo * uy)
+                self.ctx.line_to(seg.centre[0] + r_hi * ux, seg.centre[1] + r_hi * uy)
+                self.ctx.stroke()
+
+    def _drawRadiusLabel(self, geometry):
+        """Etch a curve's radius in mm (outside) and inches (inside).
+
+        The label sits at the middle of the arc (the join of an S-curve's two
+        arcs), turned to follow the track and kept upright.
+
+        @param geometry - A solved :class:`RouteGeometry` with a radius.
+        """
+        fontsize = self.track_width * 0.35
+        if fontsize <= 0:
+            return
+        # At 0.35·width, a line centred in each half of the footprint
+        # [0, width/2] stays clear of the centreline and the rail edge.
+        band = self.track_width / 4.0
+        arcs = [seg for seg in geometry.segments if isinstance(seg, Arc)]
+        arc = arcs[0]
+        angle = arc.start_angle + (arc.sweep / 2.0 if len(arcs) == 1 else arc.sweep)
+        apex = arc.point(angle)
+        ux, uy = math.cos(angle), math.sin(angle)   # outward, from the arc centre
+        # Follow the track (tangent = radius + 90°), normalised to (−90°, 90°].
+        text_angle = ((math.degrees(angle) + 180.0) % 180.0) - 90.0
+        rho = geometry.radius
+        # stroke=True paints the glyph outlines in the ETCHING stroke colour
+        # with no fill, so lasers that vector-etch by stroke colour (ignoring
+        # fill) still trace these labels.
+        for text, sign in ((f"{rho:.0f} mm", 1.0), (f'{rho / 25.4:.1f}"', -1.0)):
+            with self.saved_context():
+                self.text(text, x=apex[0] + sign * band * ux, y=apex[1] + sign * band * uy,
+                          angle=text_angle, align="middle center",
+                          fontsize=fontsize, color=Color.ETCHING, stroke=True)
 
     def drawTrapezoidWall(self, r, edges_char='e', hole=None, callback=None, move=None):
         """Draw a trapezoidal panel — the bottom (or top) half of a regular hexagon.
@@ -1412,6 +2248,29 @@ class HexmoHexagon(HexmoBigHoleMixin, HexmoTrackGuideMixin, HexmoTrackTemplateMi
         # Dihedral correction angle between adjacent side panels (taper angle = 0).
         phi = 180 - 2 * math.degrees(math.asin(math.cos(math.pi / n)))
 
+        # Track openings (--track_openings), parsed and checked before anything
+        # is drawn.  Notched ones change both a wall's top edge and the deck
+        # edge above it: edge → [(position, width, depth below the deck)].
+        opening_plan = self._trackOpeningPlan(isTrapezoid, l)
+        notches = {}
+        for edge, entries in opening_plan.items():
+            cut = [(o.position, o.width, l - o.height) for o, notch in entries if notch]
+            if cut:
+                notches[edge] = cut
+        # Deck slots (--deck_slots), also checked before anything is drawn.
+        slot_plan = self._deckSlotPlan(r, isTrapezoid, notches)
+        # Riser boards (--risers): bed strips and supports, checked up front.
+        riser_plan = self._riserPlan(r, isTrapezoid, l, notches)
+        # A slot whose cut-out is a riser's bed cuts that riser's support
+        # slots inside it (see _slotBedKeys); pair them up in order.
+        bed_risers = [rp for rp in riser_plan if rp["bed_in_slot"]]
+        for slot in slot_plan:
+            if slot["bed"]:
+                match = next(rp for rp in bed_risers
+                             if rp["width"] == slot["width"]
+                             and math.dist(rp["segments"][0].p0, slot["segments"][0].p0) < 1e-6)
+                slot["stations"] = match["stations"]
+
         # Register custom finger-joint edge objects.  Each call mutates self.edges
         # as a side effect; the returned settings object is not used afterwards,
         # so it is assigned to _ to make the write-only pattern explicit.
@@ -1427,6 +2286,20 @@ class HexmoHexagon(HexmoBigHoleMixin, HexmoTrackGuideMixin, HexmoTrackTemplateMi
         _ = copy.deepcopy(self.edges["f"].settings)
         _.setValues(self.thickness, angle=90)
         _.edgeObjects(self, chars="zZH")
+
+        def deck_edges(joint_type, is_top):
+            """The face's edge types: the deck's are split over any notch."""
+            if not is_top:
+                return joint_type[1]
+            return self._deckEdges(joint_type[1], isTrapezoid, side_orig, side, notches)
+
+        def spoke_floor(r, joint_type, trapezoid):
+            """A spoke face's centre callback: its kites, split by ribs under
+            any riser supports, and the risers' floor slots."""
+            self.drawKites(r=r, joint_type=joint_type, isTrapezoid=trapezoid,
+                           ribs=self._kiteSpines(riser_plan, trapezoid))
+            if riser_plan:
+                self.drawRiserFloorHoles(riser_plan, trapezoid)
 
         def drawTop(r, top_type, joint_type, is_top=False):
             """Render one face (top or bottom) as the appropriate panel style.
@@ -1463,14 +2336,22 @@ class HexmoHexagon(HexmoBigHoleMixin, HexmoTrackGuideMixin, HexmoTrackTemplateMi
                 support_cb = [None, lambda: self.drawSupportHoles(r=r, isTrapezoid=isTrapezoid)]
             else:
                 support_cb = None
+            # Riser supports stand in slots in the (closed) floor panel; they
+            # use the floor's centre slot (callback[0]).
+            if not is_top and riser_plan:
+                floor_cb = lambda: self.drawRiserFloorHoles(riser_plan, isTrapezoid)
+                support_cb = [floor_cb] + (support_cb[1:] if support_cb else [])
 
             # Track-curve guide: etched onto the top deck.  In trapezoid mode it
             # draws the single lower curve; on the full hexagon it draws the
             # --track_left/middle/right/top routes selected.  It occupies
             # callback[0]; if support slots are present we splice it into the
             # index-0 slot of the existing support callback list.
-            if is_top and self.track_lines:
-                track_cb = lambda: self.drawTrackLines(r=r, isTrapezoid=isTrapezoid)
+            if is_top and (self.track_lines or slot_plan):
+                def track_cb():
+                    if self.track_lines:
+                        self.drawTrackLines(r=r, isTrapezoid=isTrapezoid)
+                    self.drawDeckSlots(slot_plan, isTrapezoid)
                 if support_cb is not None:
                     support_cb = [track_cb] + support_cb[1:]
                 else:
@@ -1480,26 +2361,26 @@ class HexmoHexagon(HexmoBigHoleMixin, HexmoTrackGuideMixin, HexmoTrackTemplateMi
                 if top_type == "spoke":
                     # Build spoke callbacks; only append drawSupportHoles when
                     # supports are enabled so the slot geometry matches the walls.
-                    spoke_cbs = [lambda: self.drawKites(r=r, joint_type=joint_type, isTrapezoid=True)]
+                    spoke_cbs = [lambda: spoke_floor(r, joint_type, True)]
                     if self.supports:
                         spoke_cbs.append(lambda: self.drawSupportHoles(r=r, isTrapezoid=True))
                     self.drawTrapezoidWall(
                         r=r, edges_char=joint_type[1], move="right",
                         callback=spoke_cbs)
                 else:  # "closed"
-                    self.drawTrapezoidWall(r=r, edges_char=joint_type[1], move="right",
-                                           callback=support_cb)
+                    self.drawTrapezoidWall(r=r, edges_char=deck_edges(joint_type, is_top),
+                                           move="right", callback=support_cb)
             else:
                 if top_type == "spoke":
-                    spoke_cbs = [lambda: self.drawKites(r=r, joint_type=joint_type, isTrapezoid=False)]
+                    spoke_cbs = [lambda: spoke_floor(r, joint_type, False)]
                     if self.supports:
                         spoke_cbs.append(lambda: self.drawSupportHoles(r=r))
                     self.regularPolygonWall(
                         corners=n, r=r, edges=joint_type[1], move="right",
                         callback=spoke_cbs)
                 else:  # "closed"
-                    self.regularPolygonWall(corners=n, r=r, edges=joint_type[1], move="right",
-                                            callback=support_cb)
+                    self.regularPolygonWall(corners=n, r=r, edges=deck_edges(joint_type, is_top),
+                                            move="right", callback=support_cb)
 
         with self.saved_context():
             # Draw bottom panel first, then top (order affects SVG layout).
@@ -1535,9 +2416,51 @@ class HexmoHexagon(HexmoBigHoleMixin, HexmoTrackGuideMixin, HexmoTrackTemplateMi
         # callback origin sits t to the left of where it was before trimming,
         # so shifting t rightward (−y in local coords) restores centre alignment
         # when new and old panels are stacked and centred.
-        def draw_aligned_holes():
+        def draw_aligned_holes(under_track=False, openings=()):
             self.moveTo(0, -self.thickness)
-            self.drawAlignmentHoles(side_orig, l, "A")
+            if under_track or openings:
+                self.drawAlignmentHoles(side_orig, l, "A", under_track=under_track,
+                                        openings=openings)
+            else:
+                # The plain call, unchanged, so wrappers of drawAlignmentHoles
+                # with the original signature (e.g. test spies) keep working.
+                self.drawAlignmentHoles(side_orig, l, "A")
+
+        # Standard walls in drawing order, as (edge, under_track): the walls
+        # with an under-deck or track opening first (labelled with their edge,
+        # since they are no longer interchangeable), then plain ones.
+        under_edges = self._underTrackEdges(isTrapezoid)
+        feature_edges = sorted(set(under_edges) | set(opening_plan))
+        n_standard = 3 if isTrapezoid else n
+        standard_walls = ([(e, e in under_edges) for e in feature_edges]
+                          + [(None, False)] * (n_standard - len(feature_edges)))
+
+        def wall_openings(edge):
+            """This edge's track openings in the wall-hole frame.
+
+            Positions are along the wall's top edge in its drawing direction;
+            fitted with that direction anticlockwise, they match the deck.
+            """
+            rects = []
+            for o, notch in opening_plan.get(edge, []):
+                centre = side_orig / 2 + o.position
+                top = l if notch else l - self.thickness
+                rects.append(((o.height, top, centre - o.width / 2, centre + o.width / 2),
+                              not notch))
+            return rects
+
+        def draw_standard_wall(edge, under_track):
+            wall_edges = e0
+            if edge in notches:
+                # Segment 6 of borders0 is the top (deck) edge; split it round
+                # the notches, keeping every other segment's edge type.
+                wall_edges = [e0[i % 4] for i in range(len(borders0) // 2)]
+                pieces, _ = wall_and_deck_pieces(side, side_orig, notches[edge])
+                wall_edges[6] = SplitJointEdge(self, self.edges[top_edge], pieces)
+            openings = wall_openings(edge)
+            self.polygonWall(borders0, edge=wall_edges, correct_corners=False, move="right",
+                             callback=[None, lambda: draw_aligned_holes(under_track, openings)],
+                             label=f"edge {edge}" if edge is not None else "")
 
         # Alignment-hole callback for the trapezoid long back wall.
         # The hole pattern is always laid over the full 2*side_orig reference and
@@ -1593,21 +2516,26 @@ class HexmoHexagon(HexmoBigHoleMixin, HexmoTrackGuideMixin, HexmoTrackTemplateMi
                              callback=[None, draw_aligned_holes_long])
 
             # Three standard-width walls (right slant, front short, left slant).
-            for _ in range(3):
-                self.polygonWall(borders0, edge=e0, correct_corners=False, move="right",
-                                 callback=[None, draw_aligned_holes])
+            for edge, under_track in standard_walls:
+                draw_standard_wall(edge, under_track)
 
         else:
             # Even number of sides (n=6): all panels use the stepped-tab profile.
-            for _ in range(n):
-                self.polygonWall(borders0, edge=e0, correct_corners=False, move="right",
-                                 callback=[None, draw_aligned_holes])
+            for edge, under_track in standard_walls:
+                draw_standard_wall(edge, under_track)
+
+        # Riser boards: each bed strip followed by its supports.
+        for riser in riser_plan:
+            self.drawRiser(riser)
 
         # Optional track-laying jig.  It fits any standard wall, so it takes
         # the standard-wall hole frame (side_orig, l), never the trapezoid
         # long wall's.
         if self.track_guide:
-            self.drawTrackGuide(side_orig, l, move="right")
+            if parse_track_routes(self.track_routes):
+                self.drawRouteTrackGuides(side_orig, l, r, isTrapezoid)
+            else:
+                self.drawTrackGuide(side_orig, l, move="right")
 
         # Optional Tracksetta-style templates that follow the etched track.
         if self.track_template:

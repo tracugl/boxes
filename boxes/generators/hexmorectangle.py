@@ -31,6 +31,7 @@ from boxes.Color import Color
 from boxes.generators._hexmo_big_holes import HexmoBigHoleMixin
 from boxes.generators._hexmo_track_guide import HexmoTrackGuideMixin
 from boxes.generators._hexmo_track_template import HexmoTrackTemplateMixin
+from boxes.generators._hexmo_under_track import HexmoUnderTrackMixin
 
 
 class _HorizDivSpokeEdge(edges.BaseEdge):
@@ -195,7 +196,8 @@ class _ShortWallTopEdge(edges.BaseEdge):
         e_edge(self._side_gap)
 
 
-class HexmoRectangle(HexmoBigHoleMixin, HexmoTrackGuideMixin, HexmoTrackTemplateMixin, Boxes):
+class HexmoRectangle(HexmoBigHoleMixin, HexmoTrackGuideMixin, HexmoTrackTemplateMixin,
+                     HexmoUnderTrackMixin, Boxes):
     """Rectangular tray with a 3×N internal grid, compatible with HexmoHexagon stacking.
 
     The number of column compartments N is controlled by ``--num_columns`` (default 0 = auto).
@@ -418,6 +420,14 @@ class HexmoRectangle(HexmoBigHoleMixin, HexmoTrackGuideMixin, HexmoTrackTemplate
                  "clamped by rectangularHole, so out-of-range numbers are safe.")
         # --big_hole_width / --big_hole_height, shared with HexmoHexagon.
         self._addBigHoleSizeArgs()
+        self.argparser.add_argument(
+            "--under_track", action="store", type=boolarg, default=False,
+            help="Under-deck track opening: cut it through both end walls and "
+                 "every short divider, in place of their centre big hole, so a "
+                 "lower track can run under the deck from end to end.  It "
+                 "matches HexmoHexagon's --under_track_edges opening.")
+        # --under_track_height / --under_track_width, shared with HexmoHexagon.
+        self._addUnderTrackArgs()
 
     def _hexWallLength(self):
         """Hole-pattern length of the matching HexmoHexagon side wall.
@@ -1222,6 +1232,31 @@ class HexmoRectangle(HexmoBigHoleMixin, HexmoTrackGuideMixin, HexmoTrackTemplate
         end_big_xs = [x - dx for x in self._alignmentBigXs(s_hex)
                       if all(abs(x - dx - lane_pos(i)) >= big_keepout
                              for i in range(n_div_v))]
+
+        # Under-deck track opening (see _hexmo_under_track): on the end walls
+        # and short dividers it replaces the centre big hole, at the wall
+        # centre ``under_x`` in the same frame as end_big_xs.  Their y runs
+        # down from the deck underside (the base plate is the deck), so the
+        # opening's span above the floor maps to ``l_eff − height``.
+        under_x = s_hex / 2 - dx
+        under_y = None
+        if self.under_track:
+            # Validate everything before any panel is drawn.
+            self._checkUnderTrackClearsCorners(s_hex)
+            l_eff = self._hexWallHeight()
+            bottom, top = self._underTrackSpan(l_eff)
+            under_y = (l_eff - top, l_eff - bottom)
+            half = self.under_track_width / 2
+            for i in range(n_div_v):
+                if abs(under_x - lane_pos(i)) < half + t / 2 + self._MIN_CLEAR:
+                    raise ValueError(
+                        "--under_track: a long support (--num_rows "
+                        f"{n_rows}) crosses the end walls within the "
+                        f"{self.under_track_width:g} mm opening; use an odd "
+                        "--num_rows or a narrower --under_track_width.")
+            big_half = self._bigHoleHalfExtent(self._bigHoleRadius())[0]
+            end_big_xs = [x for x in end_big_xs
+                          if abs(x - under_x) >= half + big_half + self._MIN_CLEAR]
         # div_pos: H-axis position of horizontal divider i (i = 0..3).
         # Used in long_wall_cb, spoke_cb, and base_cb.
         div_pos = lambda i: (i + 1) * row_h + (2 * i + 1) * t / 2
@@ -1277,6 +1312,8 @@ class HexmoRectangle(HexmoBigHoleMixin, HexmoTrackGuideMixin, HexmoTrackTemplate
             # keeps its default registration x_floor.
             self.drawAlignmentHolesRect(s_hex, gap_features=False,
                                         big_xs=[x + dx for x in end_big_xs])
+            if under_y is not None:
+                self._drawUnderTrackOpening(under_x + dx, *under_y, along_x=True)
 
         # Long outer walls (H × h): four horizontal dividers pass through.
         # Divider i is centred at (i+1)·row_h + (2i+1)·t/2 along H (i = 0..3).
@@ -1417,8 +1454,15 @@ class HexmoRectangle(HexmoBigHoleMixin, HexmoTrackGuideMixin, HexmoTrackTemplate
                 bigs = [x for x in end_big_xs if x_lo <= x <= x_hi]
                 for x in bigs:
                     self._drawBigHole(x, y_big, r4)
-                los = [x_lo] + [x + r4 + mc for x in bigs]
-                his = [x - r4 - mc for x in bigs] + [x_hi]
+                # Spans the gap filling must stay clear of: each big hole and,
+                # in its lane, the under-deck track opening.
+                spans = [(x - r4 - mc, x + r4 + mc) for x in bigs]
+                if under_y is not None and x_lo <= under_x <= x_hi:
+                    self._drawUnderTrackOpening(under_x, *under_y, along_x=True)
+                    half = self.under_track_width / 2
+                    spans = sorted(spans + [(under_x - half - mc, under_x + half + mc)])
+                los = [x_lo] + [hi for _, hi in spans]
+                his = [lo for lo, _ in spans] + [x_hi]
                 for g_lo, g_hi in zip(los, his):
                     self._drawSupportGapFeatures(g_lo, g_hi, pilots=False)
 
