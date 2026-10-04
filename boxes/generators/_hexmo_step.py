@@ -946,6 +946,35 @@ def exact_rect_parts(box, clearance="under", frames=None):
     return parts + _tracks(bd, box, rect_pieces(box), clearance)
 
 
+# Where the line drawing is seen from (front right, above) and what it looks at.
+_VIEW_FROM = (900.0, -1200.0, 900.0)
+_VIEW_LINE = 0.15
+
+
+def line_drawing(parts, out, deck=False):
+    """Draw the assembled parts in 3D as an SVG line drawing (hidden lines removed).
+
+    Seen from the front right, above, at 1:1 in mm.  Clearance boxes are
+    left out.
+
+    @param parts - :class:`Part3D` list (one module, or a whole ring).
+    @param out   - File path or binary file object to write the SVG to.
+    @param deck  - Draw the decks too; off shows inside the modules.
+    """
+    bd = _bd()
+    shown = [p.solid for p in parts if p.kind != "clearance"
+             and (deck or not (p.name == "deck" or p.name.endswith(" deck")))]
+    compound = bd.Compound(shown)
+    centre = compound.bounding_box().center()
+    eye = (centre.X + _VIEW_FROM[0], centre.Y + _VIEW_FROM[1], centre.Z + _VIEW_FROM[2])
+    visible, _ = compound.project_to_viewport(eye, viewport_up=(0, 0, 1),
+                                              look_at=(centre.X, centre.Y, centre.Z))
+    svg = bd.ExportSVG(scale=1.0, margin=10)
+    svg.add_layer("visible", line_weight=_VIEW_LINE)
+    svg.add_shape(visible, layer="visible")
+    svg.write(out)
+
+
 def assembly(parts, label="hexmo module"):
     """One build123d Compound of the parts, each named and coloured."""
     bd = _bd()
@@ -985,7 +1014,9 @@ def main(argv=None):
 
     * ``OUT.step [--clearance=MODE] [--detail=exact|simple] [generator args…]``
       — one HexmoHexagon;
-    * ``OUT.step --ring=N [--clearance=MODE] [--detail=…]`` — the whole helix ring.
+    * ``OUT.step --ring=N [--clearance=MODE] [--detail=…]`` — the whole helix ring;
+    * ``OUT.svg …`` — the same, drawn as a 3D line drawing; ``--deck`` adds
+      the decks.
 
     ``--clearance`` (``under``, ``all`` or ``none``), ``--detail`` (``exact``,
     the default, or ``simple``) and ``--ring`` are the exporter's own; every
@@ -994,14 +1025,16 @@ def main(argv=None):
     argv = sys.argv[1:] if argv is None else argv
     if not argv or argv[0].startswith("-"):
         print(__doc__.split("\n\n")[0])
-        print("usage: python -m boxes.generators._hexmo_step OUT.step "
+        print("usage: python -m boxes.generators._hexmo_step OUT.step|OUT.svg "
               "[--ring=N] [--clearance=under|all|none] [--detail=exact|simple] "
-              "[--option=value …]")
+              "[--deck] [--option=value …]")
         return 2
-    clearance, ring, detail = "under", None, "exact"
+    clearance, ring, detail, deck = "under", None, "exact", False
     rest = []
     for arg in argv[1:]:
-        if arg.startswith("--clearance="):
+        if arg == "--deck":
+            deck = True
+        elif arg.startswith("--clearance="):
             clearance = arg.split("=", 1)[1]
         elif arg.startswith("--detail="):
             detail = arg.split("=", 1)[1]
@@ -1009,7 +1042,16 @@ def main(argv=None):
             ring = arg.split("=", 1)[1]
         else:
             rest.append(arg)
-    if ring:
+    if argv[0].lower().endswith(".svg"):
+        if ring:
+            parts = ring_parts(ring, "none", detail)
+        else:
+            from boxes.generators.hexmohexagon import HexmoHexagon
+            box = HexmoHexagon()
+            box.parseArgs(rest)
+            parts = module_parts(box, "hexmo", "none", detail)
+        line_drawing(parts, argv[0], deck=deck)
+    elif ring:
         export_ring_step_file(argv[0], ring, clearance, detail)
     else:
         from boxes.generators.hexmohexagon import HexmoHexagon

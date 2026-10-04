@@ -824,6 +824,13 @@ simple one is 1.5 MB.
 
 Heights are measured as everywhere else, from the top of the floor panel.
 
+**A 3D drawing instead:** choose **Format → svg_3d** for the assembled module
+drawn in 3D: an SVG line drawing seen from the front right, above, with hidden
+lines removed, at 1:1 in mm. It's a quick look at the built module without CAD.
+**view_deck** adds the deck. It's off by default, so the drawing shows inside:
+walls, supports, risers and tracks. `--step_detail` applies here too; clearance
+boxes are left out.
+
 **The whole helix ring** (six modules round their centre, plus the entry
 rectangle with its turnouts) exports as one file from the command line:
 
@@ -831,6 +838,8 @@ rectangle with its turnouts) exports as one file from the command line:
 python -m boxes.generators._hexmo_step helix-ring.step --ring=N
 # plain slabs instead of the exact parts (about 6 MB instead of 64 MB):
 python -m boxes.generators._hexmo_step helix-ring.step --ring=N --detail=simple
+# a 3D line drawing of the ring (add --deck for the decks):
+python -m boxes.generators._hexmo_step helix-ring.svg --ring=N
 # or a single module, with any generator options:
 python -m boxes.generators._hexmo_step m6.step --radius=220 --h=80 …
 ```

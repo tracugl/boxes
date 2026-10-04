@@ -715,7 +715,7 @@ class BServer:
 
         if box.format != "svg" or render == "2":
             extension = box.format
-            if extension == "svg_Ponoko":
+            if extension.startswith("svg_"):      # svg_Ponoko, svg_3d
                 extension = "svg"
             http_headers.append(('Content-Disposition', f'attachment; filename="{box.__class__.__name__}.{extension}"'))
         start_response(status, http_headers)
