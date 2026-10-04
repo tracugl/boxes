@@ -1320,10 +1320,12 @@ class HexmoHexagon(HexmoBigHoleMixin, HexmoTrackGuideMixin, HexmoTrackTemplateMi
                     f"--track_openings: a track at {opening.height:g} mm would cut "
                     f"into the floor joint; keep it at least {t:g} mm above the "
                     "floor panel.")
-            if opening.height >= l:
+            # Exactly at the deck underside is allowed: the track then rests
+            # on the wall top, which is left whole (a zero-depth notch).
+            if opening.height > l + 1e-9:
                 raise ValueError(
-                    f"--track_openings: a track at {opening.height:g} mm is not "
-                    f"below the deck underside ({l:g} mm above the floor panel).")
+                    f"--track_openings: a track at {opening.height:g} mm is above "
+                    f"the deck underside ({l:g} mm above the floor panel).")
             notch = opening.height + self.train_envelope > l - t
             plan.setdefault(opening.edge, []).append((opening, notch))
         return plan

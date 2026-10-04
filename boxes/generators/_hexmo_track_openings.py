@@ -151,7 +151,9 @@ def wall_and_deck_pieces(wall_length, deck_length, notches):
     @param wall_length - Wall top-edge length (the wall body).
     @param deck_length - Deck edge length (wall_length + 2t: it runs on past
                          each wall end by one thickness).
-    @param notches     - ``(position, width, depth)`` per notch.
+    @param notches     - ``(position, width, depth)`` per notch; a depth of 0
+                         (a track on the wall top) makes the wall top plain
+                         there instead of notching it.
     @returns ``(wall_pieces, deck_pieces)``.
     @throws ValueError - If notches overlap each other or run off the wall.
     """
@@ -166,7 +168,10 @@ def wall_and_deck_pieces(wall_length, deck_length, notches):
                              "notch runs off the end of the wall.")
         wall.append(("joint", lo - cursor))
         deck.append(("joint", lo - cursor))
-        wall.append(("notch", hi - lo, depth))
+        # A zero-depth notch (a track resting on the wall top) cuts nothing
+        # from the wall; its top edge only goes plain across the opening, to
+        # match the plain deck edge above it.
+        wall.append(("notch", hi - lo, depth) if depth > 1e-9 else ("plain", hi - lo))
         deck.append(("plain", hi - lo))
         cursor = hi
     if wall_length - cursor < 0:

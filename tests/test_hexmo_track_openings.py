@@ -145,6 +145,41 @@ class TestNotch:
         assert len([s for s in splits if s[0] == "FingerJointEdgeCounterPart"]) == 2
 
 
+class TestFlushWithTheWallTop:
+    """A track crossing the joint exactly at the deck underside rests on the wall top.
+
+    Nothing is cut out of the wall: its top edge just goes plain (no fingers)
+    across the opening, as does the deck edge above it, so a deck slot can
+    still run out over the joint.  This avoids a sliver of a notch where a
+    descending track has only just left the deck (the helix ring's M6/M1
+    joint).
+    """
+
+    def test_zero_depth_notch_is_a_plain_stretch_of_wall_top(self) -> None:
+        wall, deck = wall_and_deck_pieces(SIDE, SIDE_ORIG, [(17.5, 35.0, 0.0)])
+        assert [p[0] for p in wall] == ["joint", "plain", "joint"]
+        assert wall[1] == ("plain", pytest.approx(35.0))
+        assert deck[2] == ("plain", pytest.approx(35.0))
+
+    def test_opening_at_the_deck_underside_cuts_nothing_from_the_wall(self) -> None:
+        holes, splits = render(N_HEX + [f"--track_openings=5:17.5:{L:g}:35"])
+        wall = next(p for b, _, p in splits if b == "FingerJointEdge")
+        assert [p[0] for p in wall] == ["joint", "plain", "joint"]
+        assert not [p for p in wall if p[0] == "notch"]
+        assert not [h for h in holes if pytest.approx(35) in h[2:]]
+
+    def test_a_deck_slot_can_run_out_over_it(self) -> None:
+        # Helix ring M1 at h=80 with the spur crossing from M6 on the wall top.
+        render(["--radius=220", "--thickness=3", "--h=80", "--trapezoid=1",
+                "--track_lead_in=26", "--supports=0",
+                "--track_openings=3:-17.5:74:35,5:35:66.1:35",
+                "--deck_slots=3:-17.5-5:-35/35"])
+
+    def test_above_the_deck_underside_is_still_refused(self) -> None:
+        with pytest.raises(ValueError, match="deck"):
+            render(N_HEX + [f"--track_openings=5:17.5:{L + 0.1:g}:35"])
+
+
 class TestRefused:
 
     @pytest.mark.parametrize("spec, match", [
