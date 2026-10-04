@@ -142,10 +142,6 @@ class TestRender:
 
 class TestRefused:
 
-    def test_spoke_bottom(self) -> None:
-        args = [a for a in M1 if a != "--bottom=closed"] + ["--bottom=spoke"]
-        with pytest.raises(ValueError, match="bottom closed"):
-            render(args + [M1_RISER])
 
     def test_height_above_the_deck(self) -> None:
         with pytest.raises(ValueError, match="out of range"):
