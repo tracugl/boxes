@@ -612,15 +612,24 @@ track running below the deck must not pass through one.
 - `--support_edges` — which half-spokes get a support, by the edge each points
   to, e.g. `2,4,6`. Default: all of them (1–6 on the hexagon; 4, or 3, 4, 5 with
   `--trapezoid_side_supports`, on the trapezoid). When set it overrides
-  `--trapezoid_side_supports`.
+  `--trapezoid_side_supports`. Each entry can also give its own position and a
+  quarter turn, `E[@position][/90]`: `4@45/90` is a support on the edge-4
+  half-spoke, centred 45 mm out, turned to run across the half-spoke instead of
+  along it. An edge can be listed more than once.
 - `--support_position` — distance (mm) from the centre to the middle of every
   support. Default: half the apothem (about 94 mm). Refused if a support would
   reach the centre or the side wall.
 
 The support walls and their slots in the deck and bottom panel all follow both,
-so they still fit. For the helix ring: the trapezoids (M1–M5) use
-`--support_position 125`, moving the support out past the spur. M6 keeps the
-three supports clear of its spur, `--support_edges 2,4,6`.
+so they still fit. A support that would reach the centre, a side wall, the
+trapezoid's long wall or another support is refused, and so is one whose slot
+would stand over a kite on a spoke floor (it must be on a spoke or the rim).
+
+For the helix ring: the trapezoids (M1–M5) use `--support_edges 4@125,4@45/90`.
+The support at 125 mm sits past the spur, under the inner part of the deck. The
+turned one at 45 mm sits under the main line, between it and the spur, and on a
+spoke floor its slot lands on the centre spoke. M6 keeps the three supports clear
+of its spur, `--support_edges 2,4,6`.
 
 ### Riser boards (`--risers`)
 
@@ -652,7 +661,7 @@ track, on a support wall's slot, or against a side wall is refused.
 ```bash
 # Helix ring M1 at h=80, with the spur's riser (72.5 at edge 3 to 65.2 at edge 5).
 curl "http://localhost:4455/HexmoHexagon?render=1&radius=220&thickness=3&h=80\
-&trapezoid=1&bottom=spoke&support_length=55&support_position=125\
+&trapezoid=1&bottom=spoke&support_length=55&support_edges=4@125,4@45/90\
 &track_routes=3:17.5-5:17.5,3:-17.5-5:-35\
 &track_openings=3:-17.5:72.5:26,5:35:65.2:26&deck_slots=3:-17.5-5:-35/26\
 &risers=3:-17.5-5:-35~72.5..65.2" -o hexmo_n_m1_riser.svg

@@ -66,7 +66,9 @@ def support_parts(args):
         found = []
 
         def fh(x, y, length, angle=90, **kw):
-            mid = apply(box.ctx._m, (x, y + length / 2))
+            # A slot runs from (x, y) along `angle`; its middle is half-way.
+            a = math.radians(angle)
+            mid = apply(box.ctx._m, (x + math.cos(a) * length / 2, y + math.sin(a) * length / 2))
             found.append(mid)
             return orig_fh(x, y, length, angle=angle, **kw)
 
@@ -86,7 +88,9 @@ def support_parts(args):
     nonlocal_fh = [None]
 
     def wall_spy(x, y, edges="eeee", *a, **kw):
-        if edges == "fefe":
+        # Support walls are "fefe" rectangles; riser supports are too, but
+        # carry a "riser …" label.
+        if edges == "fefe" and not str(kw.get("label", "")).startswith("riser"):
             walls[0] += 1
         return orig_wall(x, y, edges, *a, **kw)
 
@@ -179,3 +183,73 @@ class TestHelixRing:
     def test_m1_with_the_default_support_is_refused(self) -> None:
         with pytest.raises(ValueError, match="support towards edge 4"):
             support_parts(M1)
+
+
+class TestTurnedSupports:
+    """``E@position/90``: a support turned to run across its half-spoke."""
+
+    M1_SPOKE = [a if a != "--bottom=spoke" else a for a in M1] + [
+        "--bottom=spoke", "--edge_width=22", "--spoke_width=60",
+        "--risers=3:-17.5-5:-35~72.5..65.2"]
+
+    def _slots(self, args):
+        """Support-slot fingerHolesAt calls on the deck: (x, y, length, angle)."""
+        box = HexmoHexagon()
+        box.parseArgs(args)
+        box.metadata["reproducible"] = True
+        calls, inside = [], [0]
+        orig_holes = box.drawSupportHoles
+
+        def holes_spy(r, isTrapezoid=False):
+            inside[0] += 1
+            try:
+                return orig_holes(r, isTrapezoid=isTrapezoid)
+            finally:
+                inside[0] -= 1
+
+        box.drawSupportHoles = holes_spy
+        box.open()
+        orig_fh = box.fingerHolesAt
+
+        def fh(x, y, length, angle=90, **kw):
+            if inside[0]:
+                calls.append((round(x, 3), round(y, 3), length, angle))
+            return orig_fh(x, y, length, angle=angle, **kw)
+
+        box.fingerHolesAt = fh
+        box.render()
+        box.close()
+        return calls
+
+    def test_turned_slot_runs_across_the_axis(self) -> None:
+        calls = self._slots(N + ["--trapezoid=1", "--support_edges=4@45/90"])
+        # Deck and bottom panel each: one slot from x = −sl/2 along x (angle 0)
+        # at 45 mm out on the edge-4 axis (local y = −45).
+        assert calls == [(-27.5, -45.0, 55.0, 0)] * 2
+
+    def test_m1_with_both_supports_on_a_spoke_floor(self) -> None:
+        deck, _, walls = support_parts(self.M1_SPOKE + ["--support_edges=4@125,4@45/90"])
+        assert walls == 2
+        assert [d for _, d in deck] == pytest.approx([45.0, 125.0], abs=0.01)
+
+    def test_turned_support_over_a_kite_is_refused(self) -> None:
+        args = [a for a in self.M1_SPOKE if a != "--spoke_width=60"] + ["--spoke_width=30"]
+        with pytest.raises(ValueError, match="kite"):
+            support_parts(args + ["--support_edges=4@125,4@45/90"])
+
+    def test_turned_support_into_the_long_wall_is_refused(self) -> None:
+        with pytest.raises(ValueError, match="long wall"):
+            support_parts(N + ["--trapezoid=1", "--support_edges=4@3/90"])
+
+    def test_supports_too_close_are_refused(self) -> None:
+        with pytest.raises(ValueError, match="into each other"):
+            support_parts(N + ["--trapezoid=1", "--support_edges=4@45/90,4@48/90"])
+
+    def test_deck_slot_check_sees_turned_supports(self) -> None:
+        with pytest.raises(ValueError, match="crosses the support towards edge 4"):
+            support_parts(M1 + ["--support_edges=4@78/90"])
+
+    @pytest.mark.parametrize("value", ["4@x", "4/45", "4@45/90/90"])
+    def test_bad_entries(self, value) -> None:
+        with pytest.raises(ValueError, match="--support_edges"):
+            support_parts(N + ["--trapezoid=1", f"--support_edges={value}"])
