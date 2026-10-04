@@ -334,7 +334,9 @@ against both edges and it holds the module's exact curve while you pin it down.
   with its radius, the gauge and `i/N`, plus a mark at each end: **EDGE** on the
   two ends that sit at the module edges, and a matching letter on both sides of
   every cut. With 3 pieces that reads `EDGE … 1/3 … A`, `A … 2/3 … B`,
-  `B … 3/3 … EDGE`, so matching letters go together.
+  `B … 3/3 … EDGE`, so matching letters go together. The radius label and the
+  **EDGE** marks are only etched with `--part_text=1` (see below); the letters
+  always are.
 - It is cut from the module's own `--thickness`, with no handle.
 
 | Parameter | Meaning | HO suggestion |
@@ -520,6 +522,16 @@ http://localhost:4455/HexmoHexagon?radius=500&h=100&thickness=6&edge_width=60&sp
 ```
 http://localhost:4455/HexmoHexagon?radius=500&h=100&thickness=6&edge_width=60&spoke_width=120&bottom=spoke&top=closed&corner_holes=g2&gap_holes=g2&big_hole_shape=rounded_rect&FingerJoint_play=0.1&FingerJoint_extra_length=0.05&track_lines=1&draw_track=1&track_width=30&track_lead_in=23&support_length=110&train_envelope=70&under_track_width=60&support_edges=2,4,6&track_routes=1:-40-5:-40,3:-40-1:-40,1:-40-5:40&under_track_edges=1&under_track_height=18&track_openings=5:40:86.6:60,3:-80:28.1:60&deck_slots=1:-40-5:40@344../60,3:80-1:0@..606/60&risers=1:-40-5:40@344..~94..86.6/60,3:80-1:0@..606~28.1..18/60,3:80-1:0@606..~18..18/60
 ```
+
+### Helper-part text (`--part_text`)
+
+The helper parts can carry descriptive text: each riser support's track height,
+the track guide's side arrow (`edge M side ->`, `outside of curve ->`), and the
+track template's radius label and **EDGE** end marks. It clutters the cut sheet,
+so it is **off** by default; set `--part_text=1` to etch it. The letters that pair
+up the cut ends of a split template are always etched, since they are needed to
+reassemble it. Part labels (e.g. `riser 73.2`, `track guide edge 3`) follow the
+standard `--labels` option, and the deck's radius label follows `--track_label`.
 
 ---
 

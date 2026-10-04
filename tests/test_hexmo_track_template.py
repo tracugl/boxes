@@ -210,7 +210,7 @@ class TestPieceMarks:
         return pieces
 
     def test_three_pieces_are_etched_with_matching_joints(self) -> None:
-        pieces = self._etched_per_piece(N_HEX + ["--track_template_segments=3"])
+        pieces = self._etched_per_piece(N_HEX + ["--track_template_segments=3", "--part_text=1"])
         assert [sorted(p) for p in pieces] == [
             sorted(["EDGE", "R280 9mm  1/3", "A"]),
             sorted(["A", "R280 9mm  2/3", "B"]),
@@ -218,5 +218,9 @@ class TestPieceMarks:
         ]
 
     def test_single_piece_has_edge_at_both_ends(self) -> None:
-        (piece,) = self._etched_per_piece(N_HEX)
+        (piece,) = self._etched_per_piece(N_HEX + ["--part_text=1"])
         assert sorted(piece) == sorted(["EDGE", "R280 9mm", "EDGE"])
+
+    def test_without_part_text_only_the_joint_letters_are_etched(self) -> None:
+        pieces = self._etched_per_piece(N_HEX + ["--track_template_segments=3"])
+        assert [sorted(p) for p in pieces] == [["A"], ["A", "B"], ["B"]]

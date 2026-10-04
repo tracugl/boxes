@@ -229,6 +229,8 @@ class HexmoTrackTemplateMixin:
         centreline middle.  ``piece i/N`` is added when there is more than one
         piece.  Each end is marked (see :meth:`_templateEndMarks`): ``EDGE`` at
         the module edges, and a matching letter on both sides of every cut.
+        The label and the ``EDGE`` marks are etched only with --part_text; the
+        letters always are.
 
         @param route - Centreline steps of the whole template.
         @param label - Text etched on each piece (radius, gauge).
@@ -278,6 +280,10 @@ class HexmoTrackTemplateMixin:
                 room -= width_of(marks[0]) + width_of(marks[1]) + 2 * gap
             if not etch or room >= width_of(text):
                 etch.append((text, length / 2))
+            if not self.part_text:
+                # Keep only the joint letters: they are needed to reassemble a
+                # split template, while the label and EDGE marks are optional.
+                etch = [(t, at) for t, at in etch if t not in (text, "EDGE")]
             for t, at in etch:
                 mx, my, mh = self._templatePointAt(piece, at, (-minx, -miny), heading)
                 angle = ((mh + 90.0) % 180.0) - 90.0   # keep the text upright

@@ -1846,7 +1846,7 @@ class HexmoHexagon(HexmoBigHoleMixin, HexmoTrackGuideMixin, HexmoTrackTemplateMi
         start cap, so boxes' corner compensation keeps it true to size.
         Each support is a rectangle the bed's width wide and as tall as the
         bed's underside at that point, finger-jointed top and bottom, with
-        its track height etched on it.
+        its track height etched on it when --part_text is on.
         """
         segments, width = riser["segments"], riser["width"]
         if not riser.get("bed_in_slot"):
@@ -1855,11 +1855,15 @@ class HexmoHexagon(HexmoBigHoleMixin, HexmoTrackGuideMixin, HexmoTrackTemplateMi
         for _, _, height in riser["stations"]:
             body = height - t
             label = f"{height:.1f}"
-            self.rectangularWall(
-                width, body, "fefe", move="right", label=f"riser {label}",
-                callback=[lambda b=body, txt=label: self.text(
+            # The etched height is optional; the part label (--labels) still
+            # names the support with its height either way.
+            callback = None
+            if self.part_text:
+                callback = [lambda b=body, txt=label: self.text(
                     txt, width / 2, b / 2, align="middle center",
-                    fontsize=min(4.0, b / 3), color=Color.ETCHING)])
+                    fontsize=min(4.0, b / 3), color=Color.ETCHING)]
+            self.rectangularWall(width, body, "fefe", move="right",
+                                 label=f"riser {label}", callback=callback)
 
     def _drawRiserBed(self, riser, segments, width, move):
         """The separate bed strip, for a riser whose bed is not a slot's cut-out."""
