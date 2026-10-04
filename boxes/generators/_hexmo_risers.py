@@ -187,3 +187,100 @@ def strip_points(segments, width, step=2.0):
                    (p[0] + half * d[1], p[1] - half * d[0])]
     return points
 
+
+
+# ---------------------------------------------------------------- kite ribs
+#
+# On a spoke floor the kite cut-outs leave nothing for a riser support to
+# slot into.  Where a support stands over a kite, a solid rib is left across
+# that kite instead: a bar along the support's footprint line (across the
+# track), wide enough for its finger slots plus a margin each side, running
+# right across the kite so both ends join the rim or a spoke.  Kites are
+# convex, so each rib just clips the kite to the two sides of the bar.
+
+def clip_half_plane(polygon, origin, normal, offset):
+    """Keep the part of a convex polygon where (p − origin)·normal ≥ offset.
+
+    Sutherland–Hodgman clipping against one line.
+
+    @param polygon - Vertices in order.
+    @param origin  - A point on the reference line.
+    @param normal  - Unit normal of the line.
+    @param offset  - Signed distance of the clip line from ``origin``.
+    @returns The clipped polygon (possibly empty).
+    """
+    def side(p):
+        return (p[0] - origin[0]) * normal[0] + (p[1] - origin[1]) * normal[1] - offset
+
+    out = []
+    n = len(polygon)
+    for i in range(n):
+        a, b = polygon[i], polygon[(i + 1) % n]
+        sa, sb = side(a), side(b)
+        if sa >= 0:
+            out.append(a)
+        if (sa >= 0) != (sb >= 0):
+            t = sa / (sa - sb)
+            out.append((a[0] + t * (b[0] - a[0]), a[1] + t * (b[1] - a[1])))
+    return out
+
+
+def min_width(polygon):
+    """Smallest width of a convex polygon (over its edge directions)."""
+    best = math.inf
+    n = len(polygon)
+    for i in range(n):
+        a, b = polygon[i], polygon[(i + 1) % n]
+        length = math.dist(a, b)
+        if length < 1e-9:
+            continue
+        nx, ny = (b[1] - a[1]) / length, -(b[0] - a[0]) / length
+        best = min(best, max(abs((p[0] - a[0]) * nx + (p[1] - a[1]) * ny) for p in polygon))
+    return best
+
+
+def _inside_convex(polygon, p):
+    """True if p is strictly inside a convex polygon (either winding)."""
+    signs = set()
+    n = len(polygon)
+    for i in range(n):
+        a, b = polygon[i], polygon[(i + 1) % n]
+        cross = (b[0] - a[0]) * (p[1] - a[1]) - (b[1] - a[1]) * (p[0] - a[0])
+        if abs(cross) > 1e-9:
+            signs.add(cross > 0)
+    return len(signs) == 1
+
+
+def rib_kites(kites, ribs, rib_width, min_piece):
+    """Split kites with solid ribs under riser supports.
+
+    @param kites     - Convex kite polygons.
+    @param ribs      - ``(point, across, length)`` per support: its
+                       footprint's centre, the unit direction of the
+                       footprint line (across the track) and its length.
+    @param rib_width - Width of each rib (along the track).
+    @param min_piece - Pieces narrower than this are dropped (left solid).
+    @returns The openings to cut: kites unaffected by any rib unchanged, the
+             others split either side of their ribs.
+    """
+    out = []
+    half = rib_width / 2.0
+    for kite in kites:
+        pieces = [kite]
+        for point, across, length in ribs:
+            # Only ribs whose footprint (plus the rib margin) reaches the kite.
+            reach = length / 2.0 + half
+            samples = [(point[0] + across[0] * reach * k / 10.0,
+                        point[1] + across[1] * reach * k / 10.0) for k in range(-10, 11)]
+            if not any(_inside_convex(kite, s) for s in samples):
+                continue
+            normal = (-across[1], across[0])     # along the track
+            split = []
+            for piece in pieces:
+                for sign in (1.0, -1.0):
+                    part = clip_half_plane(piece, point, (sign * normal[0], sign * normal[1]), half)
+                    if len(part) >= 3:
+                        split.append(part)
+            pieces = split
+        out += [p for p in pieces if p is kite or min_width(p) >= min_piece]
+    return out

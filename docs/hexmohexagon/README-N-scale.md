@@ -638,15 +638,20 @@ exactly. Each entry is `route[@from..to]~h0..h1[/width]`:
 - `/width` — the bed width, default `--track_width`.
 
 Supports stand 15 mm in from each end of the bed and evenly between, at most
-`--riser_spacing` (default 80) apart; each has its height etched on it. Risers
-need `--bottom closed`, since the supports slot into the floor; fit the floor
-panel with its slots under the bed. A support that would stand in another riser's
+`--riser_spacing` (default 80) apart; each has its height etched on it. Fit the
+floor panel with its slots under the bed. On a spoke floor (`--bottom spoke`)
+the kite cut-outs would leave nothing for a support to slot into, so wherever a
+support stands over a kite a solid **rib** is left across it: a 15 mm bar along
+the support's slot (the slot plus 6 mm each side), running right across the kite
+to the rim or spoke. The kite is cut as the openings either side of its ribs;
+pieces narrower than 15 mm are left solid. Kites with no support over them, and
+the spoke floor without risers, are unchanged. `--bottom closed` works too. A support that would stand in another riser's
 track, on a support wall's slot, or against a side wall is refused.
 
 ```bash
 # Helix ring M1 at h=80, with the spur's riser (72.5 at edge 3 to 65.2 at edge 5).
 curl "http://localhost:4455/HexmoHexagon?render=1&radius=220&thickness=3&h=80\
-&trapezoid=1&bottom=closed&support_length=55&support_position=125\
+&trapezoid=1&bottom=spoke&support_length=55&support_position=125\
 &track_routes=3:17.5-5:17.5,3:-17.5-5:-35\
 &track_openings=3:-17.5:72.5:26,5:35:65.2:26&deck_slots=3:-17.5-5:-35/26\
 &risers=3:-17.5-5:-35~72.5..65.2" -o hexmo_n_m1_riser.svg
