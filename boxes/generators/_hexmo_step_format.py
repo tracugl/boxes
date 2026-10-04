@@ -124,8 +124,8 @@ class HexmoStepFormatMixin:
         self.argparser.add_argument(
             "--view_deck", action="store", type=boolarg, default=False,
             help="With --format svg_3d: draw the deck too.  Off by default, so "
-                 "the drawing shows inside the module: walls, supports, risers "
-                 "and tracks.")
+                 "the drawing shows inside the module: walls, supports and "
+                 "risers.  Only cut parts are drawn (no track ribbons).")
 
     def open(self):
         """Open as usual; for a 3D format, onto an SVG surface that is thrown away."""

@@ -951,19 +951,30 @@ _VIEW_FROM = (900.0, -1200.0, 900.0)
 _VIEW_LINE = 0.15
 
 
+# Parts that aren't cut (the track ribbons and clearance boxes are guides,
+# not laser parts), so the line drawing leaves them out.
+_NOT_CUT = ("track", "clearance")
+
+
+def _drawn_parts(parts, deck=False):
+    """The parts a line drawing shows: the cut parts only (the cut sheet's red
+    lines), and the decks only when ``deck`` is set."""
+    return [p for p in parts if p.kind not in _NOT_CUT
+            and (deck or not (p.name == "deck" or p.name.endswith(" deck")))]
+
+
 def line_drawing(parts, out, deck=False):
     """Draw the assembled parts in 3D as an SVG line drawing (hidden lines removed).
 
-    Seen from the front right, above, at 1:1 in mm.  Clearance boxes are
-    left out.
+    Seen from the front right, above, at 1:1 in mm.  Only the cut parts are
+    drawn; the track ribbons and clearance boxes are left out.
 
     @param parts - :class:`Part3D` list (one module, or a whole ring).
     @param out   - File path or binary file object to write the SVG to.
     @param deck  - Draw the decks too; off shows inside the modules.
     """
     bd = _bd()
-    shown = [p.solid for p in parts if p.kind != "clearance"
-             and (deck or not (p.name == "deck" or p.name.endswith(" deck")))]
+    shown = [p.solid for p in _drawn_parts(parts, deck)]
     compound = bd.Compound(shown)
     centre = compound.bounding_box().center()
     eye = (centre.X + _VIEW_FROM[0], centre.Y + _VIEW_FROM[1], centre.Z + _VIEW_FROM[2])

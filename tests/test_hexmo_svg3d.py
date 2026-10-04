@@ -73,6 +73,19 @@ def test_deck_toggle() -> None:
     assert open_top != decked
 
 
+def test_only_cut_parts_are_drawn() -> None:
+    # The drawing shows what is cut (the sheet's red lines): no track
+    # ribbons or clearance boxes; the deck only when asked for.
+    pytest.importorskip("build123d")
+    box = HexmoHexagon()
+    box.parseArgs(HELIX_RING_N["M6"])
+    parts = _hexmo_step.exact_hexmo_parts(box, clearance="all")
+    drawn = _hexmo_step._drawn_parts(parts, deck=False)
+    assert drawn and all(p.kind not in ("track", "clearance") for p in drawn)
+    assert "deck" not in {p.name for p in drawn}
+    assert "deck" in {p.name for p in _hexmo_step._drawn_parts(parts, deck=True)}
+
+
 def test_clear_error_without_the_dependency(monkeypatch) -> None:
     def missing():
         raise ImportError("No module named 'build123d'")

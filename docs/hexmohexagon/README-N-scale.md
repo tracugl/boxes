@@ -828,8 +828,9 @@ Heights are measured as everywhere else, from the top of the floor panel.
 drawn in 3D: an SVG line drawing seen from the front right, above, with hidden
 lines removed, at 1:1 in mm. It's a quick look at the built module without CAD.
 **view_deck** adds the deck. It's off by default, so the drawing shows inside:
-walls, supports, risers and tracks. `--step_detail` applies here too; clearance
-boxes are left out.
+walls, supports and risers. Only the cut parts are drawn (the cut sheet's red
+lines), so the track ribbons and clearance boxes are left out. `--step_detail`
+applies here too.
 
 **The whole helix ring** (six modules round their centre, plus the entry
 rectangle with its turnouts) exports as one file from the command line:
