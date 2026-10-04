@@ -31,7 +31,16 @@ from boxes.Color import Color
 from boxes.generators._hexmo_big_holes import HexmoBigHoleMixin
 from boxes.generators._hexmo_track_guide import HexmoTrackGuideMixin
 from boxes.generators._hexmo_track_template import HexmoTrackTemplateMixin
+from boxes.generators._hexmo_track_routes import Arc, Line, offset_segments, segments_polyline
+from boxes.generators._hexmo_turnouts import parse_turnouts, turnout_leg
 from boxes.generators._hexmo_under_track import HexmoUnderTrackMixin
+
+
+def _shiftY(seg, dy):
+    """A ``Line``/``Arc`` moved ``dy`` mm along y."""
+    if isinstance(seg, Line):
+        return Line((seg.p0[0], seg.p0[1] + dy), (seg.p1[0], seg.p1[1] + dy))
+    return Arc((seg.centre[0], seg.centre[1] + dy), seg.radius, seg.start_angle, seg.sweep)
 
 
 class _HorizDivSpokeEdge(edges.BaseEdge):
@@ -378,6 +387,30 @@ class HexmoRectangle(HexmoBigHoleMixin, HexmoTrackGuideMixin, HexmoTrackTemplate
             help="Etch a crossing tick perpendicular to the track at each end "
                  "(offset inward by --track_lead_in) marking where the track "
                  "enters/leaves the module.  Only drawn when --track_lead_in > 0.")
+        self.argparser.add_argument(
+            "--turnouts", action="store", type=str, default="",
+            help="Turnouts etched on the deck, comma-separated 'toe:from:to': the "
+                 "toe this many mm along the deck, on the straight track at lateral "
+                 "offset 'from' (as for the track lines, + is +y); its diverging leg "
+                 "curves off and settles at offset 'to', whose sign gives the hand, "
+                 "by the end of the deck.  Every turnout faces the same end.  E.g. "
+                 "the helix ring's entry: '10:0:-35,133.7:0:35'.  Blank (default): "
+                 "none.")
+        self.argparser.add_argument(
+            "--turnout_length", action="store", type=float, default=123.7,
+            help="Turnout length, toe to heel (mm).  Default: Peco N medium "
+                 "(SL-E395/396).")
+        self.argparser.add_argument(
+            "--turnout_radius", action="store", type=float, default=457.0,
+            help="Radius (mm) of the turnout's diverging road.  Default: Peco N "
+                 "medium.")
+        self.argparser.add_argument(
+            "--turnout_angle", action="store", type=float, default=14.0,
+            help="Turnout crossing angle (degrees).  Default: Peco N medium.")
+        self.argparser.add_argument(
+            "--turnout_reverse_radius", action="store", type=float, default=300.0,
+            help="Radius (mm) of the flexible-track curve that brings a "
+                 "diverging leg back parallel at its offset.")
         # --track_guide / --track_guide_clearance, shared with HexmoHexagon so
         # both generators cut the same guide plate.
         self._addTrackGuideArgs()
@@ -1027,6 +1060,72 @@ class HexmoRectangle(HexmoBigHoleMixin, HexmoTrackGuideMixin, HexmoTrackTemplate
                         self.ctx.line_to(xt, cy + cross_half)
                         self.ctx.stroke()
 
+    def _turnoutLegs(self, length, width):
+        """Solve every --turnouts diverging leg on the deck.
+
+        @param length - Deck length along the track (H).
+        @param width  - Deck width across it (W − 2t); offsets are measured
+                        from its centre, + towards +y as for the track lines.
+        @returns One tuple of ``Line``/``Arc`` pieces per leg, in the deck
+                 callback's frame (x along the deck, y from its −y edge).
+        @throws ValueError - From the turnout geometry, or if a leg's track
+                             footprint runs off the deck.
+        """
+        legs = []
+        half = self.track_width / 2.0
+        for spec in parse_turnouts(self.turnouts):
+            leg = turnout_leg(spec, length, self.turnout_length, self.turnout_radius,
+                              self.turnout_angle, self.turnout_reverse_radius)
+            # Move from offsets about the centre line into the deck frame.
+            shifted = tuple(_shiftY(seg, width / 2.0) for seg in leg.segments)
+            ys = [y for _, y in segments_polyline(shifted, 16)]
+            if min(ys) - half < 0 or max(ys) + half > width:
+                raise ValueError(
+                    f"--turnouts: the leg from {spec.toe:g} mm to offset {spec.end:g} "
+                    f"runs off the {width:.0f} mm deck (track {self.track_width:g} mm "
+                    "wide).")
+            legs.append(shifted)
+        return legs
+
+    def _etchTurnoutLeg(self, segments):
+        """Etch one turnout's diverging leg, styled like the straight track lines.
+
+        Draws its centreline (--draw_center) and/or footprint edges
+        (--draw_track), a tick across the through road at the toe (where the
+        switch blades start), and with --track_crossing a tick --track_lead_in
+        from the end of the deck, matching the straight lines' end ticks.
+
+        @param segments - The leg's pieces in the deck frame (see _turnoutLegs).
+        """
+        half = self.track_width / 2.0
+        lines = []
+        if self.draw_center:
+            lines.append(segments)
+        if self.draw_track:
+            for d in (-half, half):
+                moved = offset_segments(segments, d)
+                if moved is not None:
+                    lines.append(moved)
+        cross_half = (half if self.draw_track else 0.0) + 6.0
+        toe = segments[0].p0
+        end = segments[-1].p1
+        with self.saved_context():
+            self.set_source_color(Color.ETCHING)
+            for line in lines:
+                points = segments_polyline(line, 32)
+                self.ctx.move_to(*points[0])
+                for p in points[1:]:
+                    self.ctx.line_to(*p)
+                self.ctx.stroke()
+            if lines:
+                ticks = [toe[0]]
+                if self.track_crossing and self.track_lead_in > 0:
+                    ticks.append(end[0] - self.track_lead_in)
+                for x, y in zip(ticks, (toe[1], end[1])):
+                    self.ctx.move_to(x, y - cross_half)
+                    self.ctx.line_to(x, y + cross_half)
+                    self.ctx.stroke()
+
     def render(self) -> None:
         """Generate all panels for the HexmoRectangle box (outer shell + 3×N grid).
 
@@ -1098,6 +1197,10 @@ class HexmoRectangle(HexmoBigHoleMixin, HexmoTrackGuideMixin, HexmoTrackTemplate
         # H: inner long dimension = hexagon flat-to-flat inner cavity distance.
         # For a regular hexagon, flat-to-flat = 2 × apothem = r × √3.
         H = 2 * apothem
+
+        # Turnout legs (--turnouts), solved and checked before anything is
+        # drawn; etched on the deck by base_cb.
+        turnout_legs = self._turnoutLegs(H, W - 2 * t)
 
         # --- Column-count selection ---------------------------------------------
         # n_cols controls how many compartments the long axis is divided into
@@ -1517,6 +1620,8 @@ class HexmoRectangle(HexmoBigHoleMixin, HexmoTrackGuideMixin, HexmoTrackTemplate
             # (W − 2t) axis.  The callback frame has x along H and y along W − 2t.
             if self.track_lines:
                 self.drawRectTrackLines(H, W - 2 * t)
+                for leg in turnout_legs:
+                    self._etchTurnoutLeg(leg)
 
         # --- Outer walls --------------------------------------------------------
         # Long walls (left/right, spanning H) provide tabs on their small
