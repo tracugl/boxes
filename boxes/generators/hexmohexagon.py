@@ -28,6 +28,7 @@ import re
 from boxes import Boxes, edges, boolarg, holeCol, restore
 from boxes.Color import *
 from boxes.generators._hexmo_big_holes import HexmoBigHoleMixin
+from boxes.generators._hexmo_step_format import HexmoStepFormatMixin
 from boxes.generators._hexmo_track_guide import HexmoTrackGuideMixin
 from boxes.generators._hexmo_track_template import HexmoTrackTemplateMixin
 from boxes.generators._hexmo_under_track import HexmoUnderTrackMixin
@@ -48,8 +49,8 @@ from boxes.generators._hexmo_track_routes import (
 )
 
 
-class HexmoHexagon(HexmoBigHoleMixin, HexmoTrackGuideMixin, HexmoTrackTemplateMixin,
-                   HexmoUnderTrackMixin, Boxes):
+class HexmoHexagon(HexmoStepFormatMixin, HexmoBigHoleMixin, HexmoTrackGuideMixin,
+                   HexmoTrackTemplateMixin, HexmoUnderTrackMixin, Boxes):
     """Box with a regular hexagon or half hexagon as the base. """
 
     ui_group = "Box"
@@ -324,6 +325,8 @@ class HexmoHexagon(HexmoBigHoleMixin, HexmoTrackGuideMixin, HexmoTrackTemplateMi
         self._addTrackGuideArgs()
         # --track_template, --track_gauge, …, shared with HexmoRectangle.
         self._addTrackTemplateArgs()
+        # --format step and --step_clearance (see _hexmo_step_format).
+        self._addStepFormat()
 
         self.n = 6
 
