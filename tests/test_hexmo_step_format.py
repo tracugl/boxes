@@ -73,6 +73,22 @@ class TestOutput:
         assert data.startswith(b"ISO-10303-21")
         assert b"long support" in data
 
+    def test_exact_parts_by_default(self) -> None:
+        # The exact parts (finger joints, holes …) make a far bigger file than
+        # the plain slabs of step_detail=simple.
+        pytest.importorskip("build123d")
+        exact = output(HexmoHexagon, HELIX_RING_N["M6"] + ["--format=step"])
+        simple = output(HexmoHexagon, HELIX_RING_N["M6"] + ["--format=step",
+                                                           "--step_detail=simple"])
+        assert simple.startswith(b"ISO-10303-21")
+        assert len(exact) > 3 * len(simple)
+
+    def test_exact_export_leaves_burn_alone_for_other_formats(self) -> None:
+        box = HexmoHexagon()
+        box.parseArgs(["--burn=0.2"])
+        box.open()
+        assert box.burn == 0.2
+
     def test_clearance_option(self) -> None:
         pytest.importorskip("build123d")
         data = output(HexmoHexagon, HELIX_RING_N["M6"] + ["--format=step",

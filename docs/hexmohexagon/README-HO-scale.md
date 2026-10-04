@@ -544,8 +544,9 @@ standard `--labels` option, and the deck's radius label follows `--track_label`.
 
 HexmoHexagon and HexmoRectangle can output the module assembled in 3D, as a
 STEP file for Onshape, FreeCAD, Fusion and so on: choose **Format → step** in
-the web form. The N-scale README has the details: what's in the model, the
-`--step_clearance` option, exporting the whole helix ring, and how to import it
+the web form. Each part is exact by default (its real cut outline, finger
+joints and all). The N-scale README has the details: what's in the model, the
+`--step_detail` and `--step_clearance` options, exporting the whole helix ring, and how to import it
 into Onshape (import to a single document, **Y Axis Up off**).
 
 ---

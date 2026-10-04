@@ -800,17 +800,27 @@ In the web form choose **Format → step** and **Generate**, and the browser
 downloads `HexmoHexagon.step` (or `HexmoRectangle.step`). Every setting is
 checked exactly as for the laser output.
 
-The parts are simplified: no finger joints, pin holes, big holes or kites. Each
-part is its outline at `--thickness`, placed where it sits once built, and named
-in the CAD part list:
+By default each part is **exact**: its real cut outline, the same one the
+laser cuts, with the finger joints, pin holes, big holes, kites, notches and
+slots. It's at nominal size (no burn), extruded to `--thickness` and placed where
+it sits once built, so you can check how the parts fit before cutting. Tabs sit
+in their slots, and the tests check that joined parts don't overlap. Riser beds
+are smooth solids sloping as set, with their support slots cut. Every part is
+named in the CAD part list:
 
-- `floor`, `deck` (with its deck slots cut), `wall edge N`, `support edge N`;
-- `riser bed …` and `riser support …`, each bed sloping as set;
+- `floor`, `deck`, `wall edge N` (and the trapezoid's `long wall`),
+  `support edge N`; on a rectangle `long wall`, `end wall`, `long support`,
+  `divider`, `spoke`;
+- `riser bed …` and `riser support …`;
 - `track …`: each track as a 3 mm ribbon on the deck or its bed;
 - `clearance …`: a translucent train envelope (`--train_envelope` high,
   `--under_track_width` wide). `--step_clearance` sets where: `under` (default)
   over the tracks on risers, the ones that pass under or through the deck;
   `all`; or `none`.
+
+`--step_detail=simple` gives plain slabs instead (no joints or holes), which is
+quicker and much lighter. The exact M6 is about 11 MB and takes about 5 s; the
+simple one is 1.5 MB.
 
 Heights are measured as everywhere else, from the top of the floor panel.
 
@@ -819,6 +829,8 @@ rectangle with its turnouts) exports as one file from the command line:
 
 ```bash
 python -m boxes.generators._hexmo_step helix-ring.step --ring=N
+# plain slabs instead of the exact parts (about 6 MB instead of 64 MB):
+python -m boxes.generators._hexmo_step helix-ring.step --ring=N --detail=simple
 # or a single module, with any generator options:
 python -m boxes.generators._hexmo_step m6.step --radius=220 --h=80 …
 ```
