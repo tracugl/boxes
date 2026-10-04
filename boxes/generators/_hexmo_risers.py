@@ -314,3 +314,15 @@ def spine_kites(kites, spines, min_piece):
         pieces = out
     original = [list(k) for k in kites]
     return [p for p in pieces if p in original or _width(p) >= min_piece]
+
+
+def point_in_convex(polygon, p):
+    """True if p is strictly inside a convex polygon (either winding)."""
+    signs = set()
+    n = len(polygon)
+    for i in range(n):
+        a, b = polygon[i], polygon[(i + 1) % n]
+        cross = (b[0] - a[0]) * (p[1] - a[1]) - (b[1] - a[1]) * (p[0] - a[0])
+        if abs(cross) > 1e-9:
+            signs.add(cross > 0)
+    return len(signs) == 1
