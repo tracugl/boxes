@@ -119,14 +119,25 @@ class TestM6Parts:
         # Every riser support stands on the floor.
         assert all(zrange(m6[n])[0] == pytest.approx(0) for n in supports)
 
-    def test_tracks_and_clearances(self, m6) -> None:
-        tracks = [p for n, p in m6.items() if p.kind == "track"]
-        clearances = [p for n, p in m6.items() if p.kind == "clearance"]
-        assert tracks and len(clearances) == len(tracks)
+    def test_tracks(self, m6) -> None:
+        tracks = [p for p in m6.values() if p.kind == "track"]
         # The deck tracks sit on the deck top; the lowest track is the return
         # leaving at edge 1, 27.8 above the floor panel.
         assert max(zrange(p)[1] for p in tracks) == pytest.approx(L + T + 3, abs=0.05)
         assert min(zrange(p)[0] for p in tracks) == pytest.approx(27.8, abs=0.05)
+
+    def test_clearance_only_over_the_risers_by_default(self, m6) -> None:
+        # The deck tracks can't hit anything, so only the three riser stretches
+        # get a train-clearance box.
+        clearances = [n for n, p in m6.items() if p.kind == "clearance"]
+        assert len(clearances) == 3
+
+    def test_smooth_sloping_bed(self, m6) -> None:
+        # One smooth solid (top, bottom, two sides, two ends), not a mesh of
+        # triangles, with the bed's true volume: 35 wide, 3 thick, 188 long.
+        spur = next(p for n, p in m6.items() if n.startswith("riser bed 1:0-5:17.5"))
+        assert len(spur.solid.faces()) <= 8
+        assert spur.solid.volume == pytest.approx(35 * 3 * (357.0 - 169), rel=0.01)
 
     def test_return_clearance_fits_under_the_deck(self, m6) -> None:
         # Past its slot the return's train envelope must stay under the deck.
@@ -144,6 +155,23 @@ class TestM1Trapezoid:
         bb = m1["deck"].solid.bounding_box()
         assert bb.max.Y == pytest.approx(0, abs=0.01)
         assert bb.min.Y == pytest.approx(-A_OUT, abs=0.01)
+
+
+@pytest.mark.parametrize("mode, count", [("none", 0), ("all", None)])
+def test_clearance_option(mode, count) -> None:
+    box = HexmoHexagon()
+    box.parseArgs(M6)
+    built = hexmo_parts(box, clearance=mode)
+    tracks = len([p for p in built if p.kind == "track"])
+    clearances = len([p for p in built if p.kind == "clearance"])
+    assert clearances == (tracks if count is None else count)
+
+
+def test_bad_clearance_option() -> None:
+    box = HexmoHexagon()
+    box.parseArgs(M6)
+    with pytest.raises(ValueError, match="clearance"):
+        hexmo_parts(box, clearance="some")
 
 
 def test_export_writes_an_assembly(tmp_path) -> None:

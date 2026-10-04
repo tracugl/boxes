@@ -20,8 +20,10 @@ where it sits once built:
   its start height to its end height, and the boards it stands on;
 * ``track …`` — each track as a ``RAIL_HEIGHT`` ribbon, ``--track_width``
   wide, on the deck or on its riser bed;
-* ``clearance …`` — the train envelope over each track: ``--train_envelope``
-  above the track base, ``--under_track_width`` wide.
+* ``clearance …`` — the train envelope (``--train_envelope`` above the track
+  base, ``--under_track_width`` wide), by default only over the tracks on
+  risers, the ones that pass under or through the deck (``clearance``:
+  ``under``, ``all`` or ``none``).
 
 **Frame.** x/y as the generator's deck frame (hexagon centre, y up, edge 1
 at the top); z = 0 is the top of the floor panel, which is how every track
@@ -45,6 +47,7 @@ import sys
 from dataclasses import dataclass
 
 from boxes.generators._hexmo_deck_slots import trim_segments
+from boxes.generators._hexmo_risers import point_at
 from boxes.generators._hexmo_track_routes import (
     EDGE_ANGLES, offset_segments, segments_polyline,
 )
@@ -141,59 +144,51 @@ def _box(bd, centre, size, angle):
     return bd.Location(centre, (0, 0, angle)) * bd.Box(*size)
 
 
-def _strip(bd, left, right, tops, thickness):
-    """A strip following a track, whose top follows ``tops`` (one z per point).
+# Spacing (mm) of the cross-sections a sloping strip is lofted through.
+_LOFT_STEP = 10.0
 
-    Built face by face (a closed shell of triangles and vertical quads), so it
-    can slope along a curving track.
 
-    @param left, right - Matching plan points down each side of the strip.
-    @param tops        - Top z at each pair of points.
-    @param thickness   - Depth below the top.
+def _strip(bd, segments, width, top_at, thickness):
+    """A strip following a track, ``width`` wide, whose top is ``top_at(s)``.
+
+    Lofted through upright rectangular cross-sections square to the track,
+    evenly spaced along it, so it comes out as one smooth solid (top, bottom,
+    two sides, two ends) even where it curves and slopes at once.
+
+    @param segments  - The track's centreline pieces (``Line``/``Arc``).
+    @param width     - Strip width, centred on the track.
+    @param top_at    - Function: distance along the track → top z there.
+    @param thickness - Depth below the top.
     @returns A build123d Solid.
     """
     V = bd.Vector
-    top = [(V(l[0], l[1], z), V(r[0], r[1], z)) for l, r, z in zip(left, right, tops)]
-    bot = [(V(l[0], l[1], z - thickness), V(r[0], r[1], z - thickness))
-           for l, r, z in zip(left, right, tops)]
-
-    def face(*pts):
-        return bd.Face(bd.Wire.make_polygon(list(pts), close=True))
-
-    faces = []
-    for (l0, r0), (l1, r1), (bl0, br0), (bl1, br1) in zip(top, top[1:], bot, bot[1:]):
-        # Top and bottom as two triangles each (always planar), sides as
-        # vertical quads.
-        faces += [face(l0, r0, r1), face(l0, r1, l1), face(bl0, br1, br0),
-                  face(bl0, bl1, br1), face(l0, l1, bl1, bl0), face(r0, br0, br1, r1)]
-    (l, r), (bl, br) = top[0], bot[0]
-    faces.append(face(l, bl, br, r))
-    (l, r), (bl, br) = top[-1], bot[-1]
-    faces.append(face(l, r, br, bl))
-    return bd.Solid(bd.Shell(faces))
-
-
-def _sides(segments, width):
-    """Matching point lists down each side of a track ``width`` wide, and the
-    distance along the centreline at each pair."""
-    left = segments_polyline(offset_segments(segments, -width / 2.0), _ARC_STEPS)
-    right = segments_polyline(offset_segments(segments, width / 2.0), _ARC_STEPS)
-    centre = segments_polyline(segments, _ARC_STEPS)
-    # Drop repeated points (a zero-length piece, e.g. where a stretch is
-    # trimmed exactly at a join): they would make zero-area faces.
-    keep = [0] + [i for i in range(1, len(centre))
-                  if math.dist(centre[i], centre[i - 1]) > 1e-6]
-    left, right, centre = ([pts[i] for i in keep] for pts in (left, right, centre))
-    along = [0.0]
-    for a, b in zip(centre, centre[1:]):
-        along.append(along[-1] + math.dist(a, b))
-    return left, right, along
+    # Zero-length pieces (a stretch trimmed exactly at a join) have no
+    # direction; leave them out.
+    segments = [seg for seg in segments if seg.length > 1e-9]
+    total = sum(seg.length for seg in segments)
+    n = max(2, math.ceil(total / _LOFT_STEP))
+    sections = []
+    for k in range(n + 1):
+        s = total * k / n
+        (x, y), (dx, dy) = point_at(segments, s)
+        # Half the width either side, square to the direction of travel.
+        hx, hy = -dy * width / 2.0, dx * width / 2.0
+        top = top_at(s)
+        corners = [V(x + hx, y + hy, top), V(x - hx, y - hy, top),
+                   V(x - hx, y - hy, top - thickness), V(x + hx, y + hy, top - thickness)]
+        sections.append(bd.Face(bd.Wire.make_polygon(corners, close=True)))
+    return bd.loft(sections, ruled=False)
 
 
 def _band_polygon(segments, width):
     """Plan outline of a band ``width`` wide along ``segments`` (a slot)."""
-    left, right, _ = _sides(segments, width)
-    return left + right[::-1]
+    left = segments_polyline(offset_segments(segments, -width / 2.0), _ARC_STEPS)
+    right = segments_polyline(offset_segments(segments, width / 2.0), _ARC_STEPS)
+    outline = left + right[::-1]
+    # Drop repeated points (a zero-length piece, e.g. where a stretch is
+    # trimmed exactly at a join): they would make zero-length edges.
+    return [p for i, p in enumerate(outline)
+            if i == 0 or math.dist(p, outline[i - 1]) > 1e-6]
 
 
 # -------------------------------------------------------------------- parts
@@ -289,10 +284,10 @@ def _risers(bd, riser_plan, t):
         lo, hi = rp["stretch"]
         h0, h1 = rp["heights"]
         tag = _route_name(rp["route"], lo, hi)
-        left, right, along = _sides(rp["segments"], rp["width"])
-        length = along[-1] or 1.0
-        tops = [h0 + (h1 - h0) * s / length for s in along]
-        parts.append(Part3D(f"riser bed {tag}", "riser", _strip(bd, left, right, tops, t)))
+        length = (hi - lo) or 1.0
+        bed = _strip(bd, rp["segments"], rp["width"],
+                     lambda s, h0=h0, h1=h1, length=length: h0 + (h1 - h0) * s / length, t)
+        parts.append(Part3D(f"riser bed {tag}", "riser", bed))
         for k, (point, direction, height) in enumerate(rp["stations"], 1):
             angle = math.degrees(math.atan2(direction[1], direction[0])) + 90
             body = height - t
@@ -302,7 +297,7 @@ def _risers(bd, riser_plan, t):
 
 
 def _track_pieces(box, r, l, t, isTrapezoid, riser_plan):
-    """Every track as ``(name, segments, heights)``: on the deck or a riser bed.
+    """Every track as ``(name, segments, heights, on_riser)``: on the deck or a riser bed.
 
     A deck route's stretches carried by a riser are left to the riser, so
     each bit of track appears once, at its real height.
@@ -319,39 +314,53 @@ def _track_pieces(box, r, l, t, isTrapezoid, riser_plan):
             if lo - cursor > 0.5:
                 pieces.append((_route_name(route, cursor, lo),
                                trim_segments(list(g.segments), cursor, lo),
-                               (deck_top, deck_top)))
+                               (deck_top, deck_top), False))
             cursor = max(cursor, hi)
     for rp in riser_plan:
-        pieces.append((_route_name(rp["route"], *rp["stretch"]), rp["segments"], rp["heights"]))
+        pieces.append((_route_name(rp["route"], *rp["stretch"]), rp["segments"],
+                       rp["heights"], True))
     return pieces
 
 
-def _tracks(bd, box, pieces):
+# Which tracks get a train-clearance box: only those on risers (the ones that
+# run under or through the deck), every track, or none.
+CLEARANCE_MODES = ("under", "all", "none")
+
+
+def _tracks(bd, box, pieces, clearance):
     parts = []
-    for name, segments, (h0, h1) in pieces:
-        left, right, along = _sides(segments, box.track_width)
-        length = along[-1] or 1.0
-        bases = [h0 + (h1 - h0) * s / length for s in along]
+    for name, segments, (h0, h1), on_riser in pieces:
+        length = sum(seg.length for seg in segments) or 1.0
+
+        def base(s, h0=h0, h1=h1, length=length):
+            return h0 + (h1 - h0) * s / length
+
         parts.append(Part3D(f"track {name}", "track",
-                            _strip(bd, left, right, [z + RAIL_HEIGHT for z in bases],
-                                   RAIL_HEIGHT)))
-        left, right, _ = _sides(segments, box.under_track_width)
-        envelope = box.train_envelope
-        parts.append(Part3D(f"clearance {name}", "clearance",
-                            _strip(bd, left, right, [z + envelope for z in bases],
-                                   envelope - RAIL_HEIGHT)))
+                            _strip(bd, segments, box.track_width,
+                                   lambda s: base(s) + RAIL_HEIGHT, RAIL_HEIGHT)))
+        if clearance == "all" or (clearance == "under" and on_riser):
+            envelope = box.train_envelope
+            parts.append(Part3D(f"clearance {name}", "clearance",
+                                _strip(bd, segments, box.under_track_width,
+                                       lambda s: base(s) + envelope, envelope - RAIL_HEIGHT)))
     return parts
 
 
-def hexmo_parts(box):
+def hexmo_parts(box, clearance="under"):
     """Build the assembled parts of a HexmoHexagon module.
 
-    @param box - A HexmoHexagon with its arguments parsed (no render needed).
+    @param box       - A HexmoHexagon with its arguments parsed (no render needed).
+    @param clearance - Train-clearance boxes: ``under`` (default) over the
+                       tracks on risers only, ``all`` over every track, or
+                       ``none``.
     @returns List of :class:`Part3D`.
     @throws ValueError - From the generator's own checks (the same settings
                          that refuse to render refuse to export).
     @throws ImportError - When the optional build123d dependency is missing.
     """
+    if clearance not in CLEARANCE_MODES:
+        raise ValueError(f"clearance must be one of {', '.join(CLEARANCE_MODES)} "
+                         f"(got {clearance!r}).")
     bd = _bd()
     r, l, t = _frame(box)
     isTrapezoid = box.trapezoid
@@ -368,7 +377,8 @@ def hexmo_parts(box):
             + _walls(bd, box, r, l, t, isTrapezoid, opening_plan)
             + _supports(bd, box, r, l, t, isTrapezoid)
             + _risers(bd, riser_plan, t)
-            + _tracks(bd, box, _track_pieces(box, r, l, t, isTrapezoid, riser_plan)))
+            + _tracks(bd, box, _track_pieces(box, r, l, t, isTrapezoid, riser_plan),
+                      clearance))
 
 
 def assembly(parts, label="hexmo module"):
@@ -384,28 +394,41 @@ def assembly(parts, label="hexmo module"):
     return bd.Compound(children=children, label=label)
 
 
-def export_step_file(box, path):
+def export_step_file(box, path, clearance="under"):
     """Write a HexmoHexagon module's 3D assembly to a STEP file.
 
-    @param box  - A HexmoHexagon with its arguments parsed.
-    @param path - Output file path.
+    @param box       - A HexmoHexagon with its arguments parsed.
+    @param path      - Output file path.
+    @param clearance - As for :func:`hexmo_parts`.
     @throws ValueError, ImportError - As for :func:`hexmo_parts`.
     """
     bd = _bd()
-    bd.export_step(assembly(hexmo_parts(box)), str(path))
+    bd.export_step(assembly(hexmo_parts(box, clearance)), str(path))
 
 
 def main(argv=None):
-    """``python -m boxes.generators._hexmo_step OUT.step [generator args…]``."""
+    """``python -m boxes.generators._hexmo_step OUT.step [--clearance=MODE] [generator args…]``.
+
+    ``--clearance`` (``under``, ``all`` or ``none``) is the exporter's own;
+    every other option goes to the generator.
+    """
     argv = sys.argv[1:] if argv is None else argv
     if not argv or argv[0].startswith("-"):
         print(__doc__.split("\n\n")[0])
-        print("usage: python -m boxes.generators._hexmo_step OUT.step [--option=value …]")
+        print("usage: python -m boxes.generators._hexmo_step OUT.step "
+              "[--clearance=under|all|none] [--option=value …]")
         return 2
+    clearance = "under"
+    rest = []
+    for arg in argv[1:]:
+        if arg.startswith("--clearance="):
+            clearance = arg.split("=", 1)[1]
+        else:
+            rest.append(arg)
     from boxes.generators.hexmohexagon import HexmoHexagon
     box = HexmoHexagon()
-    box.parseArgs(argv[1:])
-    export_step_file(box, argv[0])
+    box.parseArgs(rest)
+    export_step_file(box, argv[0], clearance)
     print(f"wrote {argv[0]}")
     return 0
 
