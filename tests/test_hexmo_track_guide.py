@@ -122,7 +122,8 @@ class TestInnerOffsetDrawing:
         box = make_box(self.ARGS)
         s, l = 190.0, 100.0
         assert [w[0] for w in box._trackGuideWindows(s, l)] == [95.0, 60.0]
-        assert "outside of curve ->" in self._labels(self.ARGS)
+        # The arrow is helper-part text, etched only with --part_text.
+        assert "outside of curve ->" in self._labels(self.ARGS + ["--part_text=1"])
 
 
 def guide_holes(box: HexmoHexagon) -> list[float]:

@@ -313,8 +313,8 @@ same main line and the spur at a steady 35 mm in, `3:17.5-5:17.5,3:-35-5:-35`.
 With `--track_guide=1`, each edge the routes cross gets its own plate, labelled
 `track guide edge N`. Its windows sit where the routes cross that edge, in mm
 anticlockwise from the edge midpoint. Facing the wall from outside, anticlockwise
-is to the right, so an asymmetric plate is etched `edge M side ->`, naming the
-neighbour on that side. With `--track_template=1` each different route gets a
+is to the right, so with `--part_text=1` an asymmetric plate is etched
+`edge M side ->`, naming the neighbour on that side. With `--track_template=1` each different route gets a
 template; mirror images and reversals share one.
 
 **Example: the helix ring's M6.** Two tracks enter at edge 1, 17.5 mm either side
@@ -357,8 +357,8 @@ so the guide is the same either way. A wider track family makes the plate wider
 to keep the margin round the outer windows.
 
 If the tracks aren't symmetric about the centre (`--track_offset=outer` or `inner`, or a
-non-zero `--track_center_offset`), the plate is etched with
-`outside of curve ->`. The other end of a curve is its mirror image, so flip the
+non-zero `--track_center_offset`), the plate can be etched with
+`outside of curve ->` (`--part_text=1`). The other end of a curve is its mirror image, so flip the
 plate over for that end. The hole pattern is symmetric, so it still fits.
 
 | Parameter | Meaning | N suggestion |
@@ -403,7 +403,9 @@ against both edges and it holds the module's exact curve while you pin it down.
   with its radius, the gauge and `i/N`, plus a mark at each end: **EDGE** on the
   two ends that sit at the module edges, and a matching letter on both sides of
   every cut. With 3 pieces that reads `EDGE … 1/3 … A`, `A … 2/3 … B`,
-  `B … 3/3 … EDGE`, so matching letters go together.
+  `B … 3/3 … EDGE`, so matching letters go together. The radius label and the
+  **EDGE** marks are only etched with `--part_text=1` (see below); the letters
+  always are.
 - It is cut from the module's own `--thickness`, with no handle.
 
 | Parameter | Meaning | N suggestion |
@@ -655,7 +657,7 @@ exactly. Each entry is `route[@from..to]~h0..h1[/width]`:
 - `/width` — the bed width, default `--track_width`.
 
 Supports stand 15 mm in from each end of the bed and evenly between, at most
-`--riser_spacing` (default 80) apart; each has its height etched on it. Fit the
+`--riser_spacing` (default 80) apart; with `--part_text=1` each has its height etched on it. Fit the
 floor panel with its slots under the bed. On a spoke floor (`--bottom spoke`)
 the kite cut-outs would leave nothing for a support to slot into, so a solid
 **spine** is left along each riser's path: a band following the track, the bed's
@@ -706,6 +708,16 @@ curl "http://localhost:4455/HexmoHexagon?render=1&radius=220&thickness=3&h=80\
 &track_openings=3:-17.5:73.6:35,5:35:65.9:35\
 &deck_slots=3:-17.5-5:-35/35" -o hexmo_n_m1_slot.svg
 ```
+
+### Helper-part text (`--part_text`)
+
+The helper parts can carry descriptive text: each riser support's track height,
+the track guide's side arrow (`edge M side ->`, `outside of curve ->`), and the
+track template's radius label and **EDGE** end marks. It clutters the cut sheet,
+so it is **off** by default; set `--part_text=1` to etch it. The letters that pair
+up the cut ends of a split template are always etched, since they are needed to
+reassemble it. Part labels (e.g. `riser 73.2`, `track guide edge 3`) follow the
+standard `--labels` option, and the deck's radius label follows `--track_label`.
 
 ---
 

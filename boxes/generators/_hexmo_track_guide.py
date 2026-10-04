@@ -38,10 +38,12 @@ class HexmoTrackGuideMixin:
     _GUIDE_MIN_WEB = 5  # min material between a track-guide window and the wall end (mm)
 
     def _addTrackGuideArgs(self):
-        """Register --track_guide and --track_guide_clearance.
+        """Register --track_guide, --track_guide_clearance and --part_text.
 
         Called from each generator's ``__init__`` after its --track_* options,
         so the option names, defaults and help text are identical in both.
+        --part_text lives here because both generators cut the helper parts
+        it covers (guide plates and templates; risers are HexmoHexagon only).
         """
         self.argparser.add_argument(
             "--track_guide", action="store", type=boolarg, default=False,
@@ -59,6 +61,13 @@ class HexmoTrackGuideMixin:
                  "sits one material thickness below the deck surface, and this "
                  "height is the vertical room left for roadbed, risers and "
                  "scenery, so the track can move up and down but not sideways.")
+        self.argparser.add_argument(
+            "--part_text", action="store", type=boolarg, default=False,
+            help="Etch descriptive text on the helper parts: each riser "
+                 "support's track height, the track guide's side arrow, and "
+                 "the track template's radius label and EDGE end marks.  Off "
+                 "by default to keep the cut sheet clean.  The letters pairing "
+                 "the cut ends of a split template are always etched.")
 
     def _cornerGroupHoles(self, s, l):
         """List the corner registration holes shared by all side-panel variants.
@@ -331,8 +340,8 @@ class HexmoTrackGuideMixin:
         harmless because the pins are symmetric about the wall centre.
 
         When the tracks are not symmetric about the centre (--track_offset
-        outer, or a --track_center_offset), an arrow is etched pointing to the
-        outside of the curve.  The other end of a curve is its mirror image,
+        outer, or a --track_center_offset) and --part_text is on, an arrow is
+        etched pointing to the outside of the curve.  The other end of a curve is its mirror image,
         so the plate is flipped over for that end.
 
         @param s       - Wall reference length (``side_orig``).
@@ -341,7 +350,7 @@ class HexmoTrackGuideMixin:
         @param offsets - Track positions along the wall (see
                          :meth:`_trackGuideWindows`); default the track family.
         @param label   - Part label.
-        @param arrow   - Text etched when the windows are not symmetric,
+        @param arrow   - Text etched (with --part_text) when the windows are not symmetric,
                          pointing to the +offset side.  Default
                          "outside of curve ->", which is what +offset means
                          for the track family.
@@ -365,7 +374,7 @@ class HexmoTrackGuideMixin:
             for cx, y0, w, h in windows:
                 self.rectangularHole(cx - shift, y0, w, h,
                                      center_x=True, center_y=False)
-            if asymmetric:
+            if asymmetric and self.part_text:
                 # Label in the solid band above the windows.  stroke=True so
                 # lasers that vector-etch by stroke colour still trace it.
                 self.text(arrow, x=width / 2.0,
