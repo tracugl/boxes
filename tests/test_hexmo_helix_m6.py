@@ -39,17 +39,17 @@ from boxes.generators.hexmohexagon import HexmoHexagon
 SCALES = {
     "N": dict(
         radius=220, t=3, lead=26, spacing=35, bed=35, track=17, deck_under=74, envelope=43,
-        spur=(1, 0, 5, 17.5), spur_from=216, ret=(3, 35, 1, 0), ret_to=214, ret_height=31.0,
+        spur=(1, 0, 5, 17.5), spur_from=169, ret=(3, 35, 1, 0), ret_to=186, ret_height=31.0,
         loops=((1, -35, 5, -17.5), (3, -17.5, 1, -35)),
         args=["--radius=220", "--thickness=3", "--h=80", "--edge_width=22", "--spoke_width=60",
               "--bottom=spoke", "--support_length=55", "--support_edges=2,4,6",
               "--track_lead_in=26", "--track_width=17",
               "--track_routes=1:-35-5:-17.5,3:-17.5-1:-35,1:0-5:17.5",
               "--under_track_edges=1", "--under_track_height=27.8", "--under_track_width=35",
-              "--track_openings=5:17.5:73.6:35,3:-35:36.5:35",
-              "--deck_slots=1:0-5:17.5@216../35,3:35-1:0@..214/35",
-              "--risers=1:0-5:17.5@216..~77..73.6/35,3:35-1:0@..214~36.5..31/35,"
-              "3:35-1:0@214..~31..27.8/35"]),
+              "--track_openings=5:17.5:72.5:35,3:-35:35.4:35",
+              "--deck_slots=1:0-5:17.5@169../35,3:35-1:0@..186/35",
+              "--risers=1:0-5:17.5@169..~77..72.5/35,3:35-1:0@..186~35.4..31/35,"
+              "3:35-1:0@186..~31..27.8/35"]),
     "HO": dict(
         radius=500, t=6, lead=23, spacing=80, bed=60, track=30, deck_under=88, envelope=70,
         spur=(1, 0, 5, 40), spur_from=359, ret=(3, 80, 1, 0), ret_to=536, ret_height=18.0,
@@ -116,6 +116,12 @@ class TestM6:
         deck = points(geometry(scale, p["spur"]), 0, p["spur_from"])
         hole = points(geometry(scale, p["ret"]), 0, p["ret_to"])
         assert gap(deck, hole) >= p["track"] / 2 + p["bed"] / 2
+
+    def test_slots_leave_a_web_of_deck_between_them(self, scale) -> None:
+        p = SCALES[scale]
+        spur_slot = points(geometry(scale, p["spur"]), p["spur_from"])
+        ret_slot = points(geometry(scale, p["ret"]), 0, p["ret_to"])
+        assert gap(spur_slot, ret_slot) >= p["bed"] + 10
 
     def test_return_fits_under_the_deck_past_its_slot(self, scale) -> None:
         p = SCALES[scale]
