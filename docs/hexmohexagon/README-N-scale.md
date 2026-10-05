@@ -789,6 +789,87 @@ up the cut ends of a split template are always etched, since they are needed to
 reassemble it. Part labels (e.g. `riser 73.2`, `track guide edge 3`) follow the
 standard `--labels` option, and the deck's radius label follows `--track_label`.
 
+## 3D model for CAD (`--format step`)
+
+HexmoHexagon and HexmoRectangle can output the module **assembled in 3D**, as
+a STEP file you can open in Onshape, FreeCAD, Fusion and so on, instead of the
+laser parts. It's for checking a design before cutting: orbit it, take a section
+through a joint, measure a clearance.
+
+In the web form choose **Format → step** and **Generate**, and the browser
+downloads `HexmoHexagon.step` (or `HexmoRectangle.step`). Every setting is
+checked exactly as for the laser output.
+
+By default each part is **exact**: its real cut outline, the same one the
+laser cuts, with the finger joints, pin holes, big holes, kites, notches and
+slots. It's at nominal size (no burn), extruded to `--thickness` and placed where
+it sits once built, so you can check how the parts fit before cutting. Tabs sit
+in their slots, and the tests check that joined parts don't overlap. Riser beds
+are smooth solids sloping as set, with their support slots cut. Every part is
+named in the CAD part list:
+
+- `floor`, `deck`, `wall edge N` (and the trapezoid's `long wall`),
+  `support edge N`; on a rectangle `long wall`, `end wall`, `long support`,
+  `divider`, `spoke`;
+- `riser bed …` and `riser support …`;
+- `track …`: each track as a 3 mm ribbon on the deck or its bed;
+- `clearance …`: a translucent train envelope (`--train_envelope` high,
+  `--under_track_width` wide). `--step_clearance` sets where: `under` (default)
+  over the tracks on risers, the ones that pass under or through the deck;
+  `all`; or `none`.
+
+`--step_detail=simple` gives plain slabs instead (no joints or holes), which is
+quicker and much lighter. The exact M6 is about 11 MB and takes about 5 s; the
+simple one is 1.5 MB.
+
+Heights are measured as everywhere else, from the top of the floor panel.
+
+**A 3D drawing instead:** choose **Format → svg_3d** for the assembled module
+drawn in 3D: an SVG line drawing seen from the front right, above, with hidden
+lines removed, at 1:1 in mm. It's a quick look at the built module without CAD.
+**view_deck** adds the deck. It's off by default, so the drawing shows inside:
+walls, supports and risers. Only the cut parts are drawn (the cut sheet's red
+lines), so the track ribbons and clearance boxes are left out. `--step_detail`
+applies here too.
+
+**The whole helix ring** (six modules round their centre, plus the entry
+rectangle with its turnouts) exports as one file from the command line:
+
+```bash
+python -m boxes.generators._hexmo_step helix-ring.step --ring=N
+# plain slabs instead of the exact parts (about 6 MB instead of 64 MB):
+python -m boxes.generators._hexmo_step helix-ring.step --ring=N --detail=simple
+# a 3D line drawing of the ring (add --deck for the decks):
+python -m boxes.generators._hexmo_step helix-ring.svg --ring=N
+# or a single module, with any generator options:
+python -m boxes.generators._hexmo_step m6.step --radius=220 --h=80 …
+```
+
+The ring's tracks meet at every joint, same place and same height (the tests
+check this), so following the spur round the ring shows the whole descent.
+
+**Opening it in Onshape:**
+
+1. **Create → Import**, pick the `.step` file.
+2. Choose **Import to a single document**, keep **Import appearances** on, and
+   turn **Orient imported models with Y Axis Up** *off* (the file is Z-up, as
+   Onshape is; with it on, the module lies on its side). Leave composite parts
+   and joining surfaces off.
+3. The result is in the **CAD Imports** folder tab: an assembly with every part
+   named, and a Part Studio. Hide the `deck`s and `clearance`s (filter the list
+   by name) to see underneath, or use **Section view** across a joint.
+4. When the design changes, import the new file fresh. **Update** only keeps
+   parts whose shape is unchanged, so rebuilt beds and tracks fail to resolve.
+
+The free Onshape plan makes documents public.
+
+**Installing:** the 3D export needs the optional `step` dependency (build123d
+and the OpenCascade kernel, 100+ MB): `pip install .[step]`. The Docker image
+includes it when built with `WITH_STEP=1`, as this fork's `docker-compose.yml`
+does; on a slim image it also needs the system OpenGL libraries (`libgl1`).
+Without it, `--format step` stops with a message saying what to install, and
+the laser formats are unaffected.
+
 ---
 
 ## Gotchas

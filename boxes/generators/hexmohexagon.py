@@ -28,6 +28,8 @@ import re
 from boxes import Boxes, edges, boolarg, holeCol, restore
 from boxes.Color import *
 from boxes.generators._hexmo_big_holes import HexmoBigHoleMixin
+from boxes.generators._hexmo_step_format import HexmoStepFormatMixin
+from boxes.generators import _hexmo_step
 from boxes.generators._hexmo_track_guide import HexmoTrackGuideMixin
 from boxes.generators._hexmo_track_template import HexmoTrackTemplateMixin
 from boxes.generators._hexmo_under_track import HexmoUnderTrackMixin
@@ -48,8 +50,8 @@ from boxes.generators._hexmo_track_routes import (
 )
 
 
-class HexmoHexagon(HexmoBigHoleMixin, HexmoTrackGuideMixin, HexmoTrackTemplateMixin,
-                   HexmoUnderTrackMixin, Boxes):
+class HexmoHexagon(HexmoStepFormatMixin, HexmoBigHoleMixin, HexmoTrackGuideMixin,
+                   HexmoTrackTemplateMixin, HexmoUnderTrackMixin, Boxes):
     """Box with a regular hexagon or half hexagon as the base. """
 
     ui_group = "Box"
@@ -324,6 +326,8 @@ class HexmoHexagon(HexmoBigHoleMixin, HexmoTrackGuideMixin, HexmoTrackTemplateMi
         self._addTrackGuideArgs()
         # --track_template, --track_gauge, …, shared with HexmoRectangle.
         self._addTrackTemplateArgs()
+        # --format step and --step_clearance (see _hexmo_step_format).
+        self._addStepFormat()
 
         self.n = 6
 
@@ -439,8 +443,29 @@ class HexmoHexagon(HexmoBigHoleMixin, HexmoTrackGuideMixin, HexmoTrackTemplateMi
             # are too small (≈ MIN_CLEAR) to fit any sub-hole groups, so no
             # gap-filling pass is performed here.
 
-        for _ in range(n_supports):
-            self.rectangularWall(sl, h, "fefe", callback=[draw_holes], move="right")
+        layout = self._supportLayout(getattr(self, "_step_r", self.radius), isTrapezoid)
+        seen = {}
+        for support in layout[:n_supports]:
+            edge = support[2]
+            seen[edge] = seen.get(edge, 0) + 1
+            name = f"support edge {edge}" + ("" if seen[edge] == 1 else f" #{seen[edge]}")
+
+            def frame_and_holes(support=support, name=name):
+                # The 3D export: the body frame (x along the support, y up from
+                # the floor panel), centred on the support's line.
+                _, _, edge, d, turned = support
+                theta = math.radians(EDGE_ANGLES[edge])
+                u = (math.cos(theta), math.sin(theta))
+                along = (-u[1], u[0]) if turned else u
+                normal = (along[1], -along[0])
+                t = self.thickness
+                origin = (u[0] * d - along[0] * sl / 2 - normal[0] * t / 2,
+                          u[1] * d - along[1] * sl / 2 - normal[1] * t / 2, 0.0)
+                self._stepFrame(name, "support", origin, (along[0], along[1], 0),
+                                (0, 0, 1), (0.0, t))
+                draw_holes()
+
+            self.rectangularWall(sl, h, "fefe", callback=[frame_and_holes], move="right")
 
     def drawSupportHoles(self, r, isTrapezoid=False):
         """Cut finger-joint slots into the bottom panel for all three spoke axes.
@@ -1694,7 +1719,10 @@ class HexmoHexagon(HexmoBigHoleMixin, HexmoTrackGuideMixin, HexmoTrackTemplateMi
                              a bed reaching an edge must fit its notch.
         @returns List of dicts: ``segments`` (bed centreline, deck frame),
                  ``width``, ``stations`` (``(point, direction, height)`` per
-                 support, height = track height there) and ``name``.
+                 support, height = track height there), ``name``, ``route``
+                 (the route's ends and offsets), ``stretch`` (``(lo, hi)`` mm
+                 along it), ``heights`` (track height at each end) and
+                 ``bed_in_slot``.
         @throws ValueError - On a malformed entry, a spoke bottom, a height
                              out of range, or a support that would stand in
                              another riser's track, on a support wall's slot,
@@ -1739,6 +1767,9 @@ class HexmoHexagon(HexmoBigHoleMixin, HexmoTrackGuideMixin, HexmoTrackTemplateMi
             plan.append({"segments": segments, "width": width,
                          "stations": stations, "name": name,
                          "route": (spec.start, spec.start_offset, spec.end, spec.end_offset),
+                         # Where along the route the bed runs, and its track
+                         # height at each end (the 3D export slopes the bed).
+                         "stretch": (lo, hi), "heights": (spec.h0, spec.h1),
                          "bed_in_slot": key in self._slotBedKeys()})
         self._checkRiserFootprints(r, isTrapezoid, plan)
         return plan
@@ -1854,18 +1885,26 @@ class HexmoHexagon(HexmoBigHoleMixin, HexmoTrackGuideMixin, HexmoTrackTemplateMi
         if not riser.get("bed_in_slot"):
             self._drawRiserBed(riser, segments, width, move)
         t = self.thickness
-        for _, _, height in riser["stations"]:
+        tag = _hexmo_step._route_name(riser["route"], *riser["stretch"])
+        for k, (point, direction, height) in enumerate(riser["stations"], 1):
             body = height - t
             label = f"{height:.1f}"
             # The etched height is optional; the part label (--labels) still
-            # names the support with its height either way.
-            callback = None
-            if self.part_text:
-                callback = [lambda b=body, txt=label: self.text(
-                    txt, width / 2, b / 2, align="middle center",
-                    fontsize=min(4.0, b / 3), color=Color.ETCHING)]
+            # names the support with its height either way.  The 3D export
+            # records the body frame (x across the track, y up from the floor
+            # panel), centred on the station.
+            def support_cb(b=body, txt=label, k=k, point=point, direction=direction):
+                across = (-direction[1], direction[0])
+                origin = (point[0] - across[0] * width / 2 - direction[0] * t / 2,
+                          point[1] - across[1] * width / 2 - direction[1] * t / 2, 0.0)
+                self._stepFrame(f"riser support {tag} #{k}", "riser", origin,
+                                (across[0], across[1], 0), (0, 0, 1), (0.0, t))
+                if self.part_text:
+                    self.text(txt, width / 2, b / 2, align="middle center",
+                              fontsize=min(4.0, b / 3), color=Color.ETCHING)
+
             self.rectangularWall(width, body, "fefe", move="right",
-                                 label=f"riser {label}", callback=callback)
+                                 label=f"riser {label}", callback=[support_cb])
 
     def _drawRiserBed(self, riser, segments, width, move):
         """The separate bed strip, for a riser whose bed is not a slot's cut-out."""
@@ -1876,6 +1915,10 @@ class HexmoHexagon(HexmoBigHoleMixin, HexmoTrackGuideMixin, HexmoTrackTemplateMi
         th = max(p[1] for p in points) - miny
         if not self.move(tw, th, move, True):
             self.moveTo(-minx, -miny)
+            # The 3D export cuts this bed's support slots into its sloping bed.
+            tag = _hexmo_step._route_name(riser["route"], *riser["stretch"])
+            self._stepFrame(f"riser bed {tag}", "bedholes", (0.0, 0.0, 0.0),
+                            (1, 0, 0), (0, 1, 0), (0.0, 0.0))
             with self.saved_context():
                 self._riserFingerHoles(riser["stations"], width)
             start, heading, steps = strip_outline(segments, width)
@@ -2251,6 +2294,9 @@ class HexmoHexagon(HexmoBigHoleMixin, HexmoTrackGuideMixin, HexmoTrackTemplateMi
         # Side-wall height equals box height (no taper — l simplifies from
         # sqrt((r0−r1)²+h²) to h when r0=r1).
         l = h
+        # The deck radius and wall body height, for the 3D export's part frames
+        # (drawSupports needs them; see _stepFrame).
+        self._step_r, self._step_l = r, l
         # Dihedral correction angle between adjacent side panels (taper angle = 0).
         phi = 180 - 2 * math.degrees(math.asin(math.cos(math.pi / n)))
 
@@ -2363,6 +2409,25 @@ class HexmoHexagon(HexmoBigHoleMixin, HexmoTrackGuideMixin, HexmoTrackTemplateMi
                 else:
                     support_cb = [track_cb]
 
+            # The 3D export records where this panel goes: its callback[0]
+            # frame is the deck frame (t below the true centre on the
+            # trapezoid), at the floor or deck height.
+            def framed(cbs):
+                cbs = list(cbs or [None])
+                first = cbs[0]
+
+                def cb0():
+                    lift = -self.thickness if isTrapezoid else 0.0
+                    z0 = l if is_top else -self.thickness
+                    self._stepFrame("deck" if is_top else "floor", "panel",
+                                    (0.0, lift, z0), (1, 0, 0), (0, 1, 0),
+                                    (0.0, self.thickness))
+                    if first:
+                        first()
+
+                cbs[0] = cb0
+                return cbs
+
             if isTrapezoid:
                 if top_type == "spoke":
                     # Build spoke callbacks; only append drawSupportHoles when
@@ -2372,10 +2437,10 @@ class HexmoHexagon(HexmoBigHoleMixin, HexmoTrackGuideMixin, HexmoTrackTemplateMi
                         spoke_cbs.append(lambda: self.drawSupportHoles(r=r, isTrapezoid=True))
                     self.drawTrapezoidWall(
                         r=r, edges_char=joint_type[1], move="right",
-                        callback=spoke_cbs)
+                        callback=framed(spoke_cbs))
                 else:  # "closed"
                     self.drawTrapezoidWall(r=r, edges_char=deck_edges(joint_type, is_top),
-                                           move="right", callback=support_cb)
+                                           move="right", callback=framed(support_cb))
             else:
                 if top_type == "spoke":
                     spoke_cbs = [lambda: spoke_floor(r, joint_type, False)]
@@ -2383,10 +2448,10 @@ class HexmoHexagon(HexmoBigHoleMixin, HexmoTrackGuideMixin, HexmoTrackTemplateMi
                         spoke_cbs.append(lambda: self.drawSupportHoles(r=r))
                     self.regularPolygonWall(
                         corners=n, r=r, edges=joint_type[1], move="right",
-                        callback=spoke_cbs)
+                        callback=framed(spoke_cbs))
                 else:  # "closed"
                     self.regularPolygonWall(corners=n, r=r, edges=deck_edges(joint_type, is_top),
-                                            move="right", callback=support_cb)
+                                            move="right", callback=framed(support_cb))
 
         with self.saved_context():
             # Draw bottom panel first, then top (order affects SVG layout).
@@ -2422,8 +2487,23 @@ class HexmoHexagon(HexmoBigHoleMixin, HexmoTrackGuideMixin, HexmoTrackTemplateMi
         # callback origin sits t to the left of where it was before trimming,
         # so shifting t rightward (−y in local coords) restores centre alignment
         # when new and old panels are stacked and centred.
-        def draw_aligned_holes(under_track=False, openings=()):
+        def wall_frame(edge):
+            # The wall-hole frame (x up from the floor panel, y along the
+            # wall, its centre at side_orig/2, anticlockwise seen from above)
+            # placed on the wall's outer face; it is t thick inwards.
+            theta = math.radians(EDGE_ANGLES[edge])
+            u = (math.cos(theta), math.sin(theta))
+            tan = (-u[1], u[0])
+            out = r * math.sqrt(3) / 2 + self.thickness
+            origin = (out * u[0] - side_orig / 2 * tan[0],
+                      out * u[1] - side_orig / 2 * tan[1], 0.0)
+            self._stepFrame(f"wall edge {edge}", "wall", origin, (0, 0, 1),
+                            (tan[0], tan[1], 0), (0.0, self.thickness))
+
+        def draw_aligned_holes(under_track=False, openings=(), edge=None):
             self.moveTo(0, -self.thickness)
+            if edge is not None:
+                wall_frame(edge)
             if under_track or openings:
                 self.drawAlignmentHoles(side_orig, l, "A", under_track=under_track,
                                         openings=openings)
@@ -2440,6 +2520,11 @@ class HexmoHexagon(HexmoBigHoleMixin, HexmoTrackGuideMixin, HexmoTrackTemplateMi
         n_standard = 3 if isTrapezoid else n
         standard_walls = ([(e, e in under_edges) for e in feature_edges]
                           + [(None, False)] * (n_standard - len(feature_edges)))
+        # Plain walls are identical; the 3D export puts them on the remaining
+        # edges in order.
+        plain_edges = iter(e for e in (sorted(self._TRAPEZOID_EDGES) if isTrapezoid
+                                       else range(1, n + 1))
+                           if e not in feature_edges)
 
         def wall_openings(edge):
             """This edge's track openings in the wall-hole frame.
@@ -2464,8 +2549,10 @@ class HexmoHexagon(HexmoBigHoleMixin, HexmoTrackGuideMixin, HexmoTrackTemplateMi
                 pieces, _ = wall_and_deck_pieces(side, side_orig, notches[edge])
                 wall_edges[6] = SplitJointEdge(self, self.edges[top_edge], pieces)
             openings = wall_openings(edge)
+            on_edge = edge if edge is not None else next(plain_edges)
             self.polygonWall(borders0, edge=wall_edges, correct_corners=False, move="right",
-                             callback=[None, lambda: draw_aligned_holes(under_track, openings)],
+                             callback=[None, lambda: draw_aligned_holes(under_track, openings,
+                                                                        on_edge)],
                              label=f"edge {edge}" if edge is not None else "")
 
         # Alignment-hole callback for the trapezoid long back wall.
@@ -2480,6 +2567,11 @@ class HexmoHexagon(HexmoBigHoleMixin, HexmoTrackGuideMixin, HexmoTrackTemplateMi
         # means the holes never move when the trim changes.
         def draw_aligned_holes_long():
             self.moveTo(0, side_long / 2 - side_orig)
+            # The long wall's hole frame: x up, y along it from +x towards -x,
+            # its centre (side_orig) on the centre line; placed on its outer
+            # face (y = 0), it is t thick towards the deck (-y).
+            self._stepFrame("long wall", "wall", (side_orig, 0.0, 0.0), (0, 0, 1),
+                            (-1, 0, 0), (0.0, self.thickness))
             self.drawAlignmentHolesLong(2 * side_orig, l, "A")
 
         # Standard stepped-tab side-panel border.  With no taper, d_top = d_bottom = 0

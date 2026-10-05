@@ -34,6 +34,11 @@ dependencies = [
   "typing_extensions>=4.5.0",
 ]
 
+[project.optional-dependencies]
+# 3D (STEP) export of assembled Hexmo modules: build123d brings the OpenCascade
+# kernel (cadquery-ocp, 100+ MB), so it is opt-in: pip install .[step]
+step = ["build123d>=0.13"]
+
 [dependency-groups]
 dev = [
   "lxml>=6.0.2",
