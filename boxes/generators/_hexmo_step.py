@@ -650,9 +650,9 @@ _CURVE_STEPS = 6
 # Two path ends closer than this (mm) join.
 _JOIN = 1e-3
 # An outline whose own ends are this close (mm) is closed with a straight
-# line: some panels are drawn a fraction of a millimetre short of closing
-# (e.g. the trapezoid with FingerJoint_extra_length), and without closing it
-# the panel would be lost and its holes taken for outlines.
+# line: a panel drawn a fraction of a millimetre short of closing (as the
+# trapezoid was with FingerJoint_extra_length before BOX-65) would otherwise
+# be lost and its holes taken for outlines.
 _BRIDGE = 1.0
 
 

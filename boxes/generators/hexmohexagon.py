@@ -2058,6 +2058,29 @@ class HexmoHexagon(HexmoStepFormatMixin, HexmoBigHoleMixin, HexmoTrackGuideMixin
                           angle=text_angle, align="middle center",
                           fontsize=fontsize, color=Color.ETCHING, stroke=True)
 
+    def _trapezoidMiter(self, slant_width, join_width):
+        """The two steps of a trapezoid panel's 120° corner (V2 or V5).
+
+        Geometry, about the inner hexagon (side r, apothem a, centre C): the
+        slanted side's line runs ``slant_width`` outside the hexagon's side,
+        and the join edge's line ``join_width - t`` above C (see
+        drawTrapezoidWall).  The slanted edge's drawn length r ends
+        ``slant_width/√3`` past the foot of the inner corner (the 60° miter at
+        V1/V0), so the corner where the two lines meet lies
+        ``(slant_width + 2e)/√3`` further along it, with e = join_width - t.
+        From there the join edge's line runs ``(2·slant_width + e)/√3`` beyond
+        the end of the inner hexagon's centre line before its edge (length 2r)
+        starts.  With both widths equal to t these are t/√3 and 2t/√3.
+
+        @param slant_width - The slanted edge's width at the corner.
+        @param join_width  - The join edge's width at the corner.
+        @returns ``(along_slant, along_join)``, the step along the slanted side
+                 into the corner and the step along the join edge out of it.
+        """
+        e = join_width - self.thickness
+        root3 = math.sqrt(3.0)
+        return (slant_width + 2 * e) / root3, (2 * slant_width + e) / root3
+
     def drawTrapezoidWall(self, r, edges_char='e', hole=None, callback=None, move=None):
         """Draw a trapezoidal panel — the bottom (or top) half of a regular hexagon.
 
@@ -2098,17 +2121,20 @@ class HexmoHexagon(HexmoStepFormatMixin, HexmoBigHoleMixin, HexmoTrackGuideMixin
         # Bounding box height = H + 2*thickness + spacing.  We want this to equal
         # H_geom + spacing, so H = H_geom - 2*thickness.
         #
-        # The cut path height is determined by the edge/corner geometry.  A naive
-        # edgeCorner(120° exterior) at V2 produces step1 = t*tan(60°) = t√3 in the
-        # 60° direction, contributing y = t√3·sin(60°) = 3t/2.  Combined with V1's
-        # +t/2 and the per-edge shortfall, the total comes out to H_geom + t — one
-        # thickness too tall.
+        # The cut path is the turtle path, and its geometry comes from the edges and
+        # corners.  As in regularPolygonWall, the bottom and slanted sides run
+        # w = edge.startWidth() outside the sides of the hexagon of side r (the
+        # "inner" hexagon, centre C): for a finger-joint counterpart that is
+        # t + extra_length, so the fingers stand proud by extra_length, ready to
+        # be sanded flush.  The join edge's line is the inner hexagon's centre
+        # line, raised by w - t, so its fingers end flush with the outer face of
+        # the long wall (whose outer face is at C) plus the same extra.
         #
-        # The fix: at V2 and V5 the step that lies along the slant direction is drawn
-        # as t/√3 (matching the miter used at 60°-exterior hex vertices) rather than
-        # t√3.  This brings the join-edge outer face to exactly H_geom, so two
-        # trapezoid panels placed back-to-back on their join edges reproduce the full
-        # hexagon height.
+        # A naive edgeCorner(120° exterior) at V2 steps t·tan(60°) = t√3 and lands
+        # one thickness too high.  The V2/V5 steps below are instead the exact
+        # distances to where the slanted side's line meets the join edge's line
+        # (see _trapezoidMiter).  With extra_length = 0 they are t/√3 along the
+        # slant and 2t/√3 along the join edge.
         H = r * math.sqrt(3) / 2.0 - 2 * self.thickness
 
         # Resolve the edge character(s) to edge objects.  Replicate a single char
@@ -2136,13 +2162,17 @@ class HexmoHexagon(HexmoStepFormatMixin, HexmoBigHoleMixin, HexmoTrackGuideMixin
         self.moveTo(0.5 * tw - 0.5 * r, edges[0].margin())
 
         # Centre callback (callback[0] for kites) and optional central hole.
-        # The hex centre sits at the join-edge outer face level (H_geom from V0).
-        # We fire the callback at y = H + 2*thickness + burn = H_geom + burn so
-        # that kite paths originate at the join-edge boundary and extend inward
-        # (downward in panel coordinates).
+        # It fires one thickness below the inner hexagon's centre C, so that
+        # kite paths originate at the join-edge boundary and extend inward
+        # (downward in panel coordinates): y = H + 2*thickness = H_geom when the
+        # bottom edge's width is the thickness.  A wider edge (extra_length) puts
+        # the bottom line further out from C, and so V0 further below it; the
+        # callback rises by the difference, staying put relative to C and to
+        # the edge callbacks below, as regularPolygonWall's does.
+        centre_y = H + 2 * self.thickness + (edges[0].startWidth() - self.thickness)
         if hole:
-            self.hole(r / 2., H + 2 * self.thickness + self.burn, hole / 2.)
-        self.cc(callback, 0, r / 2., H + 2 * self.thickness + self.burn)
+            self.hole(r / 2., centre_y + self.burn, hole / 2.)
+        self.cc(callback, 0, r / 2., centre_y + self.burn)
 
         # ── Edge 0: short bottom edge (length r) ─────────────────────────────
         self.cc(callback, 1, 0, edges[0].startWidth() + self.burn)
@@ -2153,32 +2183,24 @@ class HexmoHexagon(HexmoStepFormatMixin, HexmoBigHoleMixin, HexmoTrackGuideMixin
         self.cc(callback, 2, 0, edges[1].startWidth() + self.burn)
         edges[1](r)
 
-        # V2 corner (120° exterior, interior 60°): use t/√3 for the slant-direction
-        # step instead of the standard t·tan(60°) = t√3.  This is the same miter
-        # size used at hexagon vertices (60° exterior) and places the join-edge outer
-        # face at exactly H_geom — half the full hexagon path height.
-        self.edge(self.thickness / math.sqrt(3.0))
+        # V2 corner (120° exterior, interior 60°): step to where the right slant's
+        # line meets the join edge's line, turn, and step on to where edge 2 starts.
+        along_slant, along_join = self._trapezoidMiter(edges[1].endWidth(),
+                                                       edges[2].startWidth())
+        self.edge(along_slant)
         self.corner(120)
-        # step3 at 180°: use 2t/√3 (= 2A) not t·tan(60°)=t√3 (= 3A).
-        # The 3A value over-extends the path by A = t/√3 per side, producing a
-        # trapezoid that is 2A = 2t/√3 wider than the hexagon.  2A matches the
-        # miter geometry needed for the join-edge outer face to align with the
-        # corresponding hexagon vertex.
-        self.edge(2.0 * self.thickness / math.sqrt(3.0))
+        self.edge(along_join)
 
         # ── Edge 2: long top/join edge (length 2r) ───────────────────────────
         self.cc(callback, 3, 0, edges[2].startWidth() + self.burn)
         edges[2](2 * r)
 
-        # V5 corner (120° exterior, interior 60°): symmetric reduction of the
-        # return step3 (t/√3 instead of t√3) so the path closes correctly after
-        # the modified V2 step1.
-        # step1 at 180°: symmetric reduction matching the V2 step3 fix above.
-        # 2t/√3 instead of t·tan(60°)=t√3 so both corners contribute equally to
-        # closing the extra horizontal travel introduced by the modified V2 step1.
-        self.edge(2.0 * self.thickness / math.sqrt(3.0))
+        # V5 corner: the mirror image of V2, onto the left slant.
+        along_slant, along_join = self._trapezoidMiter(edges[3].startWidth(),
+                                                       edges[2].endWidth())
+        self.edge(along_join)
         self.corner(120)
-        self.edge(self.thickness / math.sqrt(3.0))
+        self.edge(along_slant)
 
         # ── Edge 3: left slanted side (length r) ─────────────────────────────
         self.cc(callback, 4, 0, edges[3].startWidth() + self.burn)
