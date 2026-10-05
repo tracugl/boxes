@@ -182,3 +182,48 @@ def test_helix_m6_keeps_all_six_kites() -> None:
         if 25 < max(xs) - min(xs) < 300:
             big.append(loop)
     assert len(big) == 6
+
+
+class TestCappedSpines:
+    """A riser that starts or stops mid-module only keeps the floor solid
+    where it is: past its end the kites keep their full size.  Risers on one
+    route that meet end to end share one spine along the whole curve."""
+
+    @staticmethod
+    def floor_loops(args):
+        from boxes.generators import _hexmo_step
+        box = HexmoHexagon()
+        box.parseArgs(args)
+        floor = next(f for f in _hexmo_step._render_frames(box) if f.name == "floor")
+        return [[p for seg in loop for p in seg[1:]]
+                for loop in _hexmo_step._frame_loops(floor)]
+
+    def test_m6_kites_beyond_the_spur_riser_are_whole(self) -> None:
+        # The spur's riser starts 169 mm along its route; the two kites by
+        # edges 1/2 and 1/6 are past its start, so they are the full kites.
+        from boxes.generators._hexmo_helix_ring import HELIX_RING_N
+
+        def span(l):
+            return max(p[0] for p in l) - min(p[0] for p in l)
+
+        def areas(args):
+            return sorted(round(area(l)) for l in self.floor_loops(args) if 25 < span(l) < 300)
+
+        m6 = HELIX_RING_N["M6"]
+        plain = [a for a in m6 if not a.startswith("--risers")]
+        full = max(areas(plain))
+        assert sum(1 for a in areas(m6) if a == full) >= 3   # the two north ones + edge 3/4
+
+    def test_m6_slots_keep_clear_of_the_kites(self) -> None:
+        import math
+        from boxes.generators._hexmo_helix_ring import HELIX_RING_N
+        loops = self.floor_loops(HELIX_RING_N["M6"])
+
+        def span(l):
+            return max(p[0] for p in l) - min(p[0] for p in l)
+        kites = [l for l in loops if 25 < span(l) < 300]
+        slots = [l for l in loops if span(l) <= 25]
+        for s in slots:
+            for p in s:
+                assert not any(inside(k, p) for k in kites)
+                assert min(math.dist(p, q) for k in kites for q in k) > 5

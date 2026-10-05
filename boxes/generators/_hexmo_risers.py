@@ -352,23 +352,58 @@ def spine_kites(kites, spines, min_piece):
     """Cut a solid spine out of the kites under each riser.
 
     @param kites     - Kite polygons.
-    @param spines    - ``(left_edge, right_edge)`` polylines per riser: the
-                       band's two edges, in the kites' frame, running in the
-                       direction of travel and well past both ends.
+    @param spines    - ``(left_edge, right_edge[, capped])`` per riser: the
+                       band's two edges, in the kites' frame, in the direction
+                       of travel.  An uncapped spine's edges run well past
+                       both ends, and the kites are split along them.  A
+                       capped one ends inside the module: its band (the edges
+                       joined across their ends) is taken out of the kites as
+                       a shape, so a kite beyond its end keeps its full size.
     @param min_piece - Pieces narrower than this (the largest circle that fits
                        in them, see _clear_width) are left solid.
     @returns The openings to cut.  Kites the spines miss are unchanged.
     """
     pieces = [list(k) for k in kites]
-    for left, right in spines:
+    for spine in spines:
+        left, right = spine[0], spine[1]
+        capped = len(spine) > 2 and spine[2]
         out = []
         for piece in pieces:
-            out += _keep_side(piece, left, +1) + _keep_side(piece, right, -1)
+            if capped:
+                out += _subtract_band(piece, left, right)
+            else:
+                out += _keep_side(piece, left, +1) + _keep_side(piece, right, -1)
         pieces = out
     original = [list(k) for k in kites]
     return [p for p in pieces
             if p in original or _width(p) >= min_piece
             or _clear_width(p, enough=min_piece) >= min_piece]
+
+
+def _subtract_band(piece, left, right):
+    """A piece less a capped spine's band (its edges joined across the ends).
+
+    @param piece       - Polygon points.
+    @param left, right - The band's edges, in the direction of travel.
+    @returns The polygons left: the piece itself if the band misses it, else
+             the parts outside the band.  A band lying wholly inside a piece
+             would leave it as an island; the piece is then split along the
+             band's edges instead, as for an uncapped spine.
+    """
+    from shapely.geometry import Polygon
+
+    shape = Polygon(piece)
+    band = Polygon(list(left) + list(reversed(right)))
+    if not band.is_valid:
+        band = band.buffer(0)
+    if not shape.intersects(band):
+        return [piece]
+    rest = shape.difference(band)
+    parts = list(getattr(rest, "geoms", [rest]))
+    if any(getattr(g, "interiors", ()) for g in parts):
+        return _keep_side(piece, left, +1) + _keep_side(piece, right, -1)
+    return [[(x, y) for x, y in g.exterior.coords[:-1]]
+            for g in parts if g.geom_type == "Polygon" and not g.is_empty and g.area > 1e-6]
 
 
 def point_in_convex(polygon, p):

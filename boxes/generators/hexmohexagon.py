@@ -953,28 +953,60 @@ class HexmoHexagon(HexmoStepFormatMixin, HexmoBigHoleMixin, HexmoTrackGuideMixin
 
         Each spine follows the riser's bed path, the bed's width plus
         _SPINE_MARGIN each side wide, so every support slot sits inside it.
-        Its edges run straight on _SPINE_RUN_ON past both ends, so a riser
-        stopping inside a kite still splits it cleanly.  Riser paths are in
-        the true-centre frame; the trapezoid's kites are drawn one thickness
-        below it (see drawTrackLines, "Frame origin").
+        Risers along the same route that meet end to end (e.g. a descent in
+        two stretches) share one spine following the whole path.  Where a
+        spine reaches a wall its edges run straight on _SPINE_RUN_ON, well
+        past the frame, so it splits each kite cleanly; where it ends inside
+        the module (a riser starting or stopping mid-deck) it stops
+        _SPINE_MARGIN past the bed instead, so the kites beyond keep their
+        full size (see spine_kites).  Riser paths are in the true-centre
+        frame; the trapezoid's kites are drawn one thickness below it (see
+        drawTrackLines, "Frame origin").
+
+        @param riser_plan  - From _riserPlan.
+        @param isTrapezoid - True for the half-hexagon.
+        @returns ``(left_edge, right_edge, capped)`` per spine: the edges as
+                 polylines in the direction of travel, and whether it ends
+                 inside the module at either end.
+        @throws ValueError - If a bed is too wide for its curve.
         """
         lift = self.thickness if isTrapezoid else 0.0
         spines = []
-        for riser in riser_plan:
-            segments = riser["segments"]
-            total = sum(seg.length for seg in segments)
-            run = self._SPINE_RUN_ON
-            path = trim_segments(segments, -run, total + run)
-            half = riser["width"] / 2 + self._SPINE_MARGIN
+        for path, half, at_start, at_end, name in self._spinePaths(riser_plan):
+            total = sum(seg.length for seg in path)
+            lead = self._SPINE_RUN_ON if at_start else self._SPINE_MARGIN
+            tail = self._SPINE_RUN_ON if at_end else self._SPINE_MARGIN
+            path = trim_segments(path, -lead, total + tail)
             edges = []
             for d in (-half, half):          # left edge, right edge
                 shifted = offset_segments(tuple(path), d)
                 if shifted is None:
-                    raise ValueError(
-                        f"{riser['name']}: the bed is too wide for its curve.")
+                    raise ValueError(f"{name}: the bed is too wide for its curve.")
                 edges.append([(x, y + lift) for x, y in segments_polyline(shifted, 32)])
-            spines.append(tuple(edges))
+            spines.append((edges[0], edges[1], not (at_start and at_end)))
         return spines
+
+    def _spinePaths(self, riser_plan):
+        """Riser bed paths, joined where risers on one route meet end to end.
+
+        @param riser_plan - From _riserPlan.
+        @returns ``(segments, half_width, at_start_wall, at_end_wall, name)``
+                 per spine, in riser order.
+        """
+        out = []
+        for rp in riser_plan:
+            lo, hi = rp["stretch"]
+            half = rp["width"] / 2 + self._SPINE_MARGIN
+            prev = out[-1] if out else None
+            if (prev is not None and prev["route"] == rp["route"]
+                    and abs(prev["hi"] - lo) < 1e-6 and prev["half"] == half):
+                prev["segments"] = list(prev["segments"]) + list(rp["segments"])
+                prev["hi"] = hi
+                continue
+            out.append({"route": rp["route"], "segments": list(rp["segments"]), "lo": lo,
+                        "hi": hi, "total": rp["total"], "half": half, "name": rp["name"]})
+        return [(tuple(o["segments"]), o["half"], o["lo"] < 1e-6,
+                 o["hi"] > o["total"] - 1e-6, o["name"]) for o in out]
 
     def drawKites(self, r, joint_type, isTrapezoid, ribs=()):
         """Draw the kite-shaped cutouts inside a spoke panel.
@@ -1819,6 +1851,9 @@ class HexmoHexagon(HexmoStepFormatMixin, HexmoBigHoleMixin, HexmoTrackGuideMixin
                          # Where along the route the bed runs, and its track
                          # height at each end (the 3D export slopes the bed).
                          "stretch": (lo, hi), "heights": (spec.h0, spec.h1),
+                         # The whole route's length: a stretch reaching 0 or
+                         # this ends at a wall (see _kiteSpines).
+                         "total": total,
                          "bed_in_slot": key in self._slotBedKeys()})
         self._checkRiserFootprints(r, isTrapezoid, plan)
         return plan
