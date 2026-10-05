@@ -218,8 +218,38 @@ class TestSupports:
         assert max(heights) == pytest.approx(L + T)
 
     def test_each_panel_carries_its_own_supports_slots(self, m2) -> None:
-        assert len(points(m2["lower ground"])) == 2          # outline + one slot
+        # The lower plate: outline, the shortened support's slot and two kites.
+        assert len(points(m2["lower ground"])) == 4
         assert len(points(m2["deck"])) == 2
+
+
+class TestLowerPlateKites:
+    """The floor's kites, cut short at the plate's curved edge, keeping the
+    same --edge_width frame inside it as along its walls."""
+
+    def kites(self, frame):
+        out = outline(frame)
+        return [l for l in points(frame) if l != out
+                and max(p[0] for p in l) - min(p[0] for p in l) > 20]
+
+    def test_two_kites_beside_the_support(self, m2) -> None:
+        kites = self.kites(m2["lower ground"])
+        assert len(kites) == 2
+        # Either side of the central spoke (--spoke_width 60).
+        assert sorted(round(min(abs(p[0]) for p in k), 1) for k in kites) == [30.0, 30.0]
+
+    def test_kites_keep_the_frame_from_the_curved_edge(self, m2) -> None:
+        centre = slot_centre()
+        for kite in self.kites(m2["lower ground"]):
+            gap = min(distance(deck_frame(p), centre) for p in kite) - SLOT / 2
+            assert gap == pytest.approx(22, abs=0.05)
+
+    def test_kites_follow_the_floor_s(self, m2) -> None:
+        # Away from the curved edge each kite is the floor's: same edge-4 side.
+        floor = [l for l in points(m2["floor"]) if l != outline(m2["floor"])]
+        lows = sorted(round(min(p[1] for p in k), 2) for k in self.kites(m2["lower ground"]))
+        floor_lows = {round(min(p[1] for p in k), 2) for k in floor}
+        assert set(lows) <= floor_lows
 
 
 class TestUpperEdgeGap:

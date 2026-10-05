@@ -2550,11 +2550,12 @@ class HexmoHexagon(HexmoStepFormatMixin, HexmoBigHoleMixin, HexmoTrackGuideMixin
                                             move="right", callback=framed(support_cb))
 
         def lower_plate_callbacks(r):
-            """The lower plate's frame (3D export) and its supports' slots."""
+            """The lower plate's frame (3D export), kites and supports' slots."""
             def cb0():
                 self._stepFrame("lower ground", "panel",
                                 (0.0, -self.thickness, lower_plan.body), (1, 0, 0), (0, 1, 0),
                                 (0.0, self.thickness))
+                self._cutKites(self._lowerPlateKites(r), ())
             cbs = [cb0]
             if self.supports and lower_plan.lower:
                 cbs.append(lambda: self.drawSupportHoles(r=r, isTrapezoid=True,

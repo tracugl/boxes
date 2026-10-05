@@ -41,8 +41,10 @@ import math
 from contextlib import contextmanager
 from dataclasses import dataclass
 
-from boxes.generators._hexmo_deck_slots import centreline_points, parse_deck_slots
-from boxes.generators._hexmo_risers import _side
+from boxes.generators._hexmo_deck_slots import (
+    centreline_points, parse_deck_slots, trim_segments,
+)
+from boxes.generators._hexmo_risers import _side, spine_kites
 from boxes.generators._hexmo_track_openings import SplitJointEdge
 from boxes.generators._hexmo_track_routes import (
     EDGE_ANGLES, edge_position, offset_segments, route_geometry, segments_polyline,
@@ -103,6 +105,9 @@ class LowerGroundPlan:
                        edge), likewise.
     @ivar lower      - Indices into ``_supportLayout`` of the supports under
                        the lower plate (shortened); the rest stay under the deck.
+    @ivar slot       - The spur slot's centreline pieces (trapezoid), and
+    @ivar plate_side - the signed offset (mm, right of travel) of its side
+                       the lower plate stops at.
     """
 
     height: float
@@ -113,6 +118,8 @@ class LowerGroundPlan:
     deck_curve: list | None = None
     plate_curve: list | None = None
     lower: frozenset = frozenset()
+    slot: tuple | None = None
+    plate_side: float = 0.0
 
 
 class HexmoLowerGroundMixin:
@@ -275,10 +282,11 @@ class HexmoLowerGroundMixin:
         for d in (width / 2, -width / 2):
             pts = _towards_3_to_5(segments_polyline(offset_segments(slot, d), _ARC_STEPS),
                                   apothem)
-            sides.append(pts)
+            sides.append((d, pts))
         # The side nearer edge 4 is the plate's edge; the other the slot's outer edge.
-        sides.sort(key=lambda pts: min(math.dist(p, inner_mark) for p in pts))
-        plate, outer = sides
+        sides.sort(key=lambda side: min(math.dist(p, inner_mark) for p in side[1]))
+        (plan.plate_side, plate), (_, outer) = sides
+        plan.slot = slot
         # The slot's ends must line up with the wall openings' sides.
         for edge, end_point, step_pos, what in (
                 (3, plate[0], plan.walls[3].pos_in, "inner"),
@@ -373,6 +381,41 @@ class HexmoLowerGroundMixin:
                     f"{support[3]:g} mm from the centre is neither under the lower "
                     "plate nor under the deck; move it with --support_edges.")
         return frozenset(lower)
+
+    def _lowerPlateKites(self, r):
+        """Kite openings for the lower plate: the floor's, cut short at its edge.
+
+        The floor's kites (see _kitePolygons) are clipped to the lower plate,
+        keeping the same frame width (--edge_width) inside its curved edge as
+        along its walls; pieces too thin to be worth cutting are left solid.
+
+        @param r - Inner hexagon circumradius (the panels').
+        @returns Kite polygons in the plate's centre-callback frame (one
+                 thickness below the hexagon centre, as the floor's), or an
+                 empty list when the floor has none.
+        """
+        plan = self._lower_plan
+        kites = self._kitePolygons(r, True)
+        if not kites:
+            return []
+        sign = 1.0 if plan.plate_side > 0 else -1.0
+        run = 2 * r                    # well past both walls, to cut cleanly
+        total = sum(seg.length for seg in plan.slot)
+        path = trim_segments(plan.slot, -run, total + run)
+        edge = offset_segments(tuple(path), plan.plate_side + sign * self.edge_width)
+        if edge is None:
+            return []
+        lift = self.thickness
+        inner = [(x, y + lift) for x, y in segments_polyline(edge, _ARC_STEPS)]
+        # spine_kites keeps what is left of its band's left edge and right of
+        # its right edge.  Make the plate's edge, run so that edge 4 is on its
+        # left, the band's left edge, and a line far beyond the long wall the
+        # right edge, so only the part on the plate is kept.
+        apothem = r * _ROOT3 / 2
+        if _side(inner, (0.0, -apothem + lift)) < 0:
+            inner = inner[::-1]
+        far = [(p[0], p[1] + 4 * r) for p in inner]
+        return spine_kites(kites, [(inner, far)], self._KITE_MIN_PIECE)
 
     # ---------------------------------------------------------------- walls
 
