@@ -1093,6 +1093,33 @@ class HexmoRectangle(HexmoStepFormatMixin, HexmoBigHoleMixin, HexmoTrackGuideMix
             legs.append(shifted)
         return legs
 
+    def _drawEndTrackGuides(self):
+        """The track guide plate(s) for the end walls.
+
+        Every straight track line crosses both end walls, so without
+        --turnouts one plate fits either end, as before.  A turnout's diverging
+        leg reaches only the far end (x = deck length), so that end then has
+        more tracks than the toe end, and each end gets its own plate with a
+        window for every track crossing it.
+
+        The plates are drawn in the frame of the hex wall the end walls mate
+        with, so they are the same plates HexmoHexagon cuts.
+
+        @throws ValueError - From the guide windows (see drawTrackGuide).
+        """
+        s, l = self._hexWallLength(), self._hexWallHeight()
+        lines = self._trackOffsets()
+        legs = [spec.end for spec in parse_turnouts(self.turnouts)]
+        far = sorted({round(o, 6) + 0.0 for o in lines + legs})
+        if not legs or far == sorted({round(o, 6) + 0.0 for o in lines}):
+            self.drawTrackGuide(s, l, move="right")
+            return
+        self.drawTrackGuide(s, l, move="right", offsets=lines,
+                            label="track guide turnout toe end")
+        self.drawTrackGuide(s, l, move="right", offsets=far,
+                            label="track guide turnout leg end",
+                            arrow="turnout leg side ->")
+
     def _etchTurnoutLeg(self, segments):
         """Etch one turnout's diverging leg, styled like the straight track lines.
 
@@ -1906,8 +1933,7 @@ class HexmoRectangle(HexmoStepFormatMixin, HexmoBigHoleMixin, HexmoTrackGuideMix
         # frame of the hex wall these end walls mate with, so it is the same
         # plate HexmoHexagon cuts and fits either module.
         if self.track_guide:
-            self.drawTrackGuide(self._hexWallLength(), self._hexWallHeight(),
-                                move="right")
+            self._drawEndTrackGuides()
 
         # Optional Tracksetta-style template: a straight the full length of the
         # etched track (H, end wall to end wall).  Every track's straight is the

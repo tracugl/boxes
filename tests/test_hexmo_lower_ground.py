@@ -111,8 +111,23 @@ class TestOutlines:
         box = module(name, *extra)
         box.open()
         box.render()
-        open_ends = [math.dist(ch[0][1], ch[-1][-1])
-                     for part in box.surface.parts for ch in _hexmo_step._cut_chains(part)]
+        # Measured on the drawn paths themselves: each cut path ends where it
+        # started.
+        open_ends = []
+        for part in box.surface.parts:
+            for path in part.pathes:
+                if not _hexmo_step._is_cut(path.params.get("rgb")):
+                    continue
+                start = end = None
+                for cmd in path.path:
+                    if cmd[0] == "M":
+                        if start is not None:
+                            open_ends.append(math.dist(start, end))
+                        start = end = (cmd[1], cmd[2])
+                    elif cmd[0] in "LC":
+                        end = (cmd[1], cmd[2])
+                if start is not None:
+                    open_ends.append(math.dist(start, end))
         assert max(open_ends) < 1e-6
 
     def test_off_by_default(self) -> None:
@@ -385,3 +400,15 @@ class TestRing:
         pytest.importorskip("build123d")
         with pytest.raises(ValueError, match="exact"):
             _hexmo_step.hexmo_parts(module("M2"))
+
+
+def test_m1_with_the_preset_gap_builds_in_3d() -> None:
+    # M1's deck edge at --upper_edge_gap 15 switches from the main line's
+    # offset to the spur slot's edge; the switch must not leave an edge too
+    # short to model (the 3D faces need closed outlines).
+    pytest.importorskip("build123d")
+    from boxes.generators._hexmo_helix_ring import HELIX_RING_N_GROUND
+    box = HexmoHexagon()
+    box.parseArgs(HELIX_RING_N_GROUND["M1"])
+    parts = {p.name: p for p in _hexmo_step.exact_hexmo_parts(box, clearance="none")}
+    assert parts["deck"].solid.is_valid

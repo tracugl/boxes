@@ -17,7 +17,12 @@ from __future__ import annotations
 # Shared by every N ring module.
 _N_COMMON = ["--radius=220", "--thickness=3", "--h=80", "--edge_width=22", "--spoke_width=60",
              "--bottom=spoke", "--support_length=55", "--track_lead_in=26", "--track_width=17",
-             "--under_track_width=35"]
+             "--under_track_width=35",
+             # The cut-sheet choices for this ring: fewer pierces (g2 hole
+             # groups), rounded-rectangle big holes, the track-laying guide and
+             # template, no part labels or reference rectangle.
+             "--corner_holes=g2", "--gap_holes=g2", "--big_hole_shape=rounded_rect",
+             "--track_guide=1", "--track_template=1", "--labels=0", "--reference=0"]
 _N_TRAPEZOID = _N_COMMON + ["--trapezoid=1", "--support_edges=4@132,4@30/90"]
 # The spur's height at each joint: M6/M1, M1/M2 … M5/M6.
 _N_JOINTS = [74, 66.1, 58.5, 50.8, 43.2, 35.6]
@@ -58,12 +63,18 @@ HELIX_RING_N = {
 HELIX_ENTRY_N = ["--radius=220", "--thickness=3", "--h=80", "--num_rows=3", "--num_columns=2",
                  "--track_width=17", "--track_lead_in=26", "--under_track=1",
                  "--under_track_height=27.8", "--under_track_width=35",
-                 "--turnouts=10:0:-35,133.7:0:35"]
+                 "--turnouts=10:0:-35,133.7:0:35",
+                 # The same cut-sheet choices as the ring modules.
+                 "--corner_holes=g2", "--gap_holes=g2", "--big_hole_shape=rounded_rect",
+                 "--track_guide=1", "--track_template=1", "--labels=0", "--reference=0"]
 
 # The same ring opened up for scenery (--lower_ground): upper ground on the
 # deck, lower ground at 27.8 (the lower level's exit height) on the inner side
-# of M1–M5, and M6's side walls stepped to meet them.
+# of M1–M5, and M6's side walls stepped to meet them.  The trapezoids' decks
+# stop 15 mm inside the main line's rail edge (--upper_edge_gap), so there is
+# little to sand away.
 HELIX_RING_N_GROUND = {name: args + ["--lower_ground=27.8"]
+                       + (["--upper_edge_gap=15"] if "--trapezoid=1" in args else [])
                        for name, args in HELIX_RING_N.items()}
 
 RINGS = {"N": (HELIX_RING_N, HELIX_ENTRY_N),
