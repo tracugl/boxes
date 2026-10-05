@@ -789,6 +789,62 @@ up the cut ends of a split template are always etched, since they are needed to
 reassemble it. Part labels (e.g. `riser 73.2`, `track guide edge 3`) follow the
 standard `--labels` option, and the deck's radius label follows `--track_label`.
 
+### Scenery: upper and lower ground (`--lower_ground`)
+
+For scenery on the helix, the inner side of each trapezoid (towards the ring
+centre) can be opened up into two levels, with the spur descending between
+them:
+
+- **Upper ground** is the deck at 74, carrying the main line. It's cut back to
+  the outer edge of the spur's deck slot.
+- **Lower ground** is a new plate whose top is `--lower_ground` mm above the
+  floor panel. It runs from the edge-4 wall out to the slot's inner edge. At
+  **27.8** it's flush with the lower level where it leaves M6 under the entry,
+  so it's level all the way round the ring.
+- **The strip under the spur** (the slot's 35 mm) stays open down to the box
+  floor. The spur, its bed and its riser supports are exactly as before.
+
+The slope between the levels is yours to build; there's no cliff wall.
+
+The walls follow:
+
+- **Edge-4 wall:** lowered all along, under the lower plate.
+- **Side walls (edges 3 and 5):** lowered from edge 4 to the spur. Across the
+  spur they keep its `--track_openings` opening, cut from the top, so its bottom
+  edge still carries the bed end at the joint. From there out they're full
+  height under the deck.
+- **Holes:** any hole the lowered part would cut through is left out. The rule
+  is the same on both sides of a joint, so the pins still line up.
+- **Supports:** any support under the lower plate is shortened to fit; the ones
+  under the deck stay as they are.
+
+On the **full hexagon (M6)** only the walls on edges 3 and 5 step down, to meet
+M5 and M1. M6's deck edge goes plain over the lowered part; you cut the deck
+back by hand.
+
+It needs the spur's deck slot (a `--deck_slots` entry from edge 3 to edge 5)
+and its wall openings on edges 3 and 5, as the helix modules already have. The
+deck's cut-back edge follows the slot. Set **`--upper_edge_gap`** to keep less
+deck instead: the edge then runs that many mm inside the main line's rail edge,
+so there's nothing to sand away. It never comes inside the spur's slot; in M1
+the spur swings to within 9 mm of the main line near edge 3, so a bigger gap
+stays at the slot's edge there.
+
+Edit links (open the form pre-filled):
+
+- **M2:**
+  http://localhost:4455/HexmoHexagon?radius=220&thickness=3&h=80&edge_width=22&spoke_width=60&bottom=spoke&support_length=55&track_lead_in=26&track_width=17&under_track_width=35&trapezoid=1&support_edges=4@132,4@30/90&track_routes=3:17.5-5:17.5,3:-35-5:-35&track_openings=3:-35:66.1:35,5:35:58.5:35&deck_slots=3:-35-5:-35/35&risers=3:-35-5:-35~66.1..58.5/35&lower_ground=27.8
+
+  For M3–M5, change the two spur heights in `track_openings` and `risers`:
+  M3 58.5 → 50.8, M4 50.8 → 43.2, M5 43.2 → 35.6.
+- **M1:**
+  http://localhost:4455/HexmoHexagon?radius=220&thickness=3&h=80&edge_width=22&spoke_width=60&bottom=spoke&support_length=55&track_lead_in=26&track_width=17&under_track_width=35&trapezoid=1&support_edges=4@132,4@30/90&track_routes=3:17.5-5:17.5,3:-17.5-5:-35&track_openings=3:-17.5:74:35,5:35:66.1:35&deck_slots=3:-17.5-5:-35/35&risers=3:-17.5-5:-35~74..66.1/35&lower_ground=27.8
+- **M6:**
+  http://localhost:4455/HexmoHexagon?radius=220&thickness=3&h=80&edge_width=22&spoke_width=60&bottom=spoke&support_length=55&track_lead_in=26&track_width=17&under_track_width=35&support_edges=2,4,6&track_routes=1:-35-5:-17.5,3:-17.5-1:-35,1:0-5:17.5&under_track_edges=1&under_track_height=27.8&track_openings=5:17.5:74:35,3:-35:35.6:35&deck_slots=1:0-5:17.5@169../35,3:35-1:0@..186/35&risers=1:0-5:17.5@169..~77..74/35,3:35-1:0@..186~35.6..31/35,3:35-1:0@186..~31..27.8/35&lower_ground=27.8
+
+The 3D export shows it all (exact parts only), and `--ring=N-ground` exports
+the whole ring opened up this way (see below).
+
 ## 3D model for CAD (`--format step`)
 
 HexmoHexagon and HexmoRectangle can output the module **assembled in 3D**, as
@@ -841,6 +897,8 @@ python -m boxes.generators._hexmo_step helix-ring.step --ring=N
 python -m boxes.generators._hexmo_step helix-ring.step --ring=N --detail=simple
 # a 3D line drawing of the ring (add --deck for the decks):
 python -m boxes.generators._hexmo_step helix-ring.svg --ring=N
+# the ring opened up for scenery (--lower_ground 27.8; exact parts only):
+python -m boxes.generators._hexmo_step helix-ring-ground.step --ring=N-ground
 # or a single module, with any generator options:
 python -m boxes.generators._hexmo_step m6.step --radius=220 --h=80 …
 ```

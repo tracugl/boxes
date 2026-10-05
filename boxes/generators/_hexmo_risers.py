@@ -295,25 +295,115 @@ def _width(polygon):
     return 2 * area / perimeter if perimeter else 0.0
 
 
+def _clear_width(polygon, step=0.5, enough=None):
+    """How wide a piece really is: the diameter of the largest circle inside it.
+
+    _width (2·area / perimeter) is a strip's width, but only half the width
+    of a triangle (its inradius), so it wrongly drops a triangle left where a
+    riser's spine cuts across a kite.  This finds the largest circle that
+    fits, by sampling a grid inside the piece.  2·area / perimeter never
+    exceeds this (a convex shape's inradius is at least area / perimeter),
+    so it is only computed when that quick measure falls short.
+
+    @param polygon - The piece's outline points.
+    @param step    - Grid spacing (mm); the answer is within about this.
+    @param enough  - Stop as soon as a circle this wide is found (mm), when
+                     only whether it fits matters.
+    @returns The diameter (mm), or at least ``enough`` once that is reached.
+    """
+    quick = _width(polygon)
+    xs = [p[0] for p in polygon]
+    ys = [p[1] for p in polygon]
+    edges = list(zip(polygon, polygon[1:] + polygon[:1]))
+    best = 0.0
+    y = min(ys) + step / 2
+    while y < max(ys):
+        x = min(xs) + step / 2
+        while x < max(xs):
+            if _inside_polygon(polygon, (x, y)):
+                best = max(best, min(_segment_distance((x, y), a, b) for a, b in edges))
+                if enough is not None and 2 * best >= enough:
+                    return 2 * best
+            x += step
+        y += step
+    return max(quick, 2 * best)
+
+
+def _inside_polygon(polygon, p):
+    """Ray-casting point-in-polygon test."""
+    inside = False
+    for (x0, y0), (x1, y1) in zip(polygon, polygon[1:] + polygon[:1]):
+        if (y0 > p[1]) != (y1 > p[1]):
+            if x0 + (p[1] - y0) * (x1 - x0) / (y1 - y0) > p[0]:
+                inside = not inside
+    return inside
+
+
+def _segment_distance(p, a, b):
+    """Distance from p to the segment a–b."""
+    dx, dy = b[0] - a[0], b[1] - a[1]
+    length2 = dx * dx + dy * dy
+    f = 0.0 if length2 < 1e-12 else max(0.0, min(1.0, (
+        (p[0] - a[0]) * dx + (p[1] - a[1]) * dy) / length2))
+    return math.dist(p, (a[0] + f * dx, a[1] + f * dy))
+
+
 def spine_kites(kites, spines, min_piece):
     """Cut a solid spine out of the kites under each riser.
 
     @param kites     - Kite polygons.
-    @param spines    - ``(left_edge, right_edge)`` polylines per riser: the
-                       band's two edges, in the kites' frame, running in the
-                       direction of travel and well past both ends.
-    @param min_piece - Pieces narrower than this (2·area / perimeter) are
-                       left solid.
+    @param spines    - ``(left_edge, right_edge[, capped])`` per riser: the
+                       band's two edges, in the kites' frame, in the direction
+                       of travel.  An uncapped spine's edges run well past
+                       both ends, and the kites are split along them.  A
+                       capped one ends inside the module: its band (the edges
+                       joined across their ends) is taken out of the kites as
+                       a shape, so a kite beyond its end keeps its full size.
+    @param min_piece - Pieces narrower than this (the largest circle that fits
+                       in them, see _clear_width) are left solid.
     @returns The openings to cut.  Kites the spines miss are unchanged.
     """
     pieces = [list(k) for k in kites]
-    for left, right in spines:
+    for spine in spines:
+        left, right = spine[0], spine[1]
+        capped = len(spine) > 2 and spine[2]
         out = []
         for piece in pieces:
-            out += _keep_side(piece, left, +1) + _keep_side(piece, right, -1)
+            if capped:
+                out += _subtract_band(piece, left, right)
+            else:
+                out += _keep_side(piece, left, +1) + _keep_side(piece, right, -1)
         pieces = out
     original = [list(k) for k in kites]
-    return [p for p in pieces if p in original or _width(p) >= min_piece]
+    return [p for p in pieces
+            if p in original or _width(p) >= min_piece
+            or _clear_width(p, enough=min_piece) >= min_piece]
+
+
+def _subtract_band(piece, left, right):
+    """A piece less a capped spine's band (its edges joined across the ends).
+
+    @param piece       - Polygon points.
+    @param left, right - The band's edges, in the direction of travel.
+    @returns The polygons left: the piece itself if the band misses it, else
+             the parts outside the band.  A band lying wholly inside a piece
+             would leave it as an island; the piece is then split along the
+             band's edges instead, as for an uncapped spine.
+    """
+    from shapely.geometry import Polygon
+
+    shape = Polygon(piece)
+    band = Polygon(list(left) + list(reversed(right)))
+    if not band.is_valid:
+        band = band.buffer(0)
+    if not shape.intersects(band):
+        return [piece]
+    rest = shape.difference(band)
+    parts = list(getattr(rest, "geoms", [rest]))
+    if any(getattr(g, "interiors", ()) for g in parts):
+        return _keep_side(piece, left, +1) + _keep_side(piece, right, -1)
+    return [[(x, y) for x, y in g.exterior.coords[:-1]]
+            for g in parts if g.geom_type == "Polygon" and not g.is_empty and g.area > 1e-6]
 
 
 def point_in_convex(polygon, p):

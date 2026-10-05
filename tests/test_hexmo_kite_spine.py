@@ -24,7 +24,7 @@ from hexmo_testutil import IGNORE_CORE_MATMUL
 
 pytestmark = IGNORE_CORE_MATMUL
 
-from boxes.generators._hexmo_risers import spine_kites, split_by_polyline
+from boxes.generators._hexmo_risers import _clear_width, spine_kites, split_by_polyline
 from boxes.generators.hexmohexagon import HexmoHexagon
 
 SQUARE = [(0.0, 0.0), (100.0, 0.0), (100.0, 100.0), (0.0, 100.0)]
@@ -118,6 +118,33 @@ class TestSplitting:
         assert len(pieces) == 1 and area(pieces[0]) == pytest.approx(75 * 100)
 
 
+class TestPieceWidth:
+    """A piece is judged by the largest circle that fits in it, so a strip
+    and a triangle of the same real width are treated alike."""
+
+    def test_strip(self) -> None:
+        strip = [(0.0, 0.0), (200.0, 0.0), (200.0, 10.0), (0.0, 10.0)]
+        assert _clear_width(strip) == pytest.approx(10, abs=0.6)
+
+    def test_triangle_is_its_incircle(self) -> None:
+        # Legs 35 and 84: inradius (35 + 84 - 91) / 2 = 14, so 28 across;
+        # 2·area / perimeter alone says 14 and would drop it.
+        tri = [(0.0, 0.0), (35.0, 0.0), (0.0, 84.0)]
+        assert _clear_width(tri) == pytest.approx(28, abs=1.0)
+
+    def test_triangle_left_by_a_spine_is_cut(self) -> None:
+        # A spine across a square leaves a corner triangle with 50 mm legs:
+        # 29 mm across its incircle, so it is cut at 15 (2·area / perimeter
+        # says 14.6 and used to leave it solid).  The far corner, legs 10, is
+        # too small and stays solid.
+        square = [(0.0, 0.0), (100.0, 0.0), (100.0, 100.0), (0.0, 100.0)]
+        # Travel up-left, so the corner at the origin is left of the left edge.
+        spine = ([(60.0, -10.0), (-10.0, 60.0)], [(200.0, -10.0), (-10.0, 200.0)])
+        pieces = spine_kites([square], [spine], 15.0)
+        assert len(pieces) == 1
+        assert max(x + y for x, y in pieces[0]) == pytest.approx(50)
+
+
 class TestSpokeFloor:
 
     def test_without_risers_the_kites_are_unchanged(self) -> None:
@@ -139,3 +166,64 @@ class TestSpokeFloor:
         args = [a for a in M1 if a != "--bottom=spoke"] + ["--bottom=closed"]
         cut, spines, _ = render(args + [M1_RISER])
         assert cut == [] and spines == []
+
+
+def test_helix_m6_keeps_all_six_kites() -> None:
+    # M6's lower-level return riser cuts one kite down to a triangle about
+    # 35 × 84 mm; it is cut, not left solid.
+    from boxes.generators import _hexmo_step
+    from boxes.generators._hexmo_helix_ring import HELIX_RING_N
+    box = HexmoHexagon()
+    box.parseArgs(HELIX_RING_N["M6"])
+    floor = next(f for f in _hexmo_step._render_frames(box) if f.name == "floor")
+    big = []
+    for loop in _hexmo_step._frame_loops(floor):
+        xs = [p[0] for seg in loop for p in seg[1:]]
+        if 25 < max(xs) - min(xs) < 300:
+            big.append(loop)
+    assert len(big) == 6
+
+
+class TestCappedSpines:
+    """A riser that starts or stops mid-module only keeps the floor solid
+    where it is: past its end the kites keep their full size.  Risers on one
+    route that meet end to end share one spine along the whole curve."""
+
+    @staticmethod
+    def floor_loops(args):
+        from boxes.generators import _hexmo_step
+        box = HexmoHexagon()
+        box.parseArgs(args)
+        floor = next(f for f in _hexmo_step._render_frames(box) if f.name == "floor")
+        return [[p for seg in loop for p in seg[1:]]
+                for loop in _hexmo_step._frame_loops(floor)]
+
+    def test_m6_kites_beyond_the_spur_riser_are_whole(self) -> None:
+        # The spur's riser starts 169 mm along its route; the two kites by
+        # edges 1/2 and 1/6 are past its start, so they are the full kites.
+        from boxes.generators._hexmo_helix_ring import HELIX_RING_N
+
+        def span(l):
+            return max(p[0] for p in l) - min(p[0] for p in l)
+
+        def areas(args):
+            return sorted(round(area(l)) for l in self.floor_loops(args) if 25 < span(l) < 300)
+
+        m6 = HELIX_RING_N["M6"]
+        plain = [a for a in m6 if not a.startswith("--risers")]
+        full = max(areas(plain))
+        assert sum(1 for a in areas(m6) if a == full) >= 3   # the two north ones + edge 3/4
+
+    def test_m6_slots_keep_clear_of_the_kites(self) -> None:
+        import math
+        from boxes.generators._hexmo_helix_ring import HELIX_RING_N
+        loops = self.floor_loops(HELIX_RING_N["M6"])
+
+        def span(l):
+            return max(p[0] for p in l) - min(p[0] for p in l)
+        kites = [l for l in loops if 25 < span(l) < 300]
+        slots = [l for l in loops if span(l) <= 25]
+        for s in slots:
+            for p in s:
+                assert not any(inside(k, p) for k in kites)
+                assert min(math.dist(p, q) for k in kites for q in k) > 5

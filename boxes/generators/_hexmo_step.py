@@ -432,11 +432,16 @@ def hexmo_parts(box, clearance="under"):
                        ``none``.
     @returns List of :class:`Part3D`.
     @throws ValueError - From the generator's own checks (the same settings
-                         that refuse to render refuse to export), or an
-                         unknown ``clearance``.
+                         that refuse to render refuse to export), an unknown
+                         ``clearance``, or ``--lower_ground`` (whose cut-back
+                         deck, lower plate and stepped walls only the exact
+                         parts model).
     @throws ImportError - When the optional build123d dependency is missing.
     """
     _check_clearance(clearance)
+    if getattr(box, "lower_ground", 0) > 0:
+        raise ValueError("The simple 3D parts don't model --lower_ground; use the "
+                         "exact ones (--step_detail exact, the default).")
     bd = _bd()
     r, l, t, opening_plan, slot_plan, riser_plan = _hexmo_plans(box)
     isTrapezoid = box.trapezoid
@@ -1025,7 +1030,8 @@ def main(argv=None):
 
     * ``OUT.step [--clearance=MODE] [--detail=exact|simple] [generator args…]``
       — one HexmoHexagon;
-    * ``OUT.step --ring=N [--clearance=MODE] [--detail=…]`` — the whole helix ring;
+    * ``OUT.step --ring=N [--clearance=MODE] [--detail=…]`` — the whole helix ring
+      (``--ring=N-ground`` with the scenery's upper and lower ground);
     * ``OUT.svg …`` — the same, drawn as a 3D line drawing; ``--deck`` adds
       the decks.
 
@@ -1037,7 +1043,7 @@ def main(argv=None):
     if not argv or argv[0].startswith("-"):
         print(__doc__.split("\n\n")[0])
         print("usage: python -m boxes.generators._hexmo_step OUT.step|OUT.svg "
-              "[--ring=N] [--clearance=under|all|none] [--detail=exact|simple] "
+              "[--ring=N|N-ground] [--clearance=under|all|none] [--detail=exact|simple] "
               "[--deck] [--option=value …]")
         return 2
     clearance, ring, detail, deck = "under", None, "exact", False
