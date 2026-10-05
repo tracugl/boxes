@@ -60,4 +60,11 @@ HELIX_ENTRY_N = ["--radius=220", "--thickness=3", "--h=80", "--num_rows=3", "--n
                  "--under_track_height=27.8", "--under_track_width=35",
                  "--turnouts=10:0:-35,133.7:0:35"]
 
-RINGS = {"N": (HELIX_RING_N, HELIX_ENTRY_N)}
+# The same ring opened up for scenery (--lower_ground): upper ground on the
+# deck, lower ground at 27.8 (the lower level's exit height) on the inner side
+# of M1–M5, and M6's side walls stepped to meet them.
+HELIX_RING_N_GROUND = {name: args + ["--lower_ground=27.8"]
+                       for name, args in HELIX_RING_N.items()}
+
+RINGS = {"N": (HELIX_RING_N, HELIX_ENTRY_N),
+         "N-ground": (HELIX_RING_N_GROUND, HELIX_ENTRY_N)}

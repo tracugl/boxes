@@ -28,6 +28,7 @@ import re
 from boxes import Boxes, edges, boolarg, holeCol, restore
 from boxes.Color import *
 from boxes.generators._hexmo_big_holes import HexmoBigHoleMixin
+from boxes.generators._hexmo_lower_ground import HexmoLowerGroundMixin
 from boxes.generators._hexmo_step_format import HexmoStepFormatMixin
 from boxes.generators import _hexmo_step
 from boxes.generators._hexmo_track_guide import HexmoTrackGuideMixin
@@ -51,7 +52,8 @@ from boxes.generators._hexmo_track_routes import (
 
 
 class HexmoHexagon(HexmoStepFormatMixin, HexmoBigHoleMixin, HexmoTrackGuideMixin,
-                   HexmoTrackTemplateMixin, HexmoUnderTrackMixin, Boxes):
+                   HexmoTrackTemplateMixin, HexmoUnderTrackMixin, HexmoLowerGroundMixin,
+                   Boxes):
     """Box with a regular hexagon or half hexagon as the base. """
 
     ui_group = "Box"
@@ -326,6 +328,8 @@ class HexmoHexagon(HexmoStepFormatMixin, HexmoBigHoleMixin, HexmoTrackGuideMixin
         self._addTrackGuideArgs()
         # --track_template, --track_gauge, …, shared with HexmoRectangle.
         self._addTrackTemplateArgs()
+        # --lower_ground and --upper_edge_gap (see _hexmo_lower_ground).
+        self._addLowerGroundArgs()
         # --format step and --step_clearance (see _hexmo_step_format).
         self._addStepFormat()
 
@@ -443,14 +447,36 @@ class HexmoHexagon(HexmoStepFormatMixin, HexmoBigHoleMixin, HexmoTrackGuideMixin
             # are too small (≈ MIN_CLEAR) to fit any sub-hole groups, so no
             # gap-filling pass is performed here.
 
+        def draw_low_holes(hh):
+            """Holes for a support shortened under the --lower_ground plate:
+            a row of medium holes if they fit its height, else none.
+
+            @param hh - The shortened support's height (mm).
+            """
+            r2, sp = self._R2, self._SPACER
+            if hh < 2 * (r2 + MIN_CLEAR):
+                return
+            available = sl - 2 * (sp + r2)
+            if available < 0:
+                return
+            n_med = max(1, 1 + int(available / (2 * r2 + MIN_CLEAR)))
+            step = available / (n_med - 1) if n_med > 1 else 0.0
+            for i in range(n_med):
+                x = sl / 2 if n_med == 1 else sp + r2 + i * step
+                self.hole(x, hh / 2, r2)
+
         layout = self._supportLayout(getattr(self, "_step_r", self.radius), isTrapezoid)
+        # Supports under the --lower_ground plate are shortened to its underside.
+        plan = self._lower_plan
+        lower = plan.lower if plan is not None else frozenset()
         seen = {}
-        for support in layout[:n_supports]:
+        for index, support in enumerate(layout[:n_supports]):
             edge = support[2]
             seen[edge] = seen.get(edge, 0) + 1
             name = f"support edge {edge}" + ("" if seen[edge] == 1 else f" #{seen[edge]}")
+            low = index in lower
 
-            def frame_and_holes(support=support, name=name):
+            def frame_and_holes(support=support, name=name, low=low):
                 # The 3D export: the body frame (x along the support, y up from
                 # the floor panel), centred on the support's line.
                 _, _, edge, d, turned = support
@@ -463,11 +489,15 @@ class HexmoHexagon(HexmoStepFormatMixin, HexmoBigHoleMixin, HexmoTrackGuideMixin
                           u[1] * d - along[1] * sl / 2 - normal[1] * t / 2, 0.0)
                 self._stepFrame(name, "support", origin, (along[0], along[1], 0),
                                 (0, 0, 1), (0.0, t))
-                draw_holes()
+                if low:
+                    draw_low_holes(plan.body)
+                else:
+                    draw_holes()
 
-            self.rectangularWall(sl, h, "fefe", callback=[frame_and_holes], move="right")
+            self.rectangularWall(sl, plan.body if low else h, "fefe",
+                                 callback=[frame_and_holes], move="right")
 
-    def drawSupportHoles(self, r, isTrapezoid=False):
+    def drawSupportHoles(self, r, isTrapezoid=False, only=None):
         """Cut finger-joint slots into the bottom panel for all three spoke axes.
 
         A hexagonal spoke bottom has three internal support walls, one per spoke
@@ -505,6 +535,9 @@ class HexmoHexagon(HexmoStepFormatMixin, HexmoBigHoleMixin, HexmoTrackGuideMixin
                              instead of all six.  Combined with
                              trapezoid_side_supports=False, only the 0° slot
                              is cut.
+        @param only        - Indices into _supportLayout to cut, or None for all.
+                             With --lower_ground the deck carries the supports
+                             under it and the lower plate the shortened ones.
         """
         sl = self.support_length
 
@@ -525,7 +558,9 @@ class HexmoHexagon(HexmoStepFormatMixin, HexmoBigHoleMixin, HexmoTrackGuideMixin
         # places the centre at y = H + thickness + burn from V0 — identical in both
         # modes.  No special trapezoid correction is needed here.
 
-        for spoke_angle, side, _, d, turned in layout:
+        for index, (spoke_angle, side, _, d, turned) in enumerate(layout):
+            if only is not None and index not in only:
+                continue
             with self.saved_context():
                 # Translate to the hex centre then rotate to the spoke axis.
                 self.moveTo(r / 2, H, spoke_angle)
@@ -1277,6 +1312,11 @@ class HexmoHexagon(HexmoStepFormatMixin, HexmoBigHoleMixin, HexmoTrackGuideMixin
         if self.track_line_count < 1:
             return
         geometries = self._trackRouteGeometries(r, isTrapezoid)
+        plan = self._lower_plan
+        if plan is not None and plan.split is not None:
+            # --lower_ground: the spur's route runs off the trimmed deck.
+            geometries = [g for g in geometries
+                          if (g.start, g.start_offset, g.end, g.end_offset) != plan.split]
 
         with self.saved_context():
             self.set_source_color(Color.ETCHING)
@@ -1621,7 +1661,10 @@ class HexmoHexagon(HexmoStepFormatMixin, HexmoBigHoleMixin, HexmoTrackGuideMixin
                         f"--track_openings for it, or stop the slot short of the edge.")
             segments = trim_segments(geometry.segments, lo, hi)
             self._checkDeckSlotClearsSupports(r, isTrapezoid, segments, slot.width, name)
-            plan.append({"segments": segments, "width": slot.width, "bed": bed})
+            split = self._lower_split_key == (slot.start, slot.start_offset, slot.end,
+                                              slot.end_offset, slot.lo, slot.hi, slot.width)
+            plan.append({"segments": segments, "width": slot.width, "bed": bed,
+                         "split": split})
         return plan
 
     def _slotBedKeys(self):
@@ -1641,7 +1684,9 @@ class HexmoHexagon(HexmoStepFormatMixin, HexmoBigHoleMixin, HexmoTrackGuideMixin
         risers = {(rs.start, rs.start_offset, rs.end, rs.end_offset, rs.lo, rs.hi,
                    rs.width or self.track_width)
                   for rs in parse_risers(self.risers)}
-        return slots & risers
+        # With --lower_ground the spur's slot leaves the deck with the rest of
+        # the inner side, so it is no riser's bed; the riser gets its own.
+        return (slots & risers) - {self._lower_split_key}
 
     def _checkDeckSlotClearsSupports(self, r, isTrapezoid, segments, width, name):
         """Refuse a deck slot that crosses a support's finger slot.
@@ -1685,6 +1730,10 @@ class HexmoHexagon(HexmoStepFormatMixin, HexmoBigHoleMixin, HexmoTrackGuideMixin
             if isTrapezoid:
                 self.moveTo(0, self.thickness)
             for slot in plan:
+                if slot.get("split"):
+                    # --lower_ground: the deck is cut back to this slot's
+                    # outer edge, so the slot itself is not on the deck.
+                    continue
                 segments, width = slot["segments"], slot["width"]
                 if slot.get("stations"):
                     with self.saved_context():
@@ -2331,6 +2380,10 @@ class HexmoHexagon(HexmoStepFormatMixin, HexmoBigHoleMixin, HexmoTrackGuideMixin
             cut = [(o.position, o.width, l - o.height) for o, notch in entries if notch]
             if cut:
                 notches[edge] = cut
+        # --lower_ground's spur slot is no riser's bed (see _slotBedKeys);
+        # find it before the slots and risers are planned.
+        self._lower_plan = None
+        self._lowerGroundSplitKey(isTrapezoid)
         # Deck slots (--deck_slots), also checked before anything is drawn.
         slot_plan = self._deckSlotPlan(r, isTrapezoid, notches)
         # Riser boards (--risers): bed strips and supports, checked up front.
@@ -2344,6 +2397,9 @@ class HexmoHexagon(HexmoStepFormatMixin, HexmoBigHoleMixin, HexmoTrackGuideMixin
                              if rp["width"] == slot["width"]
                              and math.dist(rp["segments"][0].p0, slot["segments"][0].p0) < 1e-6)
                 slot["stations"] = match["stations"]
+        # Upper and lower ground (--lower_ground), checked up front too.
+        self._lower_plan = lower_plan = self._lowerGroundPlan(r, isTrapezoid, l, opening_plan)
+        lower_trapezoid = lower_plan is not None and lower_plan.trapezoid
 
         # Register custom finger-joint edge objects.  Each call mutates self.edges
         # as a side effect; the returned settings object is not used afterwards,
@@ -2365,7 +2421,11 @@ class HexmoHexagon(HexmoStepFormatMixin, HexmoBigHoleMixin, HexmoTrackGuideMixin
             """The face's edge types: the deck's are split over any notch."""
             if not is_top:
                 return joint_type[1]
-            return self._deckEdges(joint_type[1], isTrapezoid, side_orig, side, notches)
+            deck = self._deckEdges(joint_type[1], isTrapezoid, side_orig, side, notches)
+            if lower_plan is not None and not isTrapezoid:
+                # The full hexagon's deck goes plain over the stepped walls.
+                deck = self._lowerDeckSideEdges(joint_type[1], side_orig, side, deck)
+            return deck
 
         def spoke_floor(r, joint_type, trapezoid):
             """A spoke face's centre callback: its kites, split by ribs under
@@ -2406,8 +2466,17 @@ class HexmoHexagon(HexmoStepFormatMixin, HexmoBigHoleMixin, HexmoTrackGuideMixin
             # V0-start slot (index 1); index 0 is None so the kites/centre slot
             # is skipped.  Active whenever self.supports is True, regardless of
             # whether the opposite face is "spoke" or "closed".
-            if self.supports:
+            upper = None
+            if is_top and lower_trapezoid:
+                upper = {i for i in range(len(self._supportLayout(r, isTrapezoid)))
+                         if i not in lower_plan.lower}
+            if self.supports and upper is None:
+                # The plain call, unchanged, so wrappers of drawSupportHoles
+                # with the original signature (e.g. test spies) keep working.
                 support_cb = [None, lambda: self.drawSupportHoles(r=r, isTrapezoid=isTrapezoid)]
+            elif self.supports:
+                support_cb = [None, lambda: self.drawSupportHoles(r=r, isTrapezoid=isTrapezoid,
+                                                                  only=upper)]
             else:
                 support_cb = None
             # Riser supports stand in slots in the (closed) floor panel; they
@@ -2460,6 +2529,11 @@ class HexmoHexagon(HexmoStepFormatMixin, HexmoBigHoleMixin, HexmoTrackGuideMixin
                     self.drawTrapezoidWall(
                         r=r, edges_char=joint_type[1], move="right",
                         callback=framed(spoke_cbs))
+                elif is_top and lower_trapezoid:
+                    # --lower_ground: the deck cut back to the spur, then the
+                    # lower ground plate (see _hexmo_lower_ground).
+                    self._drawUpperDeck(r, framed(support_cb))
+                    self._drawLowerPlate(r, lower_plate_callbacks(r))
                 else:  # "closed"
                     self.drawTrapezoidWall(r=r, edges_char=deck_edges(joint_type, is_top),
                                            move="right", callback=framed(support_cb))
@@ -2474,6 +2548,18 @@ class HexmoHexagon(HexmoStepFormatMixin, HexmoBigHoleMixin, HexmoTrackGuideMixin
                 else:  # "closed"
                     self.regularPolygonWall(corners=n, r=r, edges=deck_edges(joint_type, is_top),
                                             move="right", callback=framed(support_cb))
+
+        def lower_plate_callbacks(r):
+            """The lower plate's frame (3D export) and its supports' slots."""
+            def cb0():
+                self._stepFrame("lower ground", "panel",
+                                (0.0, -self.thickness, lower_plan.body), (1, 0, 0), (0, 1, 0),
+                                (0.0, self.thickness))
+            cbs = [cb0]
+            if self.supports and lower_plan.lower:
+                cbs.append(lambda: self.drawSupportHoles(r=r, isTrapezoid=True,
+                                                         only=lower_plan.lower))
+            return cbs
 
         with self.saved_context():
             # Draw bottom panel first, then top (order affects SVG layout).
@@ -2538,7 +2624,10 @@ class HexmoHexagon(HexmoStepFormatMixin, HexmoBigHoleMixin, HexmoTrackGuideMixin
         # with an under-deck or track opening first (labelled with their edge,
         # since they are no longer interchangeable), then plain ones.
         under_edges = self._underTrackEdges(isTrapezoid)
-        feature_edges = sorted(set(under_edges) | set(opening_plan))
+        # With --lower_ground the trapezoid's edge-4 wall is lowered, so it
+        # is no longer interchangeable with the others either.
+        feature_edges = sorted(set(under_edges) | set(opening_plan)
+                               | ({4} if lower_trapezoid else set()))
         n_standard = 3 if isTrapezoid else n
         standard_walls = ([(e, e in under_edges) for e in feature_edges]
                           + [(None, False)] * (n_standard - len(feature_edges)))
@@ -2562,7 +2651,43 @@ class HexmoHexagon(HexmoStepFormatMixin, HexmoBigHoleMixin, HexmoTrackGuideMixin
                               not notch))
             return rects
 
+        def draw_lowered_wall(edge, under_track):
+            """Draw a --lower_ground wall: stepped (edges 3 and 5) or lowered
+            all along (the trapezoid's edge 4), its holes kept clear of the cut.
+
+            @param edge        - The wall's edge (3, 4 or 5).
+            @param under_track - Cut the under-deck track opening on it.
+            """
+            body = lower_plan.body
+            step = lower_plan.walls.get(edge)
+            openings = wall_openings(edge)
+            if step is None:
+                borders = list(borders0)
+                borders[6] = borders[18] = body
+                wall_edges = e0
+            else:
+                runs = self._wallRuns(step, side, l, body, low_joint=lower_plan.trapezoid)
+                borders, wall_edges = self._steppedWallBorders(runs, side, t_, top_edge,
+                                                               bottom_edge)
+                # The spur's opening is now cut from the top with the step.
+                lo, hi = sorted((step.pos_in, step.pos_out))
+                y_lo, y_hi = side_orig / 2 + lo - 1e-6, side_orig / 2 + hi + 1e-6
+                openings = [(rect, closed and not (y_lo <= rect[2] and rect[3] <= y_hi))
+                            for rect, closed in openings]
+            drop = self._wallKeepOut(step, side_orig, body)
+
+            def holes():
+                with self._holeKeepOut(drop):
+                    draw_aligned_holes(under_track, openings, edge)
+
+            self.polygonWall(borders, edge=wall_edges, correct_corners=False, move="right",
+                             callback=[None, holes], label=f"edge {edge}")
+
         def draw_standard_wall(edge, under_track):
+            if lower_plan is not None and (edge in lower_plan.walls
+                                           or (lower_trapezoid and edge == 4)):
+                draw_lowered_wall(edge, under_track)
+                return
             wall_edges = e0
             if edge in notches:
                 # Segment 6 of borders0 is the top (deck) edge; split it round
