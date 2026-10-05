@@ -63,7 +63,10 @@ HELIX_RING_N = {
 HELIX_ENTRY_N = ["--radius=220", "--thickness=3", "--h=80", "--num_rows=3", "--num_columns=2",
                  "--track_width=17", "--track_lead_in=26", "--under_track=1",
                  "--under_track_height=27.8", "--under_track_width=35",
-                 "--turnouts=10:0:-35,133.7:0:35"]
+                 "--turnouts=10:0:-35,133.7:0:35",
+                 # The same cut-sheet choices as the ring modules.
+                 "--corner_holes=g2", "--gap_holes=g2", "--big_hole_shape=rounded_rect",
+                 "--track_guide=1", "--track_template=1", "--labels=0", "--reference=0"]
 
 # The same ring opened up for scenery (--lower_ground): upper ground on the
 # deck, lower ground at 27.8 (the lower level's exit height) on the inner side

@@ -133,3 +133,34 @@ class TestRender:
         legs = render([HELIX, "--under_track=1", "--under_track_height=27.8",
                        "--under_track_width=35"])
         assert len(legs) == 2
+
+
+class TestTrackGuides:
+    """With turnouts the two end walls carry different tracks: the toe end
+    only the straight lines, the far end those and every diverging leg.  Each
+    end gets its own guide plate, with a window for each track crossing it."""
+
+    @staticmethod
+    def guides(args):
+        box = HexmoRectangle()
+        box.parseArgs(args)
+        calls = []
+        orig = box.drawTrackGuide
+
+        def spy(s, l, move="right", offsets=None, label="track guide", arrow=None):
+            used = offsets if offsets is not None else box._trackOffsets()
+            calls.append((label, len(box._trackGuideWindows(s, l, used))))
+            return orig(s, l, move, offsets, label, arrow)
+
+        box.drawTrackGuide = spy
+        box.open()
+        box.render()
+        return calls
+
+    def test_helix_entry_has_a_plate_per_end(self) -> None:
+        from boxes.generators._hexmo_helix_ring import HELIX_ENTRY_N
+        assert self.guides(HELIX_ENTRY_N) == [("track guide turnout toe end", 1),
+                                              ("track guide turnout leg end", 3)]
+
+    def test_without_turnouts_one_plate(self) -> None:
+        assert self.guides(["--track_guide=1"]) == [("track guide", 1)]
