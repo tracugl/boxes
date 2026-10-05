@@ -592,17 +592,30 @@ def _place_point(point, angle, offset):
             x * math.sin(a) + y * math.cos(a) + offset[1])
 
 
-def ring_parts(ring="N", clearance="under"):
+DETAILS = ("exact", "simple")
+
+
+def module_parts(box, kind, clearance="under", detail="exact"):
+    """A module's parts: ``kind`` is ``hexmo`` or ``rect``, ``detail`` ``exact``/``simple``."""
+    if detail not in DETAILS:
+        raise ValueError(f"detail must be one of {', '.join(DETAILS)} (got {detail!r}).")
+    if detail == "exact":
+        return (exact_hexmo_parts if kind == "hexmo" else exact_rect_parts)(box, clearance)
+    return (hexmo_parts if kind == "hexmo" else rect_parts)(box, clearance)
+
+
+def ring_parts(ring="N", clearance="under", detail="exact"):
     """Every part of a helix ring, placed, each name prefixed by its module.
 
     @param ring      - Key of :data:`_hexmo_helix_ring.RINGS`.
     @param clearance - As for :func:`hexmo_parts`.
+    @param detail    - ``exact`` (real cut outlines) or ``simple`` (slabs).
     @returns List of :class:`Part3D`.
     """
     bd = _bd()
     parts = []
     for name, box, kind, angle, offset in _ring_layout(ring):
-        built = hexmo_parts(box, clearance) if kind == "hexmo" else rect_parts(box, clearance)
+        built = module_parts(box, kind, clearance, detail)
         where = bd.Location((offset[0], offset[1], 0), (0, 0, angle))
         parts += [Part3D(f"{name} {p.name}", p.kind, where * p.solid) for p in built]
     return parts
@@ -622,6 +635,317 @@ def ring_track_ends(ring="N"):
     return ends
 
 
+# ------------------------------------------------------------- exact parts
+#
+# The exact parts are the real cut outlines.  The generator renders as usual
+# (at burn 0, so every part is its nominal size) while its drawing code records
+# each assembled part's frame (HexmoStepFormatMixin._stepFrame): the drawing
+# transform at the part's local origin and where that origin sits in 3D.  Each
+# part's cut paths are then taken off the sheet, mapped back to the part's own
+# x/y, closed into loops, sorted into outline and holes, extruded and placed.
+
+# Points per curve when a loop is approximated by a polygon (for nesting
+# tests and the bed's slot cut-outs; the solids keep the true curves).
+_CURVE_STEPS = 6
+# Two path ends closer than this (mm) join.
+_JOIN = 1e-3
+# An outline whose own ends are this close (mm) is closed with a straight
+# line: some panels are drawn a fraction of a millimetre short of closing
+# (e.g. the trapezoid with FingerJoint_extra_length), and without closing it
+# the panel would be lost and its holes taken for outlines.
+_BRIDGE = 1.0
+
+
+def _is_cut(rgb):
+    from boxes.Color import Color
+    return rgb is not None and any(
+        all(abs(a - b) < 1e-6 for a, b in zip(rgb, c)) for c in (Color.OUTER_CUT, Color.INNER_CUT))
+
+
+def _cut_chains(part):
+    """A drawn Part's cut paths as chains of segments, in sheet coordinates.
+
+    A segment is ``("L", p0, p1)`` or ``("C", p0, c1, c2, p1)`` (a cubic
+    Bézier: holes and rounded corners).  Zero-length segments are dropped.
+    """
+    chains = []
+    for path in part.pathes:
+        if not _is_cut(path.params.get("rgb")):
+            continue
+        chain, cur = [], None
+        for cmd in path.path:
+            c = cmd[0]
+            if c == "M":
+                if chain:
+                    chains.append(chain)
+                chain, cur = [], (cmd[1], cmd[2])
+            elif c == "L" and cur is not None:
+                end = (cmd[1], cmd[2])
+                if math.dist(cur, end) > _JOIN:
+                    chain.append(("L", cur, end))
+                cur = end
+            elif c == "C" and cur is not None:
+                # Destination first, then the two control points.
+                end, c1, c2 = (cmd[1], cmd[2]), (cmd[3], cmd[4]), (cmd[5], cmd[6])
+                if max(math.dist(cur, q) for q in (end, c1, c2)) > _JOIN:
+                    chain.append(("C", cur, c1, c2, end))
+                cur = end
+        if chain:
+            chains.append(chain)
+    return chains
+
+
+def _reverse(chain):
+    return [("L", s[2], s[1]) if s[0] == "L" else ("C", s[4], s[3], s[2], s[1])
+            for s in reversed(chain)]
+
+
+def _start(chain):
+    return chain[0][1]
+
+
+def _end(chain):
+    return chain[-1][-1]
+
+
+def _merge_lines(loop):
+    """Merge consecutive collinear straight segments (fewer faces)."""
+    out = []
+    for seg in loop:
+        if out and seg[0] == "L" and out[-1][0] == "L":
+            a, b, c = out[-1][1], out[-1][2], seg[2]
+            cross = (b[0] - a[0]) * (c[1] - a[1]) - (b[1] - a[1]) * (c[0] - a[0])
+            if abs(cross) < 1e-9 * max(1.0, math.dist(a, c)) and \
+                    (b[0] - a[0]) * (c[0] - b[0]) + (b[1] - a[1]) * (c[1] - b[1]) > 0:
+                out[-1] = ("L", a, c)
+                continue
+        out.append(seg)
+    return out
+
+
+def _close_loops(chains):
+    """Join chains end to end into closed loops (open leftovers are dropped)."""
+    loops, pending = [], []
+    for ch in chains:
+        (loops if math.dist(_start(ch), _end(ch)) < _JOIN else pending).append(ch)
+    while pending:
+        cur = pending.pop(0)
+        grown = True
+        while grown and math.dist(_start(cur), _end(cur)) >= _JOIN:
+            grown = False
+            for i, other in enumerate(pending):
+                if math.dist(_end(cur), _start(other)) < _JOIN:
+                    cur = cur + other
+                elif math.dist(_end(cur), _end(other)) < _JOIN:
+                    cur = cur + _reverse(other)
+                elif math.dist(_start(cur), _end(other)) < _JOIN:
+                    cur = other + cur
+                elif math.dist(_start(cur), _start(other)) < _JOIN:
+                    cur = _reverse(other) + cur
+                else:
+                    continue
+                pending.pop(i)
+                grown = True
+                break
+        gap = math.dist(_start(cur), _end(cur))
+        if gap < _JOIN:
+            loops.append(cur)
+        elif gap < _BRIDGE:
+            loops.append(cur + [("L", _end(cur), _start(cur))])
+    return [_merge_lines(loop) for loop in loops if abs(_area(_polygon(loop))) > 1e-6]
+
+
+def _polygon(loop):
+    """A loop's outline as a polygon (curves sampled)."""
+    pts = []
+    for seg in loop:
+        if seg[0] == "L":
+            pts.append(seg[1])
+        else:
+            p0, c1, c2, p1 = seg[1:]
+            for k in range(_CURVE_STEPS):
+                u = k / _CURVE_STEPS
+                a, b, c, d = (1 - u) ** 3, 3 * u * (1 - u) ** 2, 3 * u * u * (1 - u), u ** 3
+                pts.append((a * p0[0] + b * c1[0] + c * c2[0] + d * p1[0],
+                            a * p0[1] + b * c1[1] + c * c2[1] + d * p1[1]))
+    return pts
+
+
+def _area(pts):
+    return sum(x0 * y1 - x1 * y0 for (x0, y0), (x1, y1) in zip(pts, pts[1:] + pts[:1])) / 2
+
+
+def _inside(point, poly):
+    """Even-odd point-in-polygon test."""
+    x, y = point
+    hit = False
+    for (x0, y0), (x1, y1) in zip(poly, poly[1:] + poly[:1]):
+        if (y0 > y) != (y1 > y) and x < x0 + (y - y0) * (x1 - x0) / (y1 - y0):
+            hit = not hit
+    return hit
+
+
+def _depths(polys):
+    """How many other loops contain each loop (0 = an outline, 1 = a hole …)."""
+    areas = [abs(_area(p)) for p in polys]
+    depths = []
+    for i, poly in enumerate(polys):
+        probes = poly[: min(5, len(poly))]
+        depth = 0
+        for j, other in enumerate(polys):
+            if i != j and areas[j] > areas[i] and \
+                    sum(_inside(p, other) for p in probes) * 2 > len(probes):
+                depth += 1
+        depths.append(depth)
+    return depths
+
+
+def _normal(frame):
+    ex, ey = frame.ex, frame.ey
+    return (ex[1] * ey[2] - ex[2] * ey[1], ex[2] * ey[0] - ex[0] * ey[2],
+            ex[0] * ey[1] - ex[1] * ey[0])
+
+
+def _world_point(frame, p, z=0.0):
+    (ox, oy, oz), ex, ey, n = frame.origin, frame.ex, frame.ey, _normal(frame)
+    x, y = p
+    return (ox + x * ex[0] + y * ey[0] + z * n[0],
+            oy + x * ex[1] + y * ey[1] + z * n[1],
+            oz + x * ex[2] + y * ey[2] + z * n[2])
+
+
+def _frame_loops(frame):
+    """A recorded part's cut loops in its own frame (true curves kept)."""
+    inv = ~frame.matrix
+
+    def local(seg):
+        return (seg[0],) + tuple(inv * p for p in seg[1:])
+
+    return [[local(seg) for seg in loop] for loop in _close_loops(_cut_chains(frame.part))]
+
+
+def _wire(bd, frame, loop, z):
+    """A loop as a 3D wire (straight and Bézier edges) on the frame's plane at z."""
+    edges = []
+    for seg in loop:
+        pts = [bd.Vector(*_world_point(frame, p, z)) for p in seg[1:]]
+        edges.append(bd.Edge.make_line(*pts) if seg[0] == "L" else bd.Edge.make_bezier(*pts))
+    return bd.Wire(edges)
+
+
+def _frame_solid(bd, frame, loops, polys, depths):
+    """Extrude a part's outline (holes cut) and place it.
+
+    Loops nested two deep are the holes of a piece that drops out of a hole
+    (a deck slot's cut-out, when it is a riser bed); the bed carries them.
+    """
+    z0, z1 = frame.depth
+    solids = []
+    for loop, poly, depth in zip(loops, polys, depths):
+        if depth != 0:
+            continue
+        holes = [h for h, hp, d in zip(loops, polys, depths) if d == 1 and _inside(hp[0], poly)]
+        face = bd.Face(_wire(bd, frame, loop, z0), [_wire(bd, frame, h, z0) for h in holes])
+        solids.append(bd.extrude(face, z1 - z0, dir=_normal(frame)))
+    if not solids:
+        return None
+    solid = solids[0]
+    for extra in solids[1:]:
+        solid = solid + extra
+    return solid
+
+
+def _render_frames(box):
+    """Render ``box`` at burn 0, recording its assembled parts' frames."""
+    box.burn = 0.0
+    box._step_frames = []
+    try:
+        box.open()
+        box.render()
+        return list(box._step_frames)
+    finally:
+        box._step_frames = None
+
+
+def _exact_from_frames(bd, frames):
+    """Exact solids for the recorded parts, and the riser beds' slot outlines.
+
+    @returns ``(parts, bed_holes)``: :class:`Part3D` list, and polygons (plan,
+             the deck frame) of every slot cut in a riser bed.
+    """
+    parts, bed_holes = [], []
+    for frame in frames:
+        loops = _frame_loops(frame)
+        polys = [_polygon(loop) for loop in loops]
+        depths = _depths(polys)
+
+        def plan(poly):
+            return [_world_point(frame, p)[:2] for p in poly]
+
+        if frame.kind == "bedholes":
+            # A separate bed: its holes are its support slots.
+            bed_holes += [plan(p) for p, d in zip(polys, depths) if d == 1]
+            continue
+        if frame.name == "deck":
+            # A slot's cut-out that is a riser bed carries these slots.
+            bed_holes += [plan(p) for p, d in zip(polys, depths) if d == 2]
+        solid = _frame_solid(bd, frame, loops, polys, depths)
+        if solid is not None:
+            parts.append(Part3D(frame.name, frame.kind, solid))
+    return parts, bed_holes
+
+
+def _exact_beds(bd, riser_plan, t, bed_holes):
+    """Each riser bed, sloping as set, with its support slots cut through."""
+    parts = []
+    for rp in riser_plan:
+        lo, hi = rp["stretch"]
+        h0, h1 = rp["heights"]
+        length = (hi - lo) or 1.0
+        bed = _strip(bd, rp["segments"], rp["width"],
+                     lambda s, h0=h0, h1=h1, length=length: h0 + (h1 - h0) * s / length, t)
+        band = _band_polygon(rp["segments"], rp["width"])
+        for hole in bed_holes:
+            cx = sum(x for x, _ in hole) / len(hole)
+            cy = sum(y for _, y in hole) / len(hole)
+            if _inside((cx, cy), band):
+                bed = bed - _prism(bd, hole, -10.0, 1000.0)
+        parts.append(Part3D(f"riser bed {_route_name(rp['route'], lo, hi)}", "riser", bed))
+    return parts
+
+
+def exact_hexmo_parts(box, clearance="under", frames=None):
+    """The exact parts of a HexmoHexagon module, assembled.
+
+    @param box       - A HexmoHexagon with its arguments parsed.  Unless
+                       ``frames`` is given it is rendered here (at burn 0), so
+                       pass a fresh one.
+    @param clearance - As for :func:`hexmo_parts`.
+    @param frames    - Part frames from a render already done with capture on
+                       (the ``--format step`` path).
+    @returns List of :class:`Part3D`.
+    """
+    _check_clearance(clearance)
+    bd = _bd()
+    if frames is None:
+        frames = _render_frames(box)
+    parts, bed_holes = _exact_from_frames(bd, frames)
+    r, l, t, _, _, riser_plan = _hexmo_plans(box)
+    return (parts + _exact_beds(bd, riser_plan, t, bed_holes)
+            + _tracks(bd, box, _track_pieces(box, r, l, t, box.trapezoid, riser_plan),
+                      clearance))
+
+
+def exact_rect_parts(box, clearance="under", frames=None):
+    """The exact parts of a HexmoRectangle, assembled (frame as rect_pieces)."""
+    _check_clearance(clearance)
+    bd = _bd()
+    if frames is None:
+        frames = _render_frames(box)
+    parts, _ = _exact_from_frames(bd, frames)
+    return parts + _tracks(bd, box, rect_pieces(box), clearance)
+
+
 def assembly(parts, label="hexmo module"):
     """One build123d Compound of the parts, each named and coloured."""
     bd = _bd()
@@ -635,55 +959,63 @@ def assembly(parts, label="hexmo module"):
     return bd.Compound(children=children, label=label)
 
 
-def export_step_file(box, path, clearance="under"):
+def export_step_file(box, path, clearance="under", detail="exact"):
     """Write a HexmoHexagon module's 3D assembly to a STEP file.
 
-    @param box       - A HexmoHexagon with its arguments parsed.
+    @param box       - A HexmoHexagon with its arguments parsed (and not yet
+                       rendered: the exact parts render it).
     @param path      - Output file path.
     @param clearance - As for :func:`hexmo_parts`.
+    @param detail    - ``exact`` (real cut outlines) or ``simple`` (slabs).
     @throws ValueError, ImportError - As for :func:`hexmo_parts`.
     """
     bd = _bd()
-    bd.export_step(assembly(hexmo_parts(box, clearance)), str(path))
+    bd.export_step(assembly(module_parts(box, "hexmo", clearance, detail)), str(path))
 
 
-def export_ring_step_file(path, ring="N", clearance="under"):
+def export_ring_step_file(path, ring="N", clearance="under", detail="exact"):
     """Write a whole helix ring (six modules and the entry) to one STEP file."""
     bd = _bd()
-    bd.export_step(assembly(ring_parts(ring, clearance), label=f"helix ring {ring}"), str(path))
+    bd.export_step(assembly(ring_parts(ring, clearance, detail), label=f"helix ring {ring}"),
+                   str(path))
 
 
 def main(argv=None):
     """Command line.
 
-    * ``OUT.step [--clearance=MODE] [generator args…]`` — one HexmoHexagon;
-    * ``OUT.step --ring=N [--clearance=MODE]`` — the whole helix ring.
+    * ``OUT.step [--clearance=MODE] [--detail=exact|simple] [generator args…]``
+      — one HexmoHexagon;
+    * ``OUT.step --ring=N [--clearance=MODE] [--detail=…]`` — the whole helix ring.
 
-    ``--clearance`` (``under``, ``all`` or ``none``) and ``--ring`` are the
-    exporter's own; every other option goes to the generator.
+    ``--clearance`` (``under``, ``all`` or ``none``), ``--detail`` (``exact``,
+    the default, or ``simple``) and ``--ring`` are the exporter's own; every
+    other option goes to the generator.
     """
     argv = sys.argv[1:] if argv is None else argv
     if not argv or argv[0].startswith("-"):
         print(__doc__.split("\n\n")[0])
         print("usage: python -m boxes.generators._hexmo_step OUT.step "
-              "[--ring=N] [--clearance=under|all|none] [--option=value …]")
+              "[--ring=N] [--clearance=under|all|none] [--detail=exact|simple] "
+              "[--option=value …]")
         return 2
-    clearance, ring = "under", None
+    clearance, ring, detail = "under", None, "exact"
     rest = []
     for arg in argv[1:]:
         if arg.startswith("--clearance="):
             clearance = arg.split("=", 1)[1]
+        elif arg.startswith("--detail="):
+            detail = arg.split("=", 1)[1]
         elif arg.startswith("--ring="):
             ring = arg.split("=", 1)[1]
         else:
             rest.append(arg)
     if ring:
-        export_ring_step_file(argv[0], ring, clearance)
+        export_ring_step_file(argv[0], ring, clearance, detail)
     else:
         from boxes.generators.hexmohexagon import HexmoHexagon
         box = HexmoHexagon()
         box.parseArgs(rest)
-        export_step_file(box, argv[0], clearance)
+        export_step_file(box, argv[0], clearance, detail)
     print(f"wrote {argv[0]}")
     return 0
 

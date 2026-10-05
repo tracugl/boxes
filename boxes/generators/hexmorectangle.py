@@ -1403,6 +1403,42 @@ class HexmoRectangle(HexmoStepFormatMixin, HexmoBigHoleMixin, HexmoTrackGuideMix
         # Used in long_wall_cb, spoke_cb, and base_cb.
         div_pos = lambda i: lay.div_pos[i]
 
+        # --- 3D export part frames ---------------------------------------------
+        # Each panel's callback[0] records where the panel goes in the assembled
+        # module (see HexmoStepFormatMixin._stepFrame); a no-op for normal
+        # output.  Frame: x along the module (centred), y across it (centred),
+        # z from the hexagons' floor-panel top, so the ground is at −t and the
+        # deck underside at h − t; the panels hang from the deck (local y runs
+        # down from it).
+        Wi = W - 2 * t
+        underside = -t + h
+        step_count = {}
+
+        def step_frame(key, kind, origin, ex, ey):
+            step_count[key] = step_count.get(key, 0) + 1
+            name = key if key in ("deck", "spoke") else f"{key} {step_count[key]}"
+            self._stepFrame(name, kind, origin, ex, ey, (0.0, t))
+
+        def frame_long_wall():
+            # Walls 1 and 2 on the −y and +y sides, hanging from the deck.
+            y0 = -W / 2 if step_count.get("long wall", 0) == 0 else W / 2 - t
+            step_frame("long wall", "wall", (-H / 2, y0, underside), (1, 0, 0), (0, 0, -1))
+
+        def frame_end_wall():
+            # End walls 1 and 2 at −x and +x (+x is the end the turnouts face).
+            x0 = -H / 2 if step_count.get("end wall", 0) == 0 else H / 2 + t
+            step_frame("end wall", "wall", (x0, -Wi / 2, underside), (0, 1, 0), (0, 0, -1))
+
+        def frame_long_support():
+            y = -Wi / 2 + lane_pos(step_count.get("long support", 0))
+            step_frame("long support", "support", (-H / 2, y - t / 2, underside),
+                       (1, 0, 0), (0, 0, -1))
+
+        def frame_divider():
+            x = -H / 2 + div_pos(step_count.get("divider", 0))
+            step_frame("divider", "support", (x + t / 2, -Wi / 2, underside),
+                       (0, 1, 0), (0, 0, -1))
+
         # --- fingerHoles callbacks ----------------------------------------------
         # Each outer wall's callback is called once (at edge-0, bottom) by cc().
         # Passing a single-element list [fn] means cc() fires fn only for i=0;
@@ -1435,6 +1471,7 @@ class HexmoRectangle(HexmoStepFormatMixin, HexmoBigHoleMixin, HexmoTrackGuideMix
             Captures from enclosing scope: ``col_w``, ``t``, ``h``,
             ``s_hex``, ``dx``.
             """
+            frame_end_wall()
             for i in range(n_div_v):
                 self.fingerHolesAt(lane_pos(i), 0, h, 90)
             # NOTE: the spoke-to-short-wall connection is now handled by the 'F'
@@ -1509,6 +1546,7 @@ class HexmoRectangle(HexmoStepFormatMixin, HexmoBigHoleMixin, HexmoTrackGuideMix
             Captures from enclosing scope: ``row_h``, ``t``, ``h``, ``H``,
             ``dx``, ``x_floor``, ``div_pos``.
             """
+            frame_long_wall()
             for i in range(n_div_h):
                 # Horizontal dividers are h−t tall (body); 'f' top tabs are not
                 # part of the end tab that slots into this wall, so fingerHoles
@@ -1570,7 +1608,7 @@ class HexmoRectangle(HexmoStepFormatMixin, HexmoBigHoleMixin, HexmoTrackGuideMix
                 self._fillWeightSpan(x_lo, x_lo + step, pilots=False)
 
         # Vertical dividers (H × h): n_cols row segments, step = row_h.
-        vert_div_cb  = lambda: _seg_hole_cb(n_cols, row_h)
+        vert_div_cb  = lambda: (frame_long_support(), _seg_hole_cb(n_cols, row_h))
         # Horizontal dividers (W−2t × h): n_rows lane segments, step = col_w.
         # NOTE: the spoke-to-divider connection is handled by the 'f' sections on
         # the top edge (via _HorizDivSpokeEdge) — no extra fingerHoles needed here.
@@ -1608,7 +1646,7 @@ class HexmoRectangle(HexmoStepFormatMixin, HexmoBigHoleMixin, HexmoTrackGuideMix
                 for g_lo, g_hi in zip(los, his):
                     self._drawSupportGapFeatures(g_lo, g_hi, pilots=False)
 
-        horiz_div_cb = lambda: _horiz_div_holes()
+        horiz_div_cb = lambda: (frame_divider(), _horiz_div_holes())
 
         # Base plate ((W−2t) × H inner, W × (H+2t) outer): fingerHoles for all
         # six dividers.  At callback-0 the turtle sits at the inner-bottom-left
@@ -1643,6 +1681,7 @@ class HexmoRectangle(HexmoStepFormatMixin, HexmoBigHoleMixin, HexmoTrackGuideMix
             Captures from enclosing scope: ``col_w``, ``row_h``, ``t``,
             ``n_cols``, ``n_div_h``.
             """
+            step_frame("deck", "panel", (-H / 2, -Wi / 2, underside), (1, 0, 0), (0, 1, 0))
             # Vertical divider fingerHoles (angle=0 → drawn along H direction, now x).
             # x_c is the divider's W-direction position, now the y-axis of the panel.
             # n_cols segments of row_h at positions j*(row_h+t) for j in [0, n_cols).
@@ -1787,6 +1826,7 @@ class HexmoRectangle(HexmoStepFormatMixin, HexmoBigHoleMixin, HexmoTrackGuideMix
 
             Captures from enclosing scope: ``row_h``, ``t``, ``sw``.
             """
+            step_frame("spoke", "panel", (-H / 2, -sw / 2, -t), (1, 0, 0), (0, 1, 0))
             for i in range(n_div_h):
                 # One sw-length fingerHoles run per divider: receives the sw-wide
                 # 'f' strip from _HorizDivSpokeEdge.

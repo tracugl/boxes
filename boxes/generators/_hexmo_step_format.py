@@ -19,6 +19,7 @@ The module name starts with an underscore, so generator discovery skips it.
 """
 from __future__ import annotations
 
+from dataclasses import dataclass
 from io import BytesIO
 
 from boxes.formats import Formats
@@ -30,6 +31,35 @@ STEP = "step"
 Formats.http_headers.setdefault(STEP, [("Content-type", "model/step")])
 
 
+@dataclass
+class PartFrame:
+    """Where one drawn part sits in the assembled module.
+
+    Recorded while the part is being drawn (see
+    :meth:`HexmoStepFormatMixin._stepFrame`).
+
+    @ivar part   - The drawing surface's Part the outline went into.
+    @ivar matrix - The drawing transform at the part's local origin (sheet ←
+                   local), so its outline can be mapped back to local x/y.
+    @ivar name   - Part name in the 3D assembly.
+    @ivar kind   - Colour class (``panel``, ``wall``, ``support``, ``riser``),
+                   or ``bedholes`` for a riser bed's outline, whose holes are
+                   cut into the sloping 3D bed.
+    @ivar origin, ex, ey - Where local (0, 0) sits in the assembly and the
+                   directions of local x and y (3D, unit).
+    @ivar depth  - The part's thickness span along ex × ey, ``(z0, z1)``.
+    """
+
+    part: object
+    matrix: object
+    name: str
+    kind: str
+    origin: tuple
+    ex: tuple
+    ey: tuple
+    depth: tuple
+
+
 class HexmoStepFormatMixin:
     """``--format step`` for a Hexmo generator.
 
@@ -39,6 +69,26 @@ class HexmoStepFormatMixin:
     """
 
     _STEP_KIND = "hexagon"
+    # Set to a list while an exact 3D export renders; None otherwise, so the
+    # drawing code's _stepFrame calls cost nothing for normal output.
+    _step_frames = None
+
+    def _stepFrame(self, name, kind, origin, ex, ey, depth):
+        """Record the part being drawn and where it goes in the assembly.
+
+        Call with the turtle at the part's local origin.  Does nothing unless
+        an exact 3D export is rendering.
+
+        @param name   - Part name, e.g. ``wall edge 3``.
+        @param kind   - See :class:`PartFrame`.
+        @param origin - 3D point where local (0, 0) sits.
+        @param ex, ey - 3D unit directions of local x and y.
+        @param depth  - Thickness span ``(z0, z1)`` along ex × ey.
+        """
+        if self._step_frames is None:
+            return
+        self._step_frames.append(PartFrame(self.surface._p, self.ctx._m, name, kind,
+                                           tuple(origin), tuple(ex), tuple(ey), tuple(depth)))
 
     def _addStepFormat(self):
         """Offer ``step`` in --format and add --step_clearance."""
@@ -57,11 +107,23 @@ class HexmoStepFormatMixin:
                  "(--train_envelope high, --under_track_width wide).  'under' "
                  "(default): over the tracks on risers, the ones that pass under or "
                  "through the deck; 'all': over every track; 'none'.")
+        self.argparser.add_argument(
+            "--step_detail", action="store", type=str, default="exact",
+            choices=["exact", "simple"],
+            help="With --format step: 'exact' (default) builds every part from "
+                 "its real cut outline (finger joints, holes, kites, notches), "
+                 "at its nominal size (no burn), so you can check how the parts "
+                 "fit; 'simple' uses plain slabs, quicker and lighter.")
 
     def open(self):
         """Open as usual; for STEP, onto an SVG surface that is thrown away."""
         if self.format != STEP:
             return super().open()
+        if self.step_detail == "exact":
+            # Record each assembled part's frame as it is drawn, at nominal
+            # size (no burn compensation).
+            self.burn = 0.0
+            self._step_frames = []
         self.format = "svg"
         try:
             return super().open()
@@ -79,13 +141,16 @@ class HexmoStepFormatMixin:
             return super().close()
         if self.ctx is None:
             return None
-        self.format = "svg"
+        frames, self._step_frames = self._step_frames, None
+        # Build the 3D parts before finishing the SVG: finishing moves every
+        # drawn path into final sheet coordinates in place, after which the
+        # recorded part frames would no longer match them.
         try:
-            super().close()                 # finish (and discard) the SVG
-        finally:
-            self.format = STEP
-        try:
-            if self._STEP_KIND == "rectangle":
+            if self.step_detail == "exact":
+                build = (_hexmo_step.exact_rect_parts if self._STEP_KIND == "rectangle"
+                         else _hexmo_step.exact_hexmo_parts)
+                parts = build(self, self.step_clearance, frames=frames)
+            elif self._STEP_KIND == "rectangle":
                 parts = _hexmo_step.rect_parts(self, self.step_clearance)
             else:
                 parts = _hexmo_step.hexmo_parts(self, self.step_clearance)
@@ -96,6 +161,11 @@ class HexmoStepFormatMixin:
             raise ValueError(
                 "--format step needs the optional 'step' dependency (build123d and "
                 f"the OpenCascade kernel): pip install .[step]  ({err})") from None
+        self.format = "svg"
+        try:
+            super().close()                 # finish (and discard) the SVG
+        finally:
+            self.format = STEP
         data = BytesIO()
         bd.export_step(_hexmo_step.assembly(parts, label=type(self).__name__), data)
         data.seek(0)
