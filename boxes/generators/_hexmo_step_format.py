@@ -22,13 +22,18 @@ from __future__ import annotations
 from dataclasses import dataclass
 from io import BytesIO
 
+from boxes import boolarg
 from boxes.formats import Formats
 from boxes.generators import _hexmo_step
 
 STEP = "step"
+# The assembled module drawn in 3D, as an SVG line drawing.
+SVG_3D = "svg_3d"
+THREE_D = (STEP, SVG_3D)
 
-# How the web server labels the download.
+# How the web server labels the downloads.
 Formats.http_headers.setdefault(STEP, [("Content-type", "model/step")])
+Formats.http_headers.setdefault(SVG_3D, [("Content-type", "image/svg+xml; charset=utf-8")])
 
 
 @dataclass
@@ -91,15 +96,16 @@ class HexmoStepFormatMixin:
                                            tuple(origin), tuple(ex), tuple(ey), tuple(depth)))
 
     def _addStepFormat(self):
-        """Offer ``step`` in --format and add --step_clearance."""
+        """Offer ``step`` and ``svg_3d`` in --format; add their options."""
         for action in self.argparser._actions:
             if action.dest == "format":
                 # A new list: the original may be shared with other generators.
-                action.choices = list(action.choices) + [STEP]
+                action.choices = list(action.choices) + list(THREE_D)
                 action.help = (action.help or "") + (
                     "  'step' (HexmoHexagon and HexmoRectangle): the module assembled "
                     "in 3D, to open in CAD (Onshape, FreeCAD, Fusion …), instead of "
-                    "the laser parts.")
+                    "the laser parts.  'svg_3d': the assembled module drawn in 3D "
+                    "from the front right, above, as an SVG line drawing.")
         self.argparser.add_argument(
             "--step_clearance", action="store", type=str, default="under",
             choices=list(_hexmo_step.CLEARANCE_MODES),
@@ -113,35 +119,46 @@ class HexmoStepFormatMixin:
             help="With --format step: 'exact' (default) builds every part from "
                  "its real cut outline (finger joints, holes, kites, notches), "
                  "at its nominal size (no burn), so you can check how the parts "
-                 "fit; 'simple' uses plain slabs, quicker and lighter.")
+                 "fit; 'simple' uses plain slabs, quicker and lighter.  Also "
+                 "for --format svg_3d.")
+        self.argparser.add_argument(
+            "--view_deck", action="store", type=boolarg, default=False,
+            help="With --format svg_3d: draw the deck too.  Off by default, so "
+                 "the drawing shows inside the module: walls, supports and "
+                 "risers.  Only cut parts are drawn (no track ribbons).")
 
     def open(self):
-        """Open as usual; for STEP, onto an SVG surface that is thrown away."""
-        if self.format != STEP:
+        """Open as usual; for a 3D format, onto an SVG surface that is thrown away."""
+        if self.format not in THREE_D:
             return super().open()
         if self.step_detail == "exact":
             # Record each assembled part's frame as it is drawn, at nominal
             # size (no burn compensation).
             self.burn = 0.0
             self._step_frames = []
-        self.format = "svg"
+        wanted, self.format = self.format, "svg"
         try:
             return super().open()
         finally:
-            self.format = STEP
+            self.format = wanted
 
     def close(self):
-        """Finish as usual; for STEP, return the 3D assembly instead.
+        """Finish as usual; for a 3D format, return the assembly instead.
 
-        @returns A file-like object with the output, as Boxes.close does.
-        @throws ValueError - For STEP without the optional dependency (with how
-                             to install it), or from the 3D export's checks.
+        @returns A file-like object with the output, as Boxes.close does: the
+                 STEP file, or the line drawing.
+        @throws ValueError - For a 3D format without the optional dependency
+                             (with how to install it), or from the 3D export's
+                             checks.
         """
-        if self.format != STEP:
+        if self.format not in THREE_D:
             return super().close()
         if self.ctx is None:
             return None
+        wanted = self.format
         frames, self._step_frames = self._step_frames, None
+        # The drawing has no clearance boxes: they would hide what's inside.
+        clearance = self.step_clearance if wanted == STEP else "none"
         # Build the 3D parts before finishing the SVG: finishing moves every
         # drawn path into final sheet coordinates in place, after which the
         # recorded part frames would no longer match them.
@@ -149,24 +166,27 @@ class HexmoStepFormatMixin:
             if self.step_detail == "exact":
                 build = (_hexmo_step.exact_rect_parts if self._STEP_KIND == "rectangle"
                          else _hexmo_step.exact_hexmo_parts)
-                parts = build(self, self.step_clearance, frames=frames)
+                parts = build(self, clearance, frames=frames)
             elif self._STEP_KIND == "rectangle":
-                parts = _hexmo_step.rect_parts(self, self.step_clearance)
+                parts = _hexmo_step.rect_parts(self, clearance)
             else:
-                parts = _hexmo_step.hexmo_parts(self, self.step_clearance)
+                parts = _hexmo_step.hexmo_parts(self, clearance)
             bd = _hexmo_step._bd()
         except ImportError as err:
             # A ValueError is shown to the web user as an error page, not a
             # server error; say what to install.
             raise ValueError(
-                "--format step needs the optional 'step' dependency (build123d and "
-                f"the OpenCascade kernel): pip install .[step]  ({err})") from None
+                f"--format {wanted} needs the optional 'step' dependency (build123d "
+                f"and the OpenCascade kernel): pip install .[step]  ({err})") from None
         self.format = "svg"
         try:
             super().close()                 # finish (and discard) the SVG
         finally:
-            self.format = STEP
+            self.format = wanted
         data = BytesIO()
-        bd.export_step(_hexmo_step.assembly(parts, label=type(self).__name__), data)
+        if wanted == SVG_3D:
+            _hexmo_step.line_drawing(parts, data, deck=self.view_deck)
+        else:
+            bd.export_step(_hexmo_step.assembly(parts, label=type(self).__name__), data)
         data.seek(0)
         return data
