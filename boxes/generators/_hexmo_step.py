@@ -671,7 +671,10 @@ def _cut_chains(part):
     """A drawn Part's cut paths as chains of segments, in sheet coordinates.
 
     A segment is ``("L", p0, p1)`` or ``("C", p0, c1, c2, p1)`` (a cubic
-    Bézier: holes and rounded corners).  Zero-length segments are dropped.
+    Bézier: holes and rounded corners).  Zero-length segments (under _JOIN)
+    are dropped, and the next segment starts where the last kept one ended,
+    so a chain stays continuous: moving on to a dropped segment's end would
+    leave a hairline gap the 3D faces cannot close.
     """
     chains = []
     for path in part.pathes:
@@ -688,13 +691,13 @@ def _cut_chains(part):
                 end = (cmd[1], cmd[2])
                 if math.dist(cur, end) > _JOIN:
                     chain.append(("L", cur, end))
-                cur = end
+                    cur = end
             elif c == "C" and cur is not None:
                 # Destination first, then the two control points.
                 end, c1, c2 = (cmd[1], cmd[2]), (cmd[3], cmd[4]), (cmd[5], cmd[6])
                 if max(math.dist(cur, q) for q in (end, c1, c2)) > _JOIN:
                     chain.append(("C", cur, c1, c2, end))
-                cur = end
+                    cur = end
         if chain:
             chains.append(chain)
     return chains
