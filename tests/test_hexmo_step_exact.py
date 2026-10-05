@@ -154,10 +154,10 @@ class TestTrapezoid:
         assert overlap(m1[wall], m1["floor"]) < 5.0
 
 
-class TestNearlyClosedOutline:
-    """A trapezoid with FingerJoint_extra_length is drawn with its outline
-    0.52 mm short of closing.  The export still builds the panel, not its
-    holes (kites) on their own."""
+class TestExtraLength:
+    """A trapezoid with FingerJoint_extra_length used to be drawn with its
+    outline 0.52 mm short of closing (BOX-65, since fixed); the export still
+    builds the whole panel, not its holes (kites) on their own."""
 
     def test_trapezoid_panels_keep_their_outline(self) -> None:
         box = hexagon(["--radius=220", "--thickness=3", "--h=100", "--trapezoid=1",
@@ -166,8 +166,10 @@ class TestNearlyClosedOutline:
         parts = {p.name: p for p in exact_hexmo_parts(box)}
         for name in ("deck", "floor"):
             bb = bbox(parts[name])
-            # The whole half-hexagon: the outer corners are 220 mm out.
-            assert bb.max.X - bb.min.X == pytest.approx(440, abs=1)
+            # The whole half-hexagon: the outer corners are 220 mm out, and
+            # the fingers' 0.3 mm extra puts the join edge's corners √3 × 0.3
+            # further out on each side.
+            assert bb.max.X - bb.min.X == pytest.approx(440 + 2 * 0.3 * 3 ** 0.5, abs=0.01)
 
 
 class TestRectangle:
