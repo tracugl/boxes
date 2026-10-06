@@ -332,11 +332,6 @@ class TestErrors:
         with pytest.raises(ValueError, match="only applies with --lower_ground"):
             box.open(); box.render()
 
-    def test_gap_on_the_hexagon(self) -> None:
-        with pytest.raises(ValueError, match="only applies to the trapezoid"):
-            b = module("M6", "--upper_edge_gap=5")
-            b.open(); b.render()
-
     def test_support_neither_under_plate_nor_deck(self) -> None:
         # Turned across the spoke 55 mm out: clear of the spur's slot, but with
         # a 15 mm gap the deck's edge is further out than it.
@@ -412,3 +407,44 @@ def test_m1_with_the_preset_gap_builds_in_3d() -> None:
     box.parseArgs(HELIX_RING_N_GROUND["M1"])
     parts = {p.name: p for p in _hexmo_step.exact_hexmo_parts(box, clearance="none")}
     assert parts["deck"].solid.is_valid
+
+
+def _deck_fingers(args, edge, mirror=False):
+    """A side wall's top finger spans at deck height (local y, mm along it).
+
+    @param mirror - Give them as the wall facing it, back to back, sees them.
+    """
+    box = HexmoHexagon()
+    box.parseArgs(args)
+    f = next(fr for fr in _hexmo_step._render_frames(box) if fr.name == f"wall edge {edge}")
+    out = max(_hexmo_step._frame_loops(f), key=len)
+    spans = []
+    for seg in out:
+        (x0, y0), (x1, y1) = seg[1], seg[-1]
+        if seg[0] == "L" and abs(x0 - x1) < 1e-6 and abs(x0 - (L + T)) < 1e-6:
+            lo, hi = sorted((y0, y1))
+            spans.append((round(SIDE_ORIG - hi, 2), round(SIDE_ORIG - lo, 2)) if mirror
+                         else (round(lo, 2), round(hi, 2)))
+    return sorted(spans)
+
+
+@pytest.mark.parametrize("left, right", [("M5", "M6"), ("M6", "M1"), ("M2", "M3")])
+def test_deck_fingers_match_across_every_joint(left, right) -> None:
+    # Each joint: the left module's edge-5 wall back to back with the right
+    # one's edge-3 wall.  With --upper_edge_gap the trapezoids' deck joints are
+    # shorter; M6, given the same gap, starts its joints at the same place, so
+    # the fingers line up (M6's deck is left whole and cut back by hand).
+    from boxes.generators._hexmo_helix_ring import HELIX_RING_N_GROUND as ring
+    a = _deck_fingers(ring[left], 5)
+    b = _deck_fingers(ring[right], 3, mirror=True)
+    assert a and a == pytest.approx(b, abs=0.05)
+
+
+def test_gap_works_with_no_lead_in() -> None:
+    # A route with no lead-in starts with a zero-length straight; the deck
+    # edge for --upper_edge_gap must still be found (it used to divide by 0).
+    box = module("M2", "--upper_edge_gap=15")
+    box.track_lead_in = 0
+    box.support_edges = "4@144,4@44/90"
+    box.open()
+    box.render()

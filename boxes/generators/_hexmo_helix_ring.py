@@ -126,13 +126,13 @@ def with_ground(ring):
     Upper ground on the deck, lower ground at 27.8 (the lower level's exit
     height) on the inner side of M1–M5, and M6's side walls stepped to meet
     them.  The trapezoids' decks stop 15 mm inside the main line's rail edge
-    (--upper_edge_gap), so there is little to sand away.
+    (--upper_edge_gap), so there is little to sand away; M6 takes the same
+    gap, so its side walls' deck joints (and fingers) match its neighbours'.
 
     @param ring - From :func:`helix_ring`.
     @returns The ring with the scenery options added.
     """
-    return {name: args + ["--lower_ground=27.8"]
-            + (["--upper_edge_gap=15"] if "--trapezoid=1" in args else [])
+    return {name: args + ["--lower_ground=27.8", "--upper_edge_gap=15"]
             for name, args in ring.items()}
 
 

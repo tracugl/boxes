@@ -849,7 +849,9 @@ deck's cut-back edge follows the slot. Set **`--upper_edge_gap`** to keep less
 deck instead: the edge then runs that many mm inside the main line's rail edge,
 so there's nothing to sand away. It never comes inside the spur's slot; in M1
 the spur swings to within 9 mm of the main line near edge 3, so a bigger gap
-stays at the slot's edge there.
+stays at the slot's edge there. Give M6 the same `--upper_edge_gap`: its deck stays
+whole, but its stepped walls then start their deck joints where the trapezoids'
+do, so the fingers of the two walls at each joint line up.
 
 Edit links for the ring at **radius 250** (see [The ring at radius 250](#the-ring-at-radius-250)),
 with its settings: g2 hole groups, rounded-rectangle big holes, the track guide
@@ -868,7 +870,7 @@ pre-filled:
 - **M5:**
   http://localhost:4455/HexmoHexagon?radius=250&thickness=3&h=80&edge_width=22&spoke_width=60&bottom=spoke&support_length=55&track_lead_in=26&track_width=17&under_track_width=35&corner_holes=g2&gap_holes=g2&big_hole_shape=rounded_rect&track_guide=1&track_template=1&labels=0&reference=0&trapezoid=1&support_edges=4@138,4@36/90&track_routes=3:17.5-5:17.5,3:-35-5:-35&track_openings=3:-35:43.5:35,5:35:35.9:35&deck_slots=3:-35-5:-35/35&risers=3:-35-5:-35~43.5..35.9/35&lower_ground=27.8&upper_edge_gap=15
 - **M6:**
-  http://localhost:4455/HexmoHexagon?radius=250&thickness=3&h=80&edge_width=22&spoke_width=60&bottom=spoke&support_length=55&track_lead_in=26&track_width=17&under_track_width=35&corner_holes=g2&gap_holes=g2&big_hole_shape=rounded_rect&track_guide=1&track_template=1&labels=0&reference=0&support_edges=2,4,6&track_routes=1:-35-5:-17.5,3:-17.5-1:-35,1:0-5:17.5&under_track_edges=1&under_track_height=27.8&track_openings=5:17.5:74:35,3:-35:35.9:35&deck_slots=1:0-5:17.5@182../35,3:35-1:0@..231/35&risers=1:0-5:17.5@182..~77..74/35,3:35-1:0@..231~35.9..31/35,3:35-1:0@231..~31..27.8/35&lower_ground=27.8
+  http://localhost:4455/HexmoHexagon?radius=250&thickness=3&h=80&edge_width=22&spoke_width=60&bottom=spoke&support_length=55&track_lead_in=26&track_width=17&under_track_width=35&corner_holes=g2&gap_holes=g2&big_hole_shape=rounded_rect&track_guide=1&track_template=1&labels=0&reference=0&support_edges=2,4,6&track_routes=1:-35-5:-17.5,3:-17.5-1:-35,1:0-5:17.5&under_track_edges=1&under_track_height=27.8&track_openings=5:17.5:74:35,3:-35:35.9:35&deck_slots=1:0-5:17.5@182../35,3:35-1:0@..231/35&risers=1:0-5:17.5@182..~77..74/35,3:35-1:0@..231~35.9..31/35,3:35-1:0@231..~31..27.8/35&lower_ground=27.8&upper_edge_gap=15
 - **Entry rectangle** (at M6 edge 1):
   http://localhost:4455/HexmoRectangle?radius=250&thickness=3&h=80&num_rows=3&num_columns=2&track_width=17&track_lead_in=26&under_track=1&under_track_height=27.8&under_track_width=35&turnouts=10:0:-35,133.7:0:35&corner_holes=g2&gap_holes=g2&big_hole_shape=rounded_rect&track_guide=1&track_template=1&labels=0&reference=0
 
