@@ -30,7 +30,9 @@ from types import SimpleNamespace
 from boxes import Boxes, edges, boolarg
 from boxes.Color import Color
 from boxes.generators._hexmo_big_holes import HexmoBigHoleMixin
+from boxes.generators._hexmo_risers import support_stations
 from boxes.generators._hexmo_step_format import HexmoStepFormatMixin
+from boxes.generators._hexmo_subway import HexmoSubwayMixin
 from boxes.generators._hexmo_track_guide import HexmoTrackGuideMixin
 from boxes.generators._hexmo_track_template import HexmoTrackTemplateMixin
 from boxes.generators._hexmo_track_routes import Arc, Line, offset_segments, segments_polyline
@@ -208,7 +210,7 @@ class _ShortWallTopEdge(edges.BaseEdge):
 
 
 class HexmoRectangle(HexmoStepFormatMixin, HexmoBigHoleMixin, HexmoTrackGuideMixin,
-                     HexmoTrackTemplateMixin, HexmoUnderTrackMixin, Boxes):
+                     HexmoTrackTemplateMixin, HexmoUnderTrackMixin, HexmoSubwayMixin, Boxes):
     """Rectangular tray with a 3×N internal grid, compatible with HexmoHexagon stacking.
 
     The number of column compartments N is controlled by ``--num_columns`` (default 0 = auto).
@@ -465,6 +467,11 @@ class HexmoRectangle(HexmoStepFormatMixin, HexmoBigHoleMixin, HexmoTrackGuideMix
                  "matches HexmoHexagon's --under_track_edges opening.")
         # --under_track_height / --under_track_width, shared with HexmoHexagon.
         self._addUnderTrackArgs()
+        # --subway: a level lower track under the deck (see _hexmo_subway).
+        self._addSubwayArgs(rectangle=True)
+        self.argparser.add_argument(
+            "--riser_spacing", action="store", type=float, default=80.0,
+            help="With --subway: largest gap (mm) between neighbouring bed supports.")
         # --format step and --step_clearance (see _hexmo_step_format).
         self._addStepFormat()
 
@@ -1120,6 +1127,52 @@ class HexmoRectangle(HexmoStepFormatMixin, HexmoBigHoleMixin, HexmoTrackGuideMix
                             label="track guide turnout leg end",
                             arrow="turnout leg side ->")
 
+    def _drawRectSubway(self, subway, cells, H, step_frame):
+        """Cut the subway's level bed and supports for each cell (see --subway).
+
+        Each cell between the end walls and short dividers gets a bed the
+        cell's length, its top at the track height, and supports standing in
+        the floor strip (the spoke) 15 mm in from each end and evenly between,
+        at most --riser_spacing apart.  Each support is the bed's width wide and
+        as tall as the bed's underside, finger-jointed into the strip below and
+        the bed above, as a HexmoHexagon riser support is.  The track crosses
+        each wall on its under-deck opening's bottom edge, at the same height.
+
+        @param subway     - ``(height, width)`` from _rectSubway.
+        @param cells      - ``(start, end)`` along H of each cell (wall faces).
+        @param H          - Inner length (the module frame is centred on it).
+        @param step_frame - render's 3D-export frame recorder.
+        """
+        t = self.thickness
+        height, width = subway
+        body = height - t
+        if body < 2 * t:
+            raise ValueError(f"--subway {height:g} leaves no room for supports under "
+                             "the bed; raise it.")
+        for x0, x1 in cells:
+            length = x1 - x0
+            stations = support_stations(length, self.riser_spacing)
+
+            def bed_cb(x0=x0, stations=stations):
+                # The bed lies level, its top at the track height.
+                step_frame("subway bed", "riser", (-H / 2 + x0, -width / 2, body),
+                           (1, 0, 0), (0, 1, 0))
+                for x in stations:
+                    self.fingerHolesAt(x, 0, width, 90)
+
+            self.rectangularWall(length, width, "eeee", callback=[bed_cb], move="right",
+                                 label=f"subway bed {length:.0f}")
+            for x in stations:
+                def support_cb(x=x0 + x):
+                    step_frame("subway support", "riser", (-H / 2 + x - t / 2, -width / 2, 0.0),
+                               (0, 1, 0), (0, 0, 1))
+                    if self.part_text:
+                        self.text(f"{height:g}", width / 2, body / 2, align="middle center",
+                                  fontsize=min(4.0, body / 3), color=Color.ETCHING)
+
+                self.rectangularWall(width, body, "fefe", callback=[support_cb],
+                                     move="right", label=f"subway {height:g}")
+
     def _etchTurnoutLeg(self, segments):
         """Etch one turnout's diverging leg, styled like the straight track lines.
 
@@ -1330,6 +1383,19 @@ class HexmoRectangle(HexmoStepFormatMixin, HexmoBigHoleMixin, HexmoTrackGuideMix
 
         # Sizes and the internal grid (see _rectLayout, shared with the 3D export).
         lay = self._rectLayout()
+        # --subway: a level track down the centre line, through the under-deck
+        # openings, which it turns on at its own height and width.
+        subway = self._rectSubway()
+        if subway is not None:
+            if lay.sw <= 0:
+                raise ValueError("--subway stands its supports in the floor strip down "
+                                 "the middle lane; it needs --spoke_width above 0.")
+            if subway[1] > lay.sw - 2 * self._MIN_CLEAR:
+                raise ValueError(
+                    f"--subway: a {subway[1]:g} mm bed doesn't fit the {lay.sw:.0f} mm "
+                    "floor strip; use a narrower width.")
+            self.under_track = True
+            self.under_track_height, self.under_track_width = subway
         r, h, apothem, W, H = lay.r, lay.h, lay.apothem, lay.W, lay.H
         n_cols, n_div_h, n_rows, n_div_v = lay.n_cols, lay.n_div_h, lay.n_rows, lay.n_div_v
         col_w, row_h, sw = lay.col_w, lay.row_h, lay.sw
@@ -1429,6 +1495,13 @@ class HexmoRectangle(HexmoStepFormatMixin, HexmoBigHoleMixin, HexmoTrackGuideMix
         # div_pos: H-axis position of horizontal divider i (i = 0..3).
         # Used in long_wall_cb, spoke_cb, and base_cb.
         div_pos = lambda i: lay.div_pos[i]
+        # The subway's cells along H, between the end walls and short dividers
+        # (their faces), one bed each.
+        subway_cells = []
+        if subway is not None:
+            faces = [0.0] + [x for i in range(n_div_h)
+                             for x in (div_pos(i) - t / 2, div_pos(i) + t / 2)] + [H]
+            subway_cells = list(zip(faces[::2], faces[1::2]))
 
         # --- 3D export part frames ---------------------------------------------
         # Each panel's callback[0] records where the panel goes in the assembled
@@ -1863,7 +1936,12 @@ class HexmoRectangle(HexmoStepFormatMixin, HexmoBigHoleMixin, HexmoTrackGuideMix
             # registers to nothing, so it needs no medium/small holes — centred
             # across the spoke's sw width and packed clear of the finger slots and
             # the finger-tabbed ends (_fillWeightSpan keeps _BIG_EDGE clearance).
-            if sw >= 2 * self._bigHoleRadius() + 2 * self._MIN_CLEAR:
+            if subway is not None:
+                # The subway's supports slot in here instead of weight holes.
+                for x0, x1 in subway_cells:
+                    for x in support_stations(x1 - x0, self.riser_spacing):
+                        self.fingerHolesAt(x0 + x, sw / 2 - subway[1] / 2, subway[1], 90)
+            elif sw >= 2 * self._bigHoleRadius() + 2 * self._MIN_CLEAR:
                 bounds = [0.0] + [div_pos(i) for i in range(n_div_h)] + [H]
                 for g_lo, g_hi in zip(bounds[:-1], bounds[1:]):
                     self._fillWeightSpan(g_lo, g_hi, clusters=False, y_centre=sw / 2)
@@ -1928,6 +2006,10 @@ class HexmoRectangle(HexmoStepFormatMixin, HexmoBigHoleMixin, HexmoTrackGuideMix
             self.rectangularWall(W - 2 * t, h - t,
                                  [e_horiz_bot, 'f', e_horiz_top, 'f'],
                                  callback=[horiz_div_cb], move="up")
+
+        # The subway's beds and supports (--subway).
+        if subway is not None:
+            self._drawRectSubway(subway, subway_cells, H, step_frame)
 
         # Optional track-laying jig for the end walls.  It is drawn in the
         # frame of the hex wall these end walls mate with, so it is the same

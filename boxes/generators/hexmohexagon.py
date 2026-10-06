@@ -29,6 +29,7 @@ from boxes import Boxes, edges, boolarg, holeCol, restore
 from boxes.Color import *
 from boxes.generators._hexmo_big_holes import HexmoBigHoleMixin
 from boxes.generators._hexmo_lower_ground import HexmoLowerGroundMixin
+from boxes.generators._hexmo_subway import HexmoSubwayMixin
 from boxes.generators._hexmo_step_format import HexmoStepFormatMixin
 from boxes.generators import _hexmo_step
 from boxes.generators._hexmo_track_guide import HexmoTrackGuideMixin
@@ -53,7 +54,7 @@ from boxes.generators._hexmo_track_routes import (
 
 class HexmoHexagon(HexmoStepFormatMixin, HexmoBigHoleMixin, HexmoTrackGuideMixin,
                    HexmoTrackTemplateMixin, HexmoUnderTrackMixin, HexmoLowerGroundMixin,
-                   Boxes):
+                   HexmoSubwayMixin, Boxes):
     """Box with a regular hexagon or half hexagon as the base. """
 
     ui_group = "Box"
@@ -330,6 +331,8 @@ class HexmoHexagon(HexmoStepFormatMixin, HexmoBigHoleMixin, HexmoTrackGuideMixin
         self._addTrackTemplateArgs()
         # --lower_ground and --upper_edge_gap (see _hexmo_lower_ground).
         self._addLowerGroundArgs()
+        # --subway: a level lower track under the deck (see _hexmo_subway).
+        self._addSubwayArgs()
         # --format step and --step_clearance (see _hexmo_step_format).
         self._addStepFormat()
 
@@ -1406,7 +1409,8 @@ class HexmoHexagon(HexmoStepFormatMixin, HexmoBigHoleMixin, HexmoTrackGuideMixin
         """
         t = self.thickness
         plan = {}
-        for opening in parse_track_openings(self.track_openings,
+        # --subway adds its wall openings (see _hexmo_subway).
+        for opening in parse_track_openings(self._withSubwayOpenings(self.track_openings),
                                             self.under_track_width):
             if isTrapezoid and opening.edge not in self._TRAPEZOID_EDGES:
                 raise ValueError(
@@ -1715,7 +1719,7 @@ class HexmoHexagon(HexmoStepFormatMixin, HexmoBigHoleMixin, HexmoTrackGuideMixin
                  for sl in parse_deck_slots(self.deck_slots, self.under_track_width)}
         risers = {(rs.start, rs.start_offset, rs.end, rs.end_offset, rs.lo, rs.hi,
                    rs.width or self.track_width)
-                  for rs in parse_risers(self.risers)}
+                  for rs in parse_risers(self._withSubwayRisers(self.risers))}
         # With --lower_ground the spur's slot leaves the deck with the rest of
         # the inner side, so it is no riser's bed; the riser gets its own.
         return (slots & risers) - {self._lower_split_key}
@@ -1809,7 +1813,8 @@ class HexmoHexagon(HexmoStepFormatMixin, HexmoBigHoleMixin, HexmoTrackGuideMixin
                              another riser's track, on a support wall's slot,
                              or against a side wall.
         """
-        specs = parse_risers(self.risers)
+        # --subway adds a level riser along each of its routes.
+        specs = parse_risers(self._withSubwayRisers(self.risers))
         if not specs:
             return []
         t = self.thickness

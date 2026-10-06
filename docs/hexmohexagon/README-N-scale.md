@@ -876,12 +876,41 @@ pre-filled:
   http://localhost:4455/HexmoHexagon?radius=250&thickness=3&h=80&edge_width=22&spoke_width=60&bottom=spoke&support_length=55&track_lead_in=20&track_width=17&under_track_width=35&corner_holes=g2&gap_holes=g2&big_hole_shape=rounded_rect&track_guide=1&track_template=1&labels=0&reference=0&trapezoid=1&support_edges=4@140,4@38/90&track_routes=3:17.5-5:17.5,3:-35-5:-35&track_openings=3:-35:41.4:35,5:35:33.3:35&deck_slots=3:-35-5:-35/35&risers=3:-35-5:-35~41.4..33.3/35&lower_ground=23.8&upper_edge_gap=15
 - **M6:**
   http://localhost:4455/HexmoHexagon?radius=250&thickness=3&h=80&edge_width=22&spoke_width=60&bottom=spoke&support_length=55&track_lead_in=20&track_width=17&under_track_width=35&corner_holes=g2&gap_holes=g2&big_hole_shape=rounded_rect&track_guide=1&track_template=1&labels=0&reference=0&support_edges=2,4,6&track_routes=1:-35-5:-17.5,3:-17.5-1:-35,1:0-5:17.5&under_track_edges=1&under_track_height=23.8&track_openings=5:17.5:74:35,3:-35:33.3:35&deck_slots=1:0-5:17.5@178../35,3:35-1:0@..233/35&risers=1:0-5:17.5@178..~77..74/35,3:35-1:0@..233~33.3..28/35,3:35-1:0@233..~28..23.8/35&lower_ground=23.8&upper_edge_gap=15
-- **Entry rectangle** (at M6 edge 1):
-  http://localhost:4455/HexmoRectangle?radius=250&thickness=3&h=80&num_rows=3&num_columns=2&track_width=17&track_lead_in=20&under_track=1&under_track_height=23.8&under_track_width=35&turnouts=10:0:-35,133.7:0:35&corner_holes=g2&gap_holes=g2&big_hole_shape=rounded_rect&track_guide=1&track_template=1&labels=0&reference=0
+- **Entry rectangle** (at M6 edge 1, with the lower level on a subway):
+  http://localhost:4455/HexmoRectangle?radius=250&thickness=3&h=80&num_rows=3&num_columns=2&track_width=17&track_lead_in=20&under_track=1&under_track_height=23.8&under_track_width=35&turnouts=10:0:-35,133.7:0:35&corner_holes=g2&gap_holes=g2&big_hole_shape=rounded_rect&track_guide=1&track_template=1&labels=0&reference=0&subway=23.8
 
 The 3D export shows it all (exact parts only), and `--ring=N250-ground`
 exports the whole ring opened up this way, with these settings (see below).
 `--ring=N-ground` is the same at radius 220.
+
+### Subway: a level track under the deck (`--subway`)
+
+The helix's lower level leaves M6 under the entry rectangle and carries on under
+the deck of whatever module comes next. Under a deck a track needs its own bed
+and supports, and an opening in every wall it crosses. One `--subway` setting
+gives all of that, on every Hexmo module:
+
+- **HexmoHexagon (full or trapezoid):** `A:offset-B:offset~HEIGHT[/WIDTH]`, a
+  route as for `--track_routes`, the track height (its base, mm above the floor
+  panel) and the bed width (default `--under_track_width`), e.g.
+  `--subway 4:0-1:0~23.8`. It adds the wall openings at both ends of the route
+  (as `--track_openings` would) and a level riser along it (as `--risers` would):
+  a bed, and supports slotted into the floor. Straight or curved; several may be
+  given, comma-separated.
+- **HexmoRectangle:** `HEIGHT[/WIDTH]`, e.g. `--subway 23.8`. The track runs down
+  the centre line from end wall to end wall, through the under-deck openings
+  (`--under_track`, turned on at the subway's height and width). Each cell
+  between the end walls and short dividers gets a level bed, its top at the
+  track height, whose supports slot into the floor strip down the middle lane
+  (the spoke). The strip's weight-saving holes give way to the slots. The track
+  crosses each wall on its opening's bottom edge, as the helix spur does at its
+  joints. Supports stand 15 mm in from each end of a bed and at most
+  `--riser_spacing` (default 80) apart.
+
+The ring at radius 250's entry rectangle carries the lower level this way, at
+23.8 (the link above). A hexagon or trapezoid that continues it gives its own
+`--subway` at the same height, starting where the rectangle's track leaves
+(the centre of the end wall it joins).
 
 ## 3D model for CAD (`--format step`)
 
