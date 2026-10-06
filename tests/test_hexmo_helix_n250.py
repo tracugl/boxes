@@ -71,25 +71,34 @@ class TestPresets:
     def test_250_ring_numbers(self) -> None:
         assert "--radius=250" in HELIX_RING_N250["M2"]
         assert "--track_lead_in=20" in HELIX_RING_N250["M2"]
-        assert "--risers=3:-35-5:-35~66.2..58.6/35" in HELIX_RING_N250["M2"]
-        assert ("--risers=1:0-5:17.5@178..~77..74/35,3:35-1:0@..233~36..31/35,"
-                "3:35-1:0@233..~31..27.8/35") in HELIX_RING_N250["M6"]
+        assert "--risers=3:-35-5:-35~65.6..57.6/35" in HELIX_RING_N250["M2"]
+        assert ("--risers=1:0-5:17.5@178..~77..74/35,3:35-1:0@..233~33.3..28/35,"
+                "3:35-1:0@233..~28..23.8/35") in HELIX_RING_N250["M6"]
+        assert "--under_track_height=23.8" in HELIX_RING_N250["M6"]
+        assert "--under_track_height=23.8" in HELIX_ENTRY_N250
+        assert "--lower_ground=23.8" in HELIX_RING_N250_GROUND["M3"]
         assert "--radius=250" in HELIX_ENTRY_N250
         assert "--track_lead_in=20" in HELIX_ENTRY_N250
         assert "--track_lead_in=26" in HELIX_RING_N["M2"]
 
     def test_250_joints_are_one_steady_grade(self) -> None:
-        # 74 at the M6/M1 joint down to 31.0 at the end of the return's slot.
+        # 74 at the M6/M1 joint down to 28.0 at the end of the return's slot
+        # (46 mm under M6's 74 mm deck underside: 3 spare over a 43 mm train),
+        # and on at the same grade to the 23.8 exit at edge 1.
         apothem = (250 - 3 / math.cos(math.radians(30))) * math.sqrt(3) / 2
 
         def length(*route):
             return sum(s.length for s in route_geometry(*route, apothem, 20).segments)
         m1, m2 = length(3, -17.5, 5, -35), length(3, -35, 5, -35)
-        grade = (74 - 31) / (m1 + 4 * m2 + SIZE_250.return_end)
+        grade = (74 - SIZE_250.slot_height) / (m1 + 4 * m2 + SIZE_250.return_end)
         expect = [74.0]
         for run in [m1] + [m2] * 4:
             expect.append(expect[-1] - grade * run)
         assert list(SIZE_250.joints) == pytest.approx(expect, abs=0.06)
+        assert 74 - SIZE_250.slot_height == pytest.approx(46)
+        ret = length(3, 35, 1, 0)
+        assert SIZE_250.exit == pytest.approx(
+            SIZE_250.slot_height - grade * (ret - SIZE_250.return_end), abs=0.06)
 
     def test_250_spur_curve_is_bigger(self) -> None:
         # The spur's arc (35 mm in) is about R300 (20 mm lead-ins), against
@@ -129,7 +138,7 @@ class TestN250Ring:
                        for j, (mm, pp, zz) in enumerate(ends)))
         # Only the line's two ends: the lower level leaving M6 at edge 1, and
         # the entry line's far end.
-        assert unmatched == [("M6", 27.8), ("entry", 77.0)]
+        assert unmatched == [("M6", 23.8), ("entry", 77.0)]
 
     def test_m6_spur_starts_clear_of_the_return(self) -> None:
         # The spur's riser starts 178 mm along its route on M6; much earlier
