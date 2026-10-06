@@ -70,17 +70,20 @@ class TestPresets:
 
     def test_250_ring_numbers(self) -> None:
         assert "--radius=250" in HELIX_RING_N250["M2"]
+        assert "--track_lead_in=20" in HELIX_RING_N250["M2"]
         assert "--risers=3:-35-5:-35~66.2..58.6/35" in HELIX_RING_N250["M2"]
-        assert ("--risers=1:0-5:17.5@182..~77..74/35,3:35-1:0@..231~35.9..31/35,"
-                "3:35-1:0@231..~31..27.8/35") in HELIX_RING_N250["M6"]
+        assert ("--risers=1:0-5:17.5@178..~77..74/35,3:35-1:0@..233~36..31/35,"
+                "3:35-1:0@233..~31..27.8/35") in HELIX_RING_N250["M6"]
         assert "--radius=250" in HELIX_ENTRY_N250
+        assert "--track_lead_in=20" in HELIX_ENTRY_N250
+        assert "--track_lead_in=26" in HELIX_RING_N["M2"]
 
     def test_250_joints_are_one_steady_grade(self) -> None:
         # 74 at the M6/M1 joint down to 31.0 at the end of the return's slot.
         apothem = (250 - 3 / math.cos(math.radians(30))) * math.sqrt(3) / 2
 
         def length(*route):
-            return sum(s.length for s in route_geometry(*route, apothem, 26).segments)
+            return sum(s.length for s in route_geometry(*route, apothem, 20).segments)
         m1, m2 = length(3, -17.5, 5, -35), length(3, -35, 5, -35)
         grade = (74 - 31) / (m1 + 4 * m2 + SIZE_250.return_end)
         expect = [74.0]
@@ -89,10 +92,11 @@ class TestPresets:
         assert list(SIZE_250.joints) == pytest.approx(expect, abs=0.06)
 
     def test_250_spur_curve_is_bigger(self) -> None:
-        # The spur's arc (35 mm in) is about R290, against about R245 at 220.
-        for radius, expect in ((220, 245), (250, 290)):
+        # The spur's arc (35 mm in) is about R300 (20 mm lead-ins), against
+        # about R245 at 220 (26 mm).
+        for radius, lead, expect in ((220, 26, 245), (250, 20, 300)):
             apothem = (radius - 3 / math.cos(math.radians(30))) * math.sqrt(3) / 2
-            g = route_geometry(3, -35, 5, -35, apothem, 26)
+            g = route_geometry(3, -35, 5, -35, apothem, lead)
             assert g.radius == pytest.approx(expect, abs=1)
 
 
@@ -128,10 +132,10 @@ class TestN250Ring:
         assert unmatched == [("M6", 27.8), ("entry", 77.0)]
 
     def test_m6_spur_starts_clear_of_the_return(self) -> None:
-        # The spur's riser starts 182 mm along its route on M6; one earlier
+        # The spur's riser starts 178 mm along its route on M6; much earlier
         # and its first support would stand in the return's track.
         box = HexmoHexagon()
-        box.parseArgs([a.replace("@182", "@170") for a in HELIX_RING_N250["M6"]])
+        box.parseArgs([a.replace("@178", "@166") for a in HELIX_RING_N250["M6"]])
         with pytest.raises(ValueError, match="would stand in the track"):
             box.open()
             box.render()
@@ -146,10 +150,10 @@ class TestN250Ring:
 
 
 def test_main_line_mid_is_just_outside_the_turned_support() -> None:
-    # The turned support (36 mm out) sits just inside the main line, as the
+    # The turned support (38 mm out) sits just inside the main line, as the
     # 220 ring's does (30 mm, main line 25.8 mm out).
     apothem = (250 - 3 / math.cos(math.radians(30))) * math.sqrt(3) / 2
-    g = route_geometry(3, 17.5, 5, 17.5, apothem, 26)
+    g = route_geometry(3, 17.5, 5, 17.5, apothem, 20)
     total = sum(s.length for s in g.segments)
     (_, y), _ = point_at(g.segments, total / 2)
-    assert 30 < -y < 36
+    assert 32 < -y < 38

@@ -10,9 +10,11 @@ h=80.
 
 The ring comes in two module sizes, each built by :func:`helix_ring`:
 
-* ``radius=220``: the original ring (its spur curve is about R245);
-* ``radius=250``: bigger curves (spur about R290, main line R342) and a
-  gentler grade (2.13 % rather than 2.47 %), for 14 % more floor.
+* ``radius=220``: the original ring (its spur curve is about R245), with a
+  26 mm straight where each track crosses a joint;
+* ``radius=250``: bigger curves (spur about R300, main line R353) and a
+  gentler grade (2.13 % rather than 2.47 %), for 14 % more floor, with a
+  20 mm straight at each joint.
 
 Only a few numbers depend on the size; they are worked out once per size and
 kept here (see :class:`RingSize`), so the presets are plain data.
@@ -52,6 +54,9 @@ class RingSize:
       slot, and one turned across the half-spoke just inside the main line.
 
     @ivar radius     - Module outside radius (``--radius``).
+    @ivar lead_in    - The straight where each track crosses a joint
+                       (``--track_lead_in``); the curve between is
+                       ``1.5 × inner radius − √3 × lead_in``.
     @ivar joints     - The spur's height at each joint: M6/M1, M1/M2 … M5/M6.
     @ivar spur_start - Where the spur's riser starts on M6 (mm along 1:0-5:17.5).
     @ivar return_end - Where the return's deck slot ends on M6 (mm along 3:35-1:0).
@@ -59,14 +64,15 @@ class RingSize:
     """
 
     radius: float
+    lead_in: float
     joints: tuple
     spur_start: float
     return_end: float
     supports: str
 
 
-SIZE_220 = RingSize(220, (74, 66.1, 58.5, 50.8, 43.2, 35.6), 169, 186, "4@132,4@30/90")
-SIZE_250 = RingSize(250, (74, 66.2, 58.6, 51, 43.5, 35.9), 182, 231, "4@138,4@36/90")
+SIZE_220 = RingSize(220, 26, (74, 66.1, 58.5, 50.8, 43.2, 35.6), 169, 186, "4@132,4@30/90")
+SIZE_250 = RingSize(250, 20, (74, 66.2, 58.6, 51.1, 43.5, 36), 178, 233, "4@140,4@38/90")
 
 
 def helix_ring(size):
@@ -76,7 +82,8 @@ def helix_ring(size):
     @returns ``{"M1": [...], …, "M6": [...]}``: HexmoHexagon options.
     """
     common = [f"--radius={size.radius:g}", "--thickness=3", "--h=80", "--edge_width=22",
-              "--spoke_width=60", "--bottom=spoke", "--support_length=55", "--track_lead_in=26",
+              "--spoke_width=60", "--bottom=spoke", "--support_length=55",
+              f"--track_lead_in={size.lead_in:g}",
               "--track_width=17", "--under_track_width=35"] + _CUT
     trapezoid = common + ["--trapezoid=1", f"--support_edges={size.supports}"]
     j = size.joints
@@ -115,7 +122,8 @@ def helix_entry(size):
     @returns HexmoRectangle options.
     """
     return [f"--radius={size.radius:g}", "--thickness=3", "--h=80", "--num_rows=3",
-            "--num_columns=2", "--track_width=17", "--track_lead_in=26", "--under_track=1",
+            "--num_columns=2", "--track_width=17", f"--track_lead_in={size.lead_in:g}",
+            "--under_track=1",
             "--under_track_height=27.8", "--under_track_width=35",
             "--turnouts=10:0:-35,133.7:0:35"] + _CUT
 
