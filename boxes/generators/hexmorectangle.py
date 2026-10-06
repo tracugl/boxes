@@ -29,6 +29,7 @@ from types import SimpleNamespace
 
 from boxes import Boxes, edges, boolarg
 from boxes.Color import Color
+from boxes.generators._hexmo_access import ACCESS_BAND, ACCESS_MIN, ACCESS_POST
 from boxes.generators._hexmo_big_holes import HexmoBigHoleMixin
 from boxes.generators._hexmo_risers import support_stations
 from boxes.generators._hexmo_step_format import HexmoStepFormatMixin
@@ -257,12 +258,10 @@ class HexmoRectangle(HexmoStepFormatMixin, HexmoBigHoleMixin, HexmoTrackGuideMix
     _R2     = 12.5  # radius of medium alignment-pin receiver holes (mm)
     _R3     = 3     # radius of small registration pilot holes (mm)
     _MIN_CLEAR = 5.0  # minimum clearance between adjacent hole edges (mm)
-    # --access_openings: wood left above and below each opening, and at each
-    # end of a cell (beside a wall end or a divider's slot), in mm.
-    _ACCESS_BAND = 12.0
-    _ACCESS_POST = 15.0
-    # Smallest opening worth cutting (mm): an adult hand, held flat.
-    _ACCESS_MIN = (90.0, 40.0)
+    # --access_openings sizes, shared with HexmoHexagon (see _hexmo_access).
+    _ACCESS_BAND = ACCESS_BAND
+    _ACCESS_POST = ACCESS_POST
+    _ACCESS_MIN = ACCESS_MIN
 
     def __init__(self) -> None:
         """Initialise argument parser with FingerJoint settings and the ``--radius`` parameter."""

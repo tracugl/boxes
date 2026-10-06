@@ -27,6 +27,9 @@ import re
 
 from boxes import Boxes, edges, boolarg, holeCol, restore
 from boxes.Color import *
+from boxes.generators._hexmo_access import (
+    ACCESS_BAND, access_spans, check_access_size,
+)
 from boxes.generators._hexmo_big_holes import HexmoBigHoleMixin
 from boxes.generators._hexmo_lower_ground import HexmoLowerGroundMixin
 from boxes.generators._hexmo_subway import HexmoSubwayMixin
@@ -333,6 +336,21 @@ class HexmoHexagon(HexmoStepFormatMixin, HexmoBigHoleMixin, HexmoTrackGuideMixin
         self._addLowerGroundArgs()
         # --subway: a level lower track under the deck (see _hexmo_subway).
         self._addSubwayArgs()
+        self.argparser.add_argument(
+            "--access_openings", action="store", type=boolarg, default=False,
+            help="Hand access, e.g. to re-rail a train under the deck: walls that "
+                 "join no other module get large rounded-rectangle openings in place "
+                 "of their registration and weight holes.  On the trapezoid, its "
+                 "long wall (two openings, split at the middle); on the full "
+                 "hexagon, the walls on --access_edges (one each).  Each leaves 12 mm "
+                 "of wood above and below and 15 mm at each end.")
+        self.argparser.add_argument(
+            "--access_edges", action="store", type=str, default="1,3,5",
+            help="With --access_openings on the full hexagon: the walls that get "
+                 "them, comma-separated (numbered as for --track_routes).  Pick walls "
+                 "that join no other module: they lose their registration holes.  A "
+                 "wall with a track or under-deck opening, or a --lower_ground step, "
+                 "is refused.  Default 1,3,5.")
         # --format step and --step_clearance (see _hexmo_step_format).
         self._addStepFormat()
 
@@ -1430,6 +1448,48 @@ class HexmoHexagon(HexmoStepFormatMixin, HexmoBigHoleMixin, HexmoTrackGuideMixin
             notch = opening.height + self.train_envelope > l - t
             plan.setdefault(opening.edge, []).append((opening, notch))
         return plan
+
+    def _accessEdges(self, isTrapezoid, under_edges, opening_plan, lower_plan,
+                     side_orig, side, l):
+        """The full hexagon's walls with --access_openings, checked.
+
+        @param isTrapezoid  - True for the half-hexagon (its long wall gets them).
+        @param under_edges  - Edges with the under-deck opening.
+        @param opening_plan - Edges with --track_openings.
+        @param lower_plan   - The --lower_ground plan, or None.
+        @param side_orig    - Wall reference length; ``side`` its body length.
+        @param l            - Wall body height.
+        @returns Set of edges (empty on the trapezoid or when off).
+        @throws ValueError - On a malformed --access_edges, an edge with a track
+                             or under-deck opening or a lower-ground step, or an
+                             opening too small for a hand.
+        """
+        if not self.access_openings:
+            return set()
+        height = l - 2 * ACCESS_BAND
+        if isTrapezoid:
+            side_long = 2 * side_orig - 3 * self.thickness
+            (y0, y1), _ = access_spans(0, side_long, 2)
+            check_access_size(y1 - y0, height, "the long wall")
+            return set()
+        try:
+            edges = {int(e) for e in self.access_edges.split(",") if e.strip()}
+        except ValueError:
+            raise ValueError(f"--access_edges: {self.access_edges!r} is not a list of "
+                             "edges 1–6, e.g. '1,3,5'.") from None
+        if not edges <= set(range(1, 7)):
+            raise ValueError(f"--access_edges: {self.access_edges!r} is not a list of "
+                             "edges 1–6, e.g. '1,3,5'.")
+        busy = set(under_edges) | set(opening_plan) | (
+            set(lower_plan.walls) if lower_plan is not None else set())
+        if edges & busy:
+            raise ValueError(
+                f"--access_edges: the wall on edge {min(edges & busy)} has a track or "
+                "under-deck opening (or a --lower_ground step); choose walls that join "
+                "no other module.")
+        (y0, y1), = access_spans(0, side, 1)
+        check_access_size(y1 - y0, height, "a side wall")
+        return edges
 
     def _deckEdges(self, char, isTrapezoid, deck_length, wall_length, notches):
         """Deck edge types, split where a wall below is notched.
@@ -2665,10 +2725,15 @@ class HexmoHexagon(HexmoStepFormatMixin, HexmoBigHoleMixin, HexmoTrackGuideMixin
         # with an under-deck or track opening first (labelled with their edge,
         # since they are no longer interchangeable), then plain ones.
         under_edges = self._underTrackEdges(isTrapezoid)
+        # --access_openings: the full hexagon's chosen walls (the trapezoid's
+        # goes in its long wall instead).
+        access_edges = self._accessEdges(isTrapezoid, under_edges, opening_plan,
+                                         lower_plan, side_orig, side, l)
         # With --lower_ground the trapezoid's edge-4 wall is lowered, so it
-        # is no longer interchangeable with the others either.
+        # is no longer interchangeable with the others either; nor is a wall
+        # with access openings.
         feature_edges = sorted(set(under_edges) | set(opening_plan)
-                               | ({4} if lower_trapezoid else set()))
+                               | ({4} if lower_trapezoid else set()) | access_edges)
         n_standard = 3 if isTrapezoid else n
         standard_walls = ([(e, e in under_edges) for e in feature_edges]
                           + [(None, False)] * (n_standard - len(feature_edges)))
@@ -2729,6 +2794,18 @@ class HexmoHexagon(HexmoStepFormatMixin, HexmoBigHoleMixin, HexmoTrackGuideMixin
                                            or (lower_trapezoid and edge == 4)):
                 draw_lowered_wall(edge, under_track)
                 return
+            if edge in access_edges:
+                def access_holes(edge=edge):
+                    self.moveTo(0, -self.thickness)
+                    wall_frame(edge)
+                    # One opening between the wall's ends (hole frame: x up the
+                    # wall, y along it; the body runs from t to side_orig − t).
+                    for y0, y1 in access_spans(self.thickness, side_orig - self.thickness, 1):
+                        draw_access_opening(y0, y1)
+
+                self.polygonWall(borders0, edge=e0, correct_corners=False, move="right",
+                                 callback=[None, access_holes], label=f"edge {edge}")
+                return
             wall_edges = e0
             if edge in notches:
                 # Segment 6 of borders0 is the top (deck) edge; split it round
@@ -2753,8 +2830,23 @@ class HexmoHexagon(HexmoStepFormatMixin, HexmoBigHoleMixin, HexmoTrackGuideMixin
         # side_long = 2*side_orig - 2t this is -t; for the shortened
         # side_long = 2*side_orig - 3t it is -1.5t.  Deriving m from side_long
         # means the holes never move when the trim changes.
+        def draw_access_opening(y0, y1):
+            """One access opening across the wall body, in the hole frame."""
+            dx, dy = l - 2 * ACCESS_BAND, y1 - y0
+            r = max(0.0, self.big_hole_roundness) * min(dx, dy) / 2
+            self.rectangularHole(l / 2, (y0 + y1) / 2, dx, dy, r=r,
+                                 center_x=True, center_y=True)
+
         def draw_aligned_holes_long():
             self.moveTo(0, side_long / 2 - side_orig)
+            if self.access_openings:
+                # Two openings, split at the middle (the hexagon's centre line).
+                self._stepFrame("long wall", "wall", (side_orig, 0.0, 0.0), (0, 0, 1),
+                                (-1, 0, 0), (0.0, self.thickness))
+                for y0, y1 in access_spans(side_orig - side_long / 2,
+                                           side_orig + side_long / 2, 2):
+                    draw_access_opening(y0, y1)
+                return
             # The long wall's hole frame: x up, y along it from +x towards -x,
             # its centre (side_orig) on the centre line; placed on its outer
             # face (y = 0), it is t thick towards the deck (-y).
