@@ -257,6 +257,12 @@ class HexmoRectangle(HexmoStepFormatMixin, HexmoBigHoleMixin, HexmoTrackGuideMix
     _R2     = 12.5  # radius of medium alignment-pin receiver holes (mm)
     _R3     = 3     # radius of small registration pilot holes (mm)
     _MIN_CLEAR = 5.0  # minimum clearance between adjacent hole edges (mm)
+    # --access_openings: wood left above and below each opening, and at each
+    # end of a cell (beside a wall end or a divider's slot), in mm.
+    _ACCESS_BAND = 12.0
+    _ACCESS_POST = 15.0
+    # Smallest opening worth cutting (mm): an adult hand, held flat.
+    _ACCESS_MIN = (90.0, 40.0)
 
     def __init__(self) -> None:
         """Initialise argument parser with FingerJoint settings and the ``--radius`` parameter."""
@@ -472,6 +478,15 @@ class HexmoRectangle(HexmoStepFormatMixin, HexmoBigHoleMixin, HexmoTrackGuideMix
         self.argparser.add_argument(
             "--riser_spacing", action="store", type=float, default=80.0,
             help="With --subway: largest gap (mm) between neighbouring bed supports.")
+        self.argparser.add_argument(
+            "--access_openings", action="store", type=boolarg, default=False,
+            help="Hand access, e.g. to re-rail a train under the deck: each long "
+                 "wall and long support gets one large rounded-rectangle opening "
+                 "per cell, all lined up so you can reach through to the middle "
+                 "lane, in place of their weight and registration holes (nothing "
+                 "joins the long walls, so they need no registration holes).  "
+                 "Each leaves 12 mm of wood above and below and 15 mm at each "
+                 "end of the cell.")
         # --format step and --step_clearance (see _hexmo_step_format).
         self._addStepFormat()
 
@@ -1401,6 +1416,17 @@ class HexmoRectangle(HexmoStepFormatMixin, HexmoBigHoleMixin, HexmoTrackGuideMix
         col_w, row_h, sw = lay.col_w, lay.row_h, lay.sw
         lane_pos = lambda i: lay.lane_pos[i]
 
+        # --access_openings must still fit a hand.
+        if self.access_openings:
+            open_w = row_h - 2 * self._ACCESS_POST
+            open_h = (h - t) - 2 * self._ACCESS_BAND
+            if open_w < self._ACCESS_MIN[0] or open_h < self._ACCESS_MIN[1]:
+                raise ValueError(
+                    f"--access_openings: each cell leaves only a {open_w:.0f} × "
+                    f"{open_h:.0f} mm opening (a hand needs about "
+                    f"{self._ACCESS_MIN[0]:g} × {self._ACCESS_MIN[1]:g}); use fewer "
+                    "--num_columns or a taller --h.")
+
         # Turnout legs (--turnouts), solved and checked before anything is
         # drawn; etched on the deck by base_cb.
         turnout_legs = self._turnoutLegs(H, W - 2 * t)
@@ -1652,6 +1678,9 @@ class HexmoRectangle(HexmoStepFormatMixin, HexmoBigHoleMixin, HexmoTrackGuideMix
                 # part of the end tab that slots into this wall, so fingerHoles
                 # span only the body height h−t.
                 self.fingerHolesAt(div_pos(i), 0, h - t, 90)
+            if self.access_openings:
+                draw_access_openings()
+                return
             # Shift the corner clusters by dx so they land at sp-dx from each inner
             # edge — the same distance as the short wall's hex-aligned corner clusters.
             self.moveTo(-dx, 0)
@@ -1686,6 +1715,26 @@ class HexmoRectangle(HexmoStepFormatMixin, HexmoBigHoleMixin, HexmoTrackGuideMix
                     x_lo = j * (row_h + t)
                     self._fillWeightSpan(x_lo, x_lo + row_h)
 
+        def draw_access_openings():
+            """One hand-sized rounded rectangle per cell (--access_openings).
+
+            Drawn the same on the long walls and the long supports, in their
+            shared frame (x along H from the inner end, y over the h − t body),
+            so the openings line up across every lane.  Each cell runs between
+            the wall ends and the short dividers' slots; the opening leaves
+            _ACCESS_POST mm at each end of it and _ACCESS_BAND mm above and
+            below, with corners rounded by --big_hole_roundness.
+
+            Captures from enclosing scope: ``n_cols``, ``row_h``, ``t``, ``h``.
+            """
+            dy = (h - t) - 2 * self._ACCESS_BAND
+            for j in range(n_cols):
+                x_lo = j * (row_h + t)
+                dx = row_h - 2 * self._ACCESS_POST
+                r = max(0.0, self.big_hole_roundness) * min(dx, dy) / 2
+                self.rectangularHole(x_lo + row_h / 2, (h - t) / 2, dx, dy, r=r,
+                                     center_x=True, center_y=True)
+
         # Segment-hole helper used by both divider types.
         # n: number of segments; step: inner length of each segment (row_h or col_w).
         # Each segment spans [j*(step+t), j*(step+t)+step]; crossing slots get no holes.
@@ -1707,8 +1756,11 @@ class HexmoRectangle(HexmoStepFormatMixin, HexmoBigHoleMixin, HexmoTrackGuideMix
                 # walls register to nothing, so those pilots are pure overhead.
                 self._fillWeightSpan(x_lo, x_lo + step, pilots=False)
 
-        # Vertical dividers (H × h): n_cols row segments, step = row_h.
-        vert_div_cb  = lambda: (frame_long_support(), _seg_hole_cb(n_cols, row_h))
+        # Vertical dividers (H × h): n_cols row segments, step = row_h; or,
+        # with --access_openings, the same openings as the long walls.
+        vert_div_cb = lambda: (frame_long_support(),
+                               draw_access_openings() if self.access_openings
+                               else _seg_hole_cb(n_cols, row_h))
         # Horizontal dividers (W−2t × h): n_rows lane segments, step = col_w.
         # NOTE: the spoke-to-divider connection is handled by the 'f' sections on
         # the top edge (via _HorizDivSpokeEdge) — no extra fingerHoles needed here.

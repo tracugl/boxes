@@ -140,7 +140,8 @@ def helix_entry(size):
             "--under_track=1",
             f"--under_track_height={size.exit:g}", "--under_track_width=35",
             "--turnouts=10:0:-35,133.7:0:35"] + _CUT + (
-        [f"--subway={size.exit:g}"] if size.subway else [])
+        # With a subway, hand access through the long walls and supports.
+        [f"--subway={size.exit:g}", "--access_openings=1"] if size.subway else [])
 
 
 def with_ground(ring, size):

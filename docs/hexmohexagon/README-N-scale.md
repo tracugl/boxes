@@ -877,7 +877,7 @@ pre-filled:
 - **M6:**
   http://localhost:4455/HexmoHexagon?radius=250&thickness=3&h=80&edge_width=22&spoke_width=60&bottom=spoke&support_length=55&track_lead_in=20&track_width=17&under_track_width=35&corner_holes=g2&gap_holes=g2&big_hole_shape=rounded_rect&track_guide=1&track_template=1&labels=0&reference=0&support_edges=2,4,6&track_routes=1:-35-5:-17.5,3:-17.5-1:-35,1:0-5:17.5&under_track_edges=1&under_track_height=23.8&track_openings=5:17.5:74:35,3:-35:33.3:35&deck_slots=1:0-5:17.5@178../35,3:35-1:0@..233/35&risers=1:0-5:17.5@178..~77..74/35,3:35-1:0@..233~33.3..28/35,3:35-1:0@233..~28..23.8/35&lower_ground=23.8&upper_edge_gap=15
 - **Entry rectangle** (at M6 edge 1, with the lower level on a subway):
-  http://localhost:4455/HexmoRectangle?radius=250&thickness=3&h=80&num_rows=3&num_columns=2&track_width=17&track_lead_in=20&under_track=1&under_track_height=23.8&under_track_width=35&turnouts=10:0:-35,133.7:0:35&corner_holes=g2&gap_holes=g2&big_hole_shape=rounded_rect&track_guide=1&track_template=1&labels=0&reference=0&subway=23.8
+  http://localhost:4455/HexmoRectangle?radius=250&thickness=3&h=80&num_rows=3&num_columns=2&track_width=17&track_lead_in=20&under_track=1&under_track_height=23.8&under_track_width=35&turnouts=10:0:-35,133.7:0:35&corner_holes=g2&gap_holes=g2&big_hole_shape=rounded_rect&track_guide=1&track_template=1&labels=0&reference=0&subway=23.8&access_openings=1
 
 The 3D export shows it all (exact parts only), and `--ring=N250-ground`
 exports the whole ring opened up this way, with these settings (see below).
@@ -907,8 +907,17 @@ gives all of that, on every Hexmo module:
   joints. Supports stand 15 mm in from each end of a bed and at most
   `--riser_spacing` (default 80) apart.
 
+**Access for re-railing (`--access_openings`, HexmoRectangle):** nothing joins
+a rectangle's long walls, so they need no registration holes. With
+`--access_openings` each long wall and each long support gets one large
+rounded-rectangle opening per cell instead, all lined up, so you can reach
+through the outer lanes into the subway in the middle lane. Each leaves 12 mm of
+wood above and below and 15 mm at each end of the cell. At radius 250 and h=80
+they are 182 × 50 mm, two per wall. An opening too small for a hand (about
+90 × 40) is refused; use fewer `--num_columns` or a taller `--h`.
+
 The ring at radius 250's entry rectangle carries the lower level this way, at
-23.8 (the link above). A hexagon or trapezoid that continues it gives its own
+23.8, with the access openings (the link above). A hexagon or trapezoid that continues it gives its own
 `--subway` at the same height, starting where the rectangle's track leaves
 (the centre of the end wall it joins).
 
