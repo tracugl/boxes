@@ -911,15 +911,18 @@ gives all of that, on every Hexmo module:
 module needs no registration holes, so it can carry large rounded-rectangle
 openings instead, for a hand to reach a derailed train under the deck. Each
 leaves 12 mm of wood above and below and 15 mm at each end; an opening too
-small for a hand (about 90 × 40) is refused.
+small for a hand (about 70 × 40) is refused.
 
 - **HexmoRectangle:** each long wall and long support gets one opening per cell,
   all lined up, so you can reach through the outer lanes into the subway in the
   middle lane. At radius 250 and h=80 they are 182 × 50 mm, two per wall.
-- **Trapezoid:** its long wall gets two, split at the middle (about 220 × 50 mm).
-- **Full hexagon:** the walls listed in `--access_edges` (default `1,3,5`) get
-  one each (about 210 × 50 mm). Pick walls that join no other module; a wall
-  with a track or under-deck opening, or a `--lower_ground` step, is refused.
+- **Trapezoid and full hexagon:** two per wall, either side of a middle post as
+  wide as `--spoke_width`, so it stands over the floor's spoke. The trapezoid's
+  long wall gets them (about 197 × 50 mm each at radius 250); on the full
+  hexagon, the walls listed in `--access_edges` (default `1,3,5`) do, about
+  75 × 50 each: room for fingers and a smaller hand. Pick walls that join no
+  other module; a wall with a track or under-deck opening, or a `--lower_ground`
+  step, is refused.
 
 The 250 ring's presets use them on every wall that joins nothing: the
 trapezoids' long walls (the ring's outside), M6's edges 2, 4 and 6, and the

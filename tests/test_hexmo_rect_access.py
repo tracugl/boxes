@@ -77,7 +77,7 @@ class TestAccessOpenings:
 
     def test_refused_when_too_small_for_a_hand(self) -> None:
         box = HexmoRectangle()
-        box.parseArgs(BASE + ["--access_openings=1", "--num_columns=4"])
+        box.parseArgs(BASE + ["--access_openings=1", "--num_columns=5"])
         with pytest.raises(ValueError, match="access_openings"):
             box.open()
             box.render()
@@ -120,10 +120,10 @@ class TestHexagonAccess:
         holes_ = hex_holes(HELIX_RING_N250["M2"], "long wall")
         assert len(holes_) == 2                  # the registration holes are gone
         for y0, y1, x0, x1 in holes_:
-            assert y1 - y0 == pytest.approx(219.5, abs=1)
+            assert y1 - y0 == pytest.approx(197, abs=1)
             assert x1 - x0 == pytest.approx(50, abs=0.5)
-        # Split at the middle: a post either side of the hexagon's centre line.
-        assert holes_[0][1] < holes_[1][0]
+        # Either side of a middle post as wide as the spoke (60 mm).
+        assert holes_[1][0] - holes_[0][1] == pytest.approx(60, abs=0.1)
 
     def test_trapezoid_other_walls_unchanged(self) -> None:
         for name in ("wall edge 3", "wall edge 4", "wall edge 5"):
@@ -134,9 +134,11 @@ class TestHexagonAccess:
         args = HELIX_RING_N250["M6"]           # --access_edges 2,4,6
         for edge in (2, 4, 6):
             holes_ = hex_holes(args, f"wall edge {edge}")
-            assert len(holes_) == 1
-            y0, y1, x0, x1 = holes_[0]
-            assert (y1 - y0, x1 - x0) == pytest.approx((210.5, 50), abs=1)
+            assert len(holes_) == 2
+            for y0, y1, x0, x1 in holes_:
+                assert (y1 - y0, x1 - x0) == pytest.approx((75.3, 50), abs=0.5)
+            # The middle post is as wide as the spoke, over its middle.
+            assert holes_[1][0] - holes_[0][1] == pytest.approx(60, abs=0.1)
         # The walls that join the entry, M5 and M1 keep their holes.
         assert len(hex_holes(args, "wall edge 1")) > 5
 

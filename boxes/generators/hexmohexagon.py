@@ -27,9 +27,7 @@ import re
 
 from boxes import Boxes, edges, boolarg, holeCol, restore
 from boxes.Color import *
-from boxes.generators._hexmo_access import (
-    ACCESS_BAND, access_spans, check_access_size,
-)
+from boxes.generators._hexmo_access import ACCESS_BAND, access_pair, check_access_size
 from boxes.generators._hexmo_big_holes import HexmoBigHoleMixin
 from boxes.generators._hexmo_lower_ground import HexmoLowerGroundMixin
 from boxes.generators._hexmo_subway import HexmoSubwayMixin
@@ -340,10 +338,11 @@ class HexmoHexagon(HexmoStepFormatMixin, HexmoBigHoleMixin, HexmoTrackGuideMixin
             "--access_openings", action="store", type=boolarg, default=False,
             help="Hand access, e.g. to re-rail a train under the deck: walls that "
                  "join no other module get large rounded-rectangle openings in place "
-                 "of their registration and weight holes.  On the trapezoid, its "
-                 "long wall (two openings, split at the middle); on the full "
-                 "hexagon, the walls on --access_edges (one each).  Each leaves 12 mm "
-                 "of wood above and below and 15 mm at each end.")
+                 "of their registration and weight holes: two per wall, either side "
+                 "of a middle post as wide as --spoke_width (over the spoke).  On the "
+                 "trapezoid, its long wall; on the full hexagon, the walls on "
+                 "--access_edges.  Each leaves 12 mm of wood above and below and "
+                 "15 mm at each end.")
         self.argparser.add_argument(
             "--access_edges", action="store", type=str, default="1,3,5",
             help="With --access_openings on the full hexagon: the walls that get "
@@ -1469,7 +1468,7 @@ class HexmoHexagon(HexmoStepFormatMixin, HexmoBigHoleMixin, HexmoTrackGuideMixin
         height = l - 2 * ACCESS_BAND
         if isTrapezoid:
             side_long = 2 * side_orig - 3 * self.thickness
-            (y0, y1), _ = access_spans(0, side_long, 2)
+            (y0, y1), _ = access_pair(0, side_long, self.spoke_width)
             check_access_size(y1 - y0, height, "the long wall")
             return set()
         try:
@@ -1487,7 +1486,7 @@ class HexmoHexagon(HexmoStepFormatMixin, HexmoBigHoleMixin, HexmoTrackGuideMixin
                 f"--access_edges: the wall on edge {min(edges & busy)} has a track or "
                 "under-deck opening (or a --lower_ground step); choose walls that join "
                 "no other module.")
-        (y0, y1), = access_spans(0, side, 1)
+        (y0, y1), _ = access_pair(0, side, self.spoke_width)
         check_access_size(y1 - y0, height, "a side wall")
         return edges
 
@@ -2798,9 +2797,11 @@ class HexmoHexagon(HexmoStepFormatMixin, HexmoBigHoleMixin, HexmoTrackGuideMixin
                 def access_holes(edge=edge):
                     self.moveTo(0, -self.thickness)
                     wall_frame(edge)
-                    # One opening between the wall's ends (hole frame: x up the
-                    # wall, y along it; the body runs from t to side_orig − t).
-                    for y0, y1 in access_spans(self.thickness, side_orig - self.thickness, 1):
+                    # Two openings either side of a spoke-wide middle post (hole
+                    # frame: x up the wall, y along it; the body runs from t to
+                    # side_orig − t, its middle over the floor's spoke).
+                    for y0, y1 in access_pair(self.thickness, side_orig - self.thickness,
+                                              self.spoke_width):
                         draw_access_opening(y0, y1)
 
                 self.polygonWall(borders0, edge=e0, correct_corners=False, move="right",
@@ -2840,11 +2841,12 @@ class HexmoHexagon(HexmoStepFormatMixin, HexmoBigHoleMixin, HexmoTrackGuideMixin
         def draw_aligned_holes_long():
             self.moveTo(0, side_long / 2 - side_orig)
             if self.access_openings:
-                # Two openings, split at the middle (the hexagon's centre line).
+                # Two openings either side of a spoke-wide middle post (on the
+                # hexagon's centre line).
                 self._stepFrame("long wall", "wall", (side_orig, 0.0, 0.0), (0, 0, 1),
                                 (-1, 0, 0), (0.0, self.thickness))
-                for y0, y1 in access_spans(side_orig - side_long / 2,
-                                           side_orig + side_long / 2, 2):
+                for y0, y1 in access_pair(side_orig - side_long / 2,
+                                          side_orig + side_long / 2, self.spoke_width):
                     draw_access_opening(y0, y1)
                 return
             # The long wall's hole frame: x up, y along it from +x towards -x,

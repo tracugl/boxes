@@ -2,12 +2,13 @@
 
 A track under the deck (a subway, the helix's lower level) needs a hand to
 re-rail a train.  A wall that joins no other module needs no registration
-holes, so it can carry large openings instead: one rounded rectangle per
-stretch of wall, leaving a band of wood above and below and a post at each end.
+holes, so it can carry large rounded-rectangle openings instead, leaving a
+band of wood above and below and a post at each end.
 
 Used on HexmoRectangle's long walls and long supports (one opening per cell),
-the HexmoHexagon trapezoid's long wall (two, split at its middle) and the full
-hexagon's chosen side walls (one each).
+and on the HexmoHexagon trapezoid's long wall and the full hexagon's chosen
+side walls: two each, either side of a middle post as wide as the spoke, so
+the post stands over the floor's spoke (and the support on it).
 
 The module name starts with an underscore, so generator discovery skips it.
 """
@@ -17,23 +18,20 @@ from __future__ import annotations
 # wall (beside a wall end, a divider's slot or the next opening), in mm.
 ACCESS_BAND = 12.0
 ACCESS_POST = 15.0
-# Smallest opening worth cutting (mm): an adult hand, held flat.
-ACCESS_MIN = (90.0, 40.0)
+# Smallest opening worth cutting (mm): fingers and a smaller hand, held flat
+# (an adult man's hand is about 90 mm across the knuckles).
+ACCESS_MIN = (70.0, 40.0)
 
 
-def access_spans(lo, hi, count):
-    """Where the openings go along a stretch of wall.
+def access_pair(lo, hi, middle):
+    """Two openings either side of a middle post.
 
-    The stretch is split into ``count`` equal openings with a post of
-    ACCESS_POST at each end and between neighbours.
-
-    @param lo, hi - The stretch (mm along the wall).
-    @param count  - Number of openings.
-    @returns ``[(start, end)]`` of each opening.
+    @param lo, hi  - The stretch of wall (mm along it).
+    @param middle  - The middle post's width (the spoke's).
+    @returns ``[(start, end), (start, end)]``, with ACCESS_POST at each end.
     """
-    width = (hi - lo - (count + 1) * ACCESS_POST) / count
-    return [(lo + ACCESS_POST + k * (width + ACCESS_POST),
-             lo + ACCESS_POST + k * (width + ACCESS_POST) + width) for k in range(count)]
+    centre = (lo + hi) / 2
+    return [(lo + ACCESS_POST, centre - middle / 2), (centre + middle / 2, hi - ACCESS_POST)]
 
 
 def check_access_size(width, height, where):
