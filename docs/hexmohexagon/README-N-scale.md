@@ -908,21 +908,29 @@ gives all of that, on every Hexmo module:
   `--riser_spacing` (default 80) apart.
 
 **Access for re-railing (`--access_openings`):** a wall that joins no other
-module needs no registration holes, so it can carry large rounded-rectangle
-openings instead, for a hand to reach a derailed train under the deck. Each
-leaves 12 mm of wood above and below and 15 mm at each end; an opening too
-small for a hand (about 70 × 40) is refused.
+module needs no medium registration holes, so it can carry large rounded-
+rectangle openings instead, for a hand to reach a derailed train under the
+deck. Each leaves 12 mm of wood above and below and 15 mm at each end. The
+wall keeps some of its Ø6 dowel holes, at their usual places: in each opening,
+the pairs nearest its two ends stay (5 mm clear of it) and the opening shrinks
+between them; any pairs in between go. Where the pairs are too close together
+for that, the pair beside the middle post goes instead and the opening runs to
+the post.
 
-- **HexmoRectangle:** each long wall and long support gets one opening per cell,
-  all lined up, so you can reach through the outer lanes into the subway in the
-  middle lane. At radius 250 and h=80 they are 182 × 50 mm, two per wall.
-- **Trapezoid and full hexagon:** two per wall, either side of a middle post as
-  wide as `--spoke_width`, so it stands over the floor's spoke. The trapezoid's
-  long wall gets them (about 197 × 50 mm each at radius 250); on the full
-  hexagon, the walls listed in `--access_edges` (default `1,3,5`) do, about
-  75 × 50 each: room for fingers and a smaller hand. Pick walls that join no
-  other module; a wall with a track or under-deck opening, or a `--lower_ground`
-  step, is refused.
+- **HexmoRectangle:** each long wall gets one opening per cell, about
+  132 × 50 mm at radius 250 and h=80, with four dowel pairs. The long supports
+  get the same openings, lined up, so you can reach through the outer lanes into
+  the subway in the middle lane.
+- **Trapezoid:** its long wall gets two, either side of a middle post as wide as
+  `--spoke_width` (over the floor's spoke): about 124 × 50 mm each, with four
+  dowel pairs.
+- **Full hexagon:** the walls listed in `--access_edges` (default `1,3,5`) get
+  two each, either side of the spoke-wide post: about 40 × 50 mm, for fingers,
+  with a dowel pair at each end. Pick walls that join no other module; a wall
+  with a track or under-deck opening, or a `--lower_ground` step, is refused.
+
+An opening too small (under about 70 × 40 before the dowels are kept) is
+refused.
 
 The 250 ring's presets use them on every wall that joins nothing: the
 trapezoids' long walls (the ring's outside), M6's edges 2, 4 and 6, and the

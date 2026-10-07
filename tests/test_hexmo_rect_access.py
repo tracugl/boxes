@@ -48,32 +48,54 @@ def holes(args, name):
 
 
 def big(boxes_):
-    return [b for b in boxes_ if b[1] - b[0] > 60]
+    return [b for b in boxes_ if b[1] - b[0] > 30]
+
+
+def pilots(boxes_):
+    """The Ø6 holes' centres, (along, across)."""
+    return sorted((round((b[0] + b[1]) / 2, 1), round((b[2] + b[3]) / 2, 1))
+                  for b in boxes_ if abs((b[1] - b[0]) - 6) < 0.5 and abs((b[3] - b[2]) - 6) < 0.5)
 
 
 class TestAccessOpenings:
 
-    def test_one_hand_sized_opening_per_cell(self) -> None:
+    def test_one_opening_per_cell(self) -> None:
+        # Each cell's opening shrinks to keep the Ø6 pilot pairs nearest its
+        # ends: about 132 × 50 mm at radius 250.
         openings = big(holes(BASE + ["--access_openings=1"], "long wall 1"))
         assert len(openings) == 2
         for x0, x1, y0, y1 in openings:
-            assert x1 - x0 == pytest.approx(182, abs=1)
+            assert x1 - x0 == pytest.approx(131.7, abs=0.5)
             assert y1 - y0 == pytest.approx(50, abs=0.5)
 
-    def test_replaces_the_weight_and_registration_holes(self) -> None:
-        # Only the openings and the divider's finger slot are left.
+    def test_keeps_the_end_pilot_pairs_where_they_were(self) -> None:
+        # The pairs at each end of each opening stay at their usual places
+        # (a subset of the normal wall's Ø6 holes); the rest go.
+        normal = pilots(holes(BASE, "long wall 1"))
+        kept = pilots(holes(BASE + ["--access_openings=1"], "long wall 1"))
+        assert set(kept) < set(normal)
+        assert sorted({a for a, _ in kept}) == pytest.approx([40.7, 188.4, 238.6, 386.3], abs=0.2)
+        # …and each keeps PILOT_CLEAR (5 mm) of wood to its opening.
+        for x0, x1, _, _ in big(holes(BASE + ["--access_openings=1"], "long wall 1")):
+            for a, _ in kept:
+                assert a + 3 + 5 - 0.1 <= x0 or a - 3 - 5 + 0.1 >= x1
+
+    def test_drops_the_medium_and_weight_holes(self) -> None:
         wall = holes(BASE + ["--access_openings=1"], "long wall 1")
-        assert len(wall) == 3
-        assert len(holes(BASE, "long wall 1")) > 10
+        # Openings, 8 pilots and the divider's finger slot.
+        assert len(wall) == 2 + 8 + 1
 
     def test_lined_up_on_walls_and_supports(self) -> None:
+        # The long supports have no pilots, but take the walls' openings.
         args = BASE + ["--access_openings=1"]
         wall = big(holes(args, "long wall 1"))
         for name in ("long wall 2", "long support 1", "long support 2"):
             assert big(holes(args, name)) == pytest.approx(wall, abs=0.05)
+        assert pilots(holes(args, "long support 1")) == []
 
     def test_off_by_default(self) -> None:
-        assert big(holes(BASE, "long wall 1")) == []
+        # Only the usual holes (the biggest the 50 mm weight holes).
+        assert max(b[1] - b[0] for b in holes(BASE, "long wall 1")) < 60
 
     def test_refused_when_too_small_for_a_hand(self) -> None:
         box = HexmoRectangle()
@@ -118,12 +140,16 @@ class TestHexagonAccess:
 
     def test_trapezoid_long_wall_two_openings(self) -> None:
         holes_ = hex_holes(HELIX_RING_N250["M2"], "long wall")
-        assert len(holes_) == 2                  # the registration holes are gone
-        for y0, y1, x0, x1 in holes_:
-            assert y1 - y0 == pytest.approx(197, abs=1)
+        openings = big(holes_)
+        assert len(openings) == 2
+        for y0, y1, x0, x1 in openings:
+            assert y1 - y0 == pytest.approx(123.9, abs=0.5)
             assert x1 - x0 == pytest.approx(50, abs=0.5)
-        # Either side of a middle post as wide as the spoke (60 mm).
-        assert holes_[1][0] - holes_[0][1] == pytest.approx(60, abs=0.1)
+        # Either side of the middle, between the pilot pairs kept at each
+        # end of each opening (end and centre pairs).
+        assert sorted({a for a, _ in pilots(holes_)}) == pytest.approx(
+            [45.0, 184.9, 308.2, 448.1], abs=0.1)
+        assert len(holes_) == 2 + 8
 
     def test_trapezoid_other_walls_unchanged(self) -> None:
         for name in ("wall edge 3", "wall edge 4", "wall edge 5"):
@@ -134,11 +160,15 @@ class TestHexagonAccess:
         args = HELIX_RING_N250["M6"]           # --access_edges 2,4,6
         for edge in (2, 4, 6):
             holes_ = hex_holes(args, f"wall edge {edge}")
-            assert len(holes_) == 2
-            for y0, y1, x0, x1 in holes_:
-                assert (y1 - y0, x1 - x0) == pytest.approx((75.3, 50), abs=0.5)
+            openings = big(holes_)
+            assert len(openings) == 2
+            for y0, y1, x0, x1 in openings:
+                # The pairs here are too close for the centre ones to stay,
+                # so the end pairs stay and the openings run to the post.
+                assert (y1 - y0, x1 - x0) == pytest.approx((40.3, 50), abs=0.5)
             # The middle post is as wide as the spoke, over its middle.
-            assert holes_[1][0] - holes_[0][1] == pytest.approx(60, abs=0.1)
+            assert openings[1][0] - openings[0][1] == pytest.approx(60, abs=0.1)
+            assert sorted({a for a, _ in pilots(holes_)}) == pytest.approx([45.0, 201.5], abs=0.1)
         # The walls that join the entry, M5 and M1 keep their holes.
         assert len(hex_holes(args, "wall edge 1")) > 5
 

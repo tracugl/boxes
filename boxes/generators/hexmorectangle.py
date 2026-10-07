@@ -29,7 +29,9 @@ from types import SimpleNamespace
 
 from boxes import Boxes, edges, boolarg
 from boxes.Color import Color
-from boxes.generators._hexmo_access import ACCESS_BAND, ACCESS_MIN, ACCESS_POST
+from boxes.generators._hexmo_access import (
+    ACCESS_BAND, ACCESS_MIN, ACCESS_POST, openings_with_pilots, recorded_holes,
+)
 from boxes.generators._hexmo_big_holes import HexmoBigHoleMixin
 from boxes.generators._hexmo_risers import support_stations
 from boxes.generators._hexmo_step_format import HexmoStepFormatMixin
@@ -1678,8 +1680,12 @@ class HexmoRectangle(HexmoStepFormatMixin, HexmoBigHoleMixin, HexmoTrackGuideMix
                 # span only the body height h−t.
                 self.fingerHolesAt(div_pos(i), 0, h - t, 90)
             if self.access_openings:
-                draw_access_openings()
+                draw_access_openings(pilots=True)
                 return
+            long_wall_holes()
+
+        def long_wall_holes():
+            """The long wall's normal registration and weight holes."""
             # Shift the corner clusters by dx so they land at sp-dx from each inner
             # edge — the same distance as the short wall's hex-aligned corner clusters.
             self.moveTo(-dx, 0)
@@ -1714,25 +1720,54 @@ class HexmoRectangle(HexmoStepFormatMixin, HexmoBigHoleMixin, HexmoTrackGuideMix
                     x_lo = j * (row_h + t)
                     self._fillWeightSpan(x_lo, x_lo + row_h)
 
-        def draw_access_openings():
-            """One hand-sized rounded rectangle per cell (--access_openings).
+        access_layout = {}
+
+        def rect_access_layout():
+            """The access openings, and the long wall's Ø6 pilots kept beside them.
+
+            Each cell (between the wall ends and the short dividers' slots)
+            gets one opening, _ACCESS_POST mm in from each end of the cell and
+            _ACCESS_BAND mm above and below; it then shrinks to keep the pairs
+            of Ø6 pilots nearest its ends, where the long wall normally has
+            them (see openings_with_pilots).  Worked out once, from the long
+            wall's normal hole layout, and shared by the long supports so every
+            opening lines up.
+
+            @returns ``(openings, pilots)``: ``[(start, end)]`` along H, and the
+                     pilots ``[(x, y, r)]`` in the long wall's frame.
+            """
+            if not access_layout:
+                with self.saved_context():
+                    holes = recorded_holes(self, long_wall_holes)
+                pilots = [(x, y, r) for x, y, r in holes if abs(r - self._R3) < 1e-6]
+                spans = [(j * (row_h + t) + self._ACCESS_POST,
+                          j * (row_h + t) + row_h - self._ACCESS_POST) for j in range(n_cols)]
+                access_layout["v"] = openings_with_pilots(
+                    spans, pilots, [div_pos(i) for i in range(n_div_h)])
+            return access_layout["v"]
+
+        def draw_access_openings(pilots=False):
+            """The access openings (--access_openings), and on the long walls the
+            Ø6 pilots kept beside them.
 
             Drawn the same on the long walls and the long supports, in their
             shared frame (x along H from the inner end, y over the h − t body),
-            so the openings line up across every lane.  Each cell runs between
-            the wall ends and the short dividers' slots; the opening leaves
-            _ACCESS_POST mm at each end of it and _ACCESS_BAND mm above and
-            below, with corners rounded by --big_hole_roundness.
+            so the openings line up across every lane; corners rounded by
+            --big_hole_roundness.
 
-            Captures from enclosing scope: ``n_cols``, ``row_h``, ``t``, ``h``.
+            @param pilots - Also cut the kept Ø6 pilots (the long walls; the
+                            long supports have none).
             """
+            openings, kept = rect_access_layout()
             dy = (h - t) - 2 * self._ACCESS_BAND
-            for j in range(n_cols):
-                x_lo = j * (row_h + t)
-                dx = row_h - 2 * self._ACCESS_POST
+            for x0, x1 in openings:
+                dx = x1 - x0
                 r = max(0.0, self.big_hole_roundness) * min(dx, dy) / 2
-                self.rectangularHole(x_lo + row_h / 2, (h - t) / 2, dx, dy, r=r,
+                self.rectangularHole((x0 + x1) / 2, (h - t) / 2, dx, dy, r=r,
                                      center_x=True, center_y=True)
+            if pilots:
+                for x, y, r in kept:
+                    self.hole(x, y, r)
 
         # Segment-hole helper used by both divider types.
         # n: number of segments; step: inner length of each segment (row_h or col_w).

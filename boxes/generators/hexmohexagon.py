@@ -27,7 +27,9 @@ import re
 
 from boxes import Boxes, edges, boolarg, holeCol, restore
 from boxes.Color import *
-from boxes.generators._hexmo_access import ACCESS_BAND, access_pair, check_access_size
+from boxes.generators._hexmo_access import (
+    ACCESS_BAND, access_pair, check_access_size, openings_with_pilots, recorded_holes,
+)
 from boxes.generators._hexmo_big_holes import HexmoBigHoleMixin
 from boxes.generators._hexmo_lower_ground import HexmoLowerGroundMixin
 from boxes.generators._hexmo_subway import HexmoSubwayMixin
@@ -2799,10 +2801,12 @@ class HexmoHexagon(HexmoStepFormatMixin, HexmoBigHoleMixin, HexmoTrackGuideMixin
                     wall_frame(edge)
                     # Two openings either side of a spoke-wide middle post (hole
                     # frame: x up the wall, y along it; the body runs from t to
-                    # side_orig − t, its middle over the floor's spoke).
-                    for y0, y1 in access_pair(self.thickness, side_orig - self.thickness,
-                                              self.spoke_width):
-                        draw_access_opening(y0, y1)
+                    # side_orig − t, its middle over the floor's spoke), keeping
+                    # Ø6 pilots where the wall normally has them.
+                    draw_access_with_pilots(
+                        lambda: self.drawAlignmentHoles(side_orig, l, "A"),
+                        access_pair(self.thickness, side_orig - self.thickness,
+                                    self.spoke_width), side_orig / 2)
 
                 self.polygonWall(borders0, edge=e0, correct_corners=False, move="right",
                                  callback=[None, access_holes], label=f"edge {edge}")
@@ -2838,6 +2842,27 @@ class HexmoHexagon(HexmoStepFormatMixin, HexmoBigHoleMixin, HexmoTrackGuideMixin
             self.rectangularHole(l / 2, (y0 + y1) / 2, dx, dy, r=r,
                                  center_x=True, center_y=True)
 
+        def draw_access_with_pilots(normal_holes, spans, middle):
+            """Access openings that keep the wall's Ø6 pilots beside them.
+
+            The wall's normal holes are worked out (not cut) to find its Ø6
+            pilots; the openings then shrink to keep the pairs nearest their
+            ends (see openings_with_pilots), and those pilots are cut.
+
+            @param normal_holes - Draws the wall's normal holes (hole frame).
+            @param spans        - Full-size openings ``[(start, end)]`` along it.
+            @param middle       - The middle post's centre along the wall.
+            """
+            with self.saved_context():
+                holes = recorded_holes(self, normal_holes)
+            # Hole frame: x up the wall, y along it.
+            pilots = [(y, x, r) for x, y, r in holes if abs(r - self._R3) < 1e-6]
+            openings, kept = openings_with_pilots(spans, pilots, [middle])
+            for y0, y1 in openings:
+                draw_access_opening(y0, y1)
+            for y, x, r in kept:
+                self.hole(x, y, r)
+
         def draw_aligned_holes_long():
             self.moveTo(0, side_long / 2 - side_orig)
             if self.access_openings:
@@ -2845,9 +2870,10 @@ class HexmoHexagon(HexmoStepFormatMixin, HexmoBigHoleMixin, HexmoTrackGuideMixin
                 # hexagon's centre line).
                 self._stepFrame("long wall", "wall", (side_orig, 0.0, 0.0), (0, 0, 1),
                                 (-1, 0, 0), (0.0, self.thickness))
-                for y0, y1 in access_pair(side_orig - side_long / 2,
-                                          side_orig + side_long / 2, self.spoke_width):
-                    draw_access_opening(y0, y1)
+                draw_access_with_pilots(
+                    lambda: self.drawAlignmentHolesLong(2 * side_orig, l, "A"),
+                    access_pair(side_orig - side_long / 2, side_orig + side_long / 2,
+                                self.spoke_width), side_orig)
                 return
             # The long wall's hole frame: x up, y along it from +x towards -x,
             # its centre (side_orig) on the centre line; placed on its outer
