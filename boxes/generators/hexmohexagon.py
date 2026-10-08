@@ -846,7 +846,7 @@ class HexmoHexagon(HexmoStepFormatMixin, HexmoBigHoleMixin, HexmoTrackGuideMixin
                               + ([(under_rect[2], under_rect[3])] if under_rect else []))
             if under_rect:
                 self._drawUnderTrackOpening(s / 2, under_rect[0], under_rect[1],
-                                            along_x=False)
+                                            along_x=False, floor=0.0)
             for (x0, x1, y0, y1), closed in openings:
                 # Notches are cut by the wall's top edge, not here.
                 if closed:
@@ -1386,13 +1386,15 @@ class HexmoHexagon(HexmoStepFormatMixin, HexmoBigHoleMixin, HexmoTrackGuideMixin
         """Edges whose side walls get the under-deck track opening.
 
         @param isTrapezoid - True for the half-hexagon (edges 3, 4, 5 only).
-        @returns Sorted list of edge numbers (empty when the option is unset).
+        @returns Sorted list of edge numbers: --under_track_edges and any
+                 walls --subway_ports opens (empty when neither is set).
         @throws ValueError - On anything but comma-separated edge numbers 1–6,
                              or an edge the trapezoid does not have.
         """
         text = self.under_track_edges.strip()
         if not text:
-            return []
+            # --subway_ports may still open some walls.
+            return sorted(self._subwayPortEdges(isTrapezoid))
         edges = set()
         for item in text.split(","):
             item = item.strip()
@@ -1404,7 +1406,33 @@ class HexmoHexagon(HexmoStepFormatMixin, HexmoBigHoleMixin, HexmoTrackGuideMixin
             raise ValueError(
                 "--under_track_edges: the trapezoid only has edges 3, 4 and 5 "
                 f"(got {', '.join(str(e) for e in sorted(edges))}).")
-        return sorted(edges)
+        return sorted(edges | self._subwayPortEdges(isTrapezoid))
+
+    def _subwayPortEdges(self, isTrapezoid):
+        """The walls --subway_ports opens up (see _hexmo_under_track).
+
+        Every wall that joins another module (all six on the full hexagon,
+        the short walls 3, 4 and 5 on the trapezoid), less those that can't
+        take an opening in their middle: a track or spur opening (including a
+        --subway's) too close to it, a --lower_ground step or lowered wall, or
+        --access_openings (those walls join nothing).
+
+        @param isTrapezoid - True for the half-hexagon.
+        @returns Set of edges.
+        """
+        if not self.subway_ports:
+            return set()
+        edges = set(self._TRAPEZOID_EDGES) if isTrapezoid else set(range(1, 7))
+        if self.lower_ground > 0:
+            edges -= {3, 4, 5} if isTrapezoid else {3, 5}
+        if self.access_openings and not isTrapezoid:
+            edges -= {int(e) for e in self.access_edges.split(",") if e.strip().isdigit()}
+        reach = self.under_track_width / 2 + self._UNDER_TRACK_CLEAR
+        for o in parse_track_openings(self._withSubwayOpenings(self.track_openings),
+                                      self.under_track_width):
+            if abs(o.position) < reach + o.width / 2:
+                edges.discard(o.edge)
+        return edges
 
     # Deck side index → edge number, in the order the deck panel draws its
     # sides (anticlockwise from the bottom).  The trapezoid's third side is

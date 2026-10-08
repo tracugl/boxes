@@ -1412,6 +1412,10 @@ class HexmoRectangle(HexmoStepFormatMixin, HexmoBigHoleMixin, HexmoTrackGuideMix
                     "floor strip; use a narrower width.")
             self.under_track = True
             self.under_track_height, self.under_track_width = subway
+        # --subway_ports: the end walls and short dividers get the under-deck
+        # opening (with its cable slot).
+        if self.subway_ports:
+            self.under_track = True
         r, h, apothem, W, H = lay.r, lay.h, lay.apothem, lay.W, lay.H
         n_cols, n_div_h, n_rows, n_div_v = lay.n_cols, lay.n_div_h, lay.n_rows, lay.n_div_v
         col_w, row_h, sw = lay.col_w, lay.row_h, lay.sw
@@ -1619,7 +1623,8 @@ class HexmoRectangle(HexmoStepFormatMixin, HexmoBigHoleMixin, HexmoTrackGuideMix
             self.drawAlignmentHolesRect(s_hex, gap_features=False,
                                         big_xs=[x + dx for x in end_big_xs])
             if under_y is not None:
-                self._drawUnderTrackOpening(under_x + dx, *under_y, along_x=True)
+                self._drawUnderTrackOpening(under_x + dx, *under_y, along_x=True,
+                                            floor=l_eff)
 
         # Long outer walls (H × h): four horizontal dividers pass through.
         # Divider i is centred at (i+1)·row_h + (2i+1)·t/2 along H (i = 0..3).
@@ -1824,7 +1829,8 @@ class HexmoRectangle(HexmoStepFormatMixin, HexmoBigHoleMixin, HexmoTrackGuideMix
                 # in its lane, the under-deck track opening.
                 spans = [(x - r4 - mc, x + r4 + mc) for x in bigs]
                 if under_y is not None and x_lo <= under_x <= x_hi:
-                    self._drawUnderTrackOpening(under_x, *under_y, along_x=True)
+                    self._drawUnderTrackOpening(under_x, *under_y, along_x=True,
+                                                floor=l_eff)
                     half = self.under_track_width / 2
                     spans = sorted(spans + [(under_x - half - mc, under_x + half + mc)])
                 los = [x_lo] + [hi for _, hi in spans]

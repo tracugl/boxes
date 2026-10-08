@@ -907,6 +907,17 @@ gives all of that, on every Hexmo module:
   joints. Supports stand 15 mm in from each end of a bed and at most
   `--riser_spacing` (default 80) apart.
 
+**Subway-ready walls (`--subway_ports`):** every wall that joins another module
+gets the under-deck opening in its middle (where the spoke meets it), at
+`--under_track_height` and `--under_track_width`, with a 30 × 14 mm cable slot
+under it, centred between the opening and the floor. A subway can then carry on
+through any joint, and wiring can follow it. HexmoRectangle: the end walls and
+short dividers. Trapezoid: its short walls (3, 4 and 5). Full hexagon: all six.
+A wall whose middle already has a track or spur opening too close, a lowered
+`--lower_ground` wall, or one with `--access_openings` (it joins nothing) is left
+as it is. The slot needs about 22 mm under the opening; set
+`--under_track_height` to the subway's height (23.8 on the 250 ring).
+
 **Access for re-railing (`--access_openings`):** a wall that joins no other
 module needs no medium registration holes, so it can carry large rounded-
 rectangle openings instead, for a hand to reach a derailed train under the
