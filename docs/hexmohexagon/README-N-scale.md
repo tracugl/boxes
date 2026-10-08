@@ -918,23 +918,34 @@ gives all of that, on every Hexmo module:
 Every Hexmo wall is now an *access wall*: large
 rounded-rectangle openings, for a hand to reach a derailed train under the deck,
 either side of a middle post as wide as `--spoke_width` (over the floor's spoke),
-with the subway opening and its cable slot in the post. Two options make it up,
+with the subway opening in the post and an upright cable slot at each end. Two
+options make it up,
 both on by default; switch both off (`--access_openings=0 --subway_ports=0`) for
 the original walls with their round hole pattern.
 
 **Subway-ready walls (`--subway_ports`):** every wall that joins another module
 gets the under-deck opening in its middle (where the spoke meets it), at
-`--under_track_height` and `--under_track_width`, with a 30 × 14 mm cable slot
-under it, centred between the opening and the floor. A subway can then carry on
-through any joint, and wiring can follow it. HexmoRectangle: the end walls and
+`--under_track_height` and `--under_track_width`, so a subway can carry on
+through any joint. HexmoRectangle: the end walls and
 short dividers. Trapezoid: its short walls (3, 4 and 5), and its long wall's
 middle post. Full hexagon: all six. On an access wall it sits in the middle
 post, which widens if the opening needs it (35 mm opening plus 5 mm of wood each
 side). A wall whose middle already has a track or spur opening too close, or a
 lowered `--lower_ground` wall, is left as it is, as is any wall too low for the
-opening. The slot needs about 22 mm under the opening and is left out where
-there isn't room; set `--under_track_height` to the subway's height (23.8 on
-the 250 ring), the same on every module so the openings line up.
+opening. Set `--under_track_height` to the subway's height (23.8 on the 250
+ring), the same on every module so the openings line up.
+
+Wiring goes through **cable slots** at the wall's ends instead, clear of the
+subway's bed and supports down the middle: every access wall that joins another
+module gets an upright 14 × 30 mm slot near each end, standing between a pair of
+Ø6 dowel holes with 4 mm of wood to each. It uses the pair nearest the end (45 mm
+in on the 250 ring), or the next one in where that pair is too close to the
+wall's edge (30 mm in at the default sizes). Those dowel holes sit in the same
+place on every hexagon wall and rectangle end wall, so the slots line up through
+every joint. The pair's centres have to be at least 44 mm apart (h=80 and up); on a
+lower wall the slots are left out. The short dividers have none (their lane
+openings pass a cable), nor has the trapezoid's long wall (no wiring crosses the
+ring's outside).
 
 **Access openings (`--access_openings`):** each opening leaves 12 mm of wood
 above and below and 15 mm at each end. The wall keeps some of its Ø6 dowel
@@ -958,8 +969,8 @@ goes through both walls at every joint.
 - **Trapezoid:** its long wall gets two, about 124 × 50 mm each, with four
   dowel pairs; its short walls two each, as the full hexagon's.
 - **Full hexagon:** the walls listed in `--access_edges` (default all six) get
-  two each: about 40 × 50 mm at radius 250, for fingers, with a dowel pair at
-  each end.
+  two each: about 36 × 50 mm at radius 250, for fingers, with a dowel pair and
+  its cable slot at each end.
 
 The openings stop 15 mm short of a track or spur opening that cuts into the
 wall, so a wall with one keeps the opening on its other side (M1–M5's spur

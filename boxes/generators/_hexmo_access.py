@@ -9,7 +9,9 @@ that joins another module still lines up with it.
 Used on HexmoRectangle's long walls and long supports (one opening per cell),
 its end walls and short dividers, and on every HexmoHexagon wall: two openings
 either side of a middle post as wide as the spoke, so the post stands over the
-floor's spoke (and the support on it) and carries the subway opening.
+floor's spoke (and the support on it) and carries the subway opening.  With
+--subway_ports each end of the wall also gets an upright cable slot, between
+its end pilot pair (see end_pills).
 
 The module name starts with an underscore, so generator discovery skips it.
 """
@@ -124,6 +126,47 @@ def end_columns(pilots):
     r = max(p[2] for p in pilots)
     along = [p[0] for p in pilots]
     return [(c - r - PILOT_CLEAR, c + r + PILOT_CLEAR) for c in (min(along), max(along))]
+
+
+def end_pills(pilots, length, width, wood, lo, hi):
+    """Upright cable slots at a wall's ends, between pilot pairs.
+
+    Wiring crosses a joint near the wall's ends, clear of a subway's bed and
+    supports down the middle.  Each slot stands in a column of the wall's Ø6
+    pilots, centred between the column's outermost two, so it lines up through
+    every joint as they do: the outermost column at each end (see
+    end_columns), or the next one in where that one leaves the slot nearer
+    the wall end than ``lo``/``hi``.  Any pilots between the pair (the full
+    corner groups have two) give way to it.
+
+    @param pilots - ``[(along, across, r)]`` of the wall's pilot holes.
+    @param length - The slot's length up the wall (mm).
+    @param width  - Its width along the wall (mm).
+    @param wood   - Least wood between the slot and a pilot (mm).
+    @param lo, hi - How near the wall's ends a slot's edge may come, in the
+                    pilots' frame.  Callers put them the same distance in from
+                    the shared hole pattern's ends, so joined walls choose the
+                    same column.
+    @returns ``[(along, across)]`` of each slot's centre: at most one per end
+             (none where the wall is too low for it).
+    """
+    if not pilots:
+        return []
+    r = max(p[2] for p in pilots)
+    columns = sorted({round(p[0], 6) for p in pilots})
+    pills = []
+    for ordered, ok in ((columns, lambda c: c - width / 2 >= lo),
+                        (columns[::-1], lambda c: c + width / 2 <= hi)):
+        for c in ordered[:3]:
+            across = sorted(p[1] for p in pilots if abs(p[0] - c) < 1e-6)
+            if not ok(c) or len(across) < 2:
+                continue
+            bottom, top = across[0] + r + wood, across[-1] - r - wood
+            if top - bottom >= length:
+                pills.append((c, (bottom + top) / 2))
+            break
+    # On a short wall both ends could pick the same column.
+    return list(dict.fromkeys(pills))
 
 
 def openings_with_pilots(spans, pilots, middles):

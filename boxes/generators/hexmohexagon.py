@@ -28,8 +28,8 @@ import re
 from boxes import Boxes, edges, boolarg, holeCol, restore
 from boxes.Color import *
 from boxes.generators._hexmo_access import (
-    ACCESS_BAND, ACCESS_POST, access_fits, access_pair, access_spans, end_columns,
-    openings_with_pilots, recorded_holes,
+    ACCESS_BAND, ACCESS_POST, PILOT_CLEAR, access_fits, access_pair, access_spans,
+    end_columns, end_pills, openings_with_pilots, recorded_holes,
 )
 from boxes.generators._hexmo_big_holes import HexmoBigHoleMixin
 from boxes.generators._hexmo_lower_ground import HexmoLowerGroundMixin
@@ -849,7 +849,7 @@ class HexmoHexagon(HexmoStepFormatMixin, HexmoBigHoleMixin, HexmoTrackGuideMixin
                               + ([(under_rect[2], under_rect[3])] if under_rect else []))
             if under_rect:
                 self._drawUnderTrackOpening(s / 2, under_rect[0], under_rect[1],
-                                            along_x=False, floor=0.0)
+                                            along_x=False)
             for (x0, x1, y0, y1), closed in openings:
                 # Notches are cut by the wall's top edge, not here.
                 if closed:
@@ -2921,6 +2921,9 @@ class HexmoHexagon(HexmoStepFormatMixin, HexmoBigHoleMixin, HexmoTrackGuideMixin
             ends (see openings_with_pilots), and those pilots are cut, less
             any too close to a track or subway opening.  The closed track
             openings are cut here too; notches are cut by the wall's top edge.
+            With --subway_ports a wall that joins another module also gets an
+            upright cable slot at each end, between a pilot pair (see
+            end_pills), the openings keeping clear of it.
 
             @param normal_holes - Draws the wall's normal holes (hole frame).
             @param lo, hi       - The wall body along it.
@@ -2945,8 +2948,26 @@ class HexmoHexagon(HexmoStepFormatMixin, HexmoBigHoleMixin, HexmoTrackGuideMixin
                 half = self.under_track_width / 2
                 rects.append((bottom, top, middle - half, middle + half))
             solid = [(middle - post / 2, middle + post / 2)]
+            length, width = self._CABLE_SLOT
+            # Hole frame: a slot's rectangle as (x0, x1, y0, y1).
+            # The slots keep a thickness and PILOT_CLEAR in from the body's
+            # ends (the same from the hole pattern's ends as a rectangle end
+            # wall's, so joined walls pick the same pilot column).
+            edge = self.thickness + PILOT_CLEAR
+            pills = [(across - length / 2, across + length / 2, along - width / 2,
+                      along + width / 2)
+                     for along, across in (end_pills(pilots, length, width,
+                                                     self._CABLE_SLOT_WOOD,
+                                                     lo + edge, hi - edge)
+                                           if self.subway_ports and joins else [])]
+            # Not where a track opening comes too close.
+            pills = [p for p in pills
+                     if all(min(p[1], q[1]) - max(p[0], q[0]) < -self._TRACK_OPENING_CLEAR
+                            or min(p[3], q[3]) - max(p[2], q[2]) < -self._TRACK_OPENING_CLEAR
+                            for q in rects)]
             if joins:
                 solid += end_columns(pilots)
+            solid += [(y0 - PILOT_CLEAR, y1 + PILOT_CLEAR) for _, _, y0, y1 in pills]
             middles = [middle]
             for x0, x1, y0, y1 in rects[:len(openings)]:
                 # Every opening below the wall top (a track resting on the
@@ -2959,8 +2980,12 @@ class HexmoHexagon(HexmoStepFormatMixin, HexmoBigHoleMixin, HexmoTrackGuideMixin
             for y0, y1 in access:
                 draw_access_opening(y0, y1)
             for y, x, r in kept:
-                if all(rect_circle_gap(rect, (x, y, r)) >= self._TRACK_OPENING_CLEAR
-                       for rect in rects):
+                # Clear of the track and subway openings, and of the cable
+                # slots (pilots between a slot's pair give way to it).
+                if (all(rect_circle_gap(rect, (x, y, r)) >= self._TRACK_OPENING_CLEAR
+                        for rect in rects)
+                        and all(rect_circle_gap(pill, (x, y, r)) >= self._CABLE_SLOT_WOOD - 1e-6
+                                for pill in pills)):
                     self.hole(x, y, r)
             for (x0, x1, y0, y1), closed in openings:
                 if closed:
@@ -2969,7 +2994,9 @@ class HexmoHexagon(HexmoStepFormatMixin, HexmoBigHoleMixin, HexmoTrackGuideMixin
                         r=max(0.0, self.big_hole_roundness) * min(x1 - x0, y1 - y0) / 2,
                         center_x=True, center_y=True)
             if port:
-                self._drawUnderTrackOpening(middle, bottom, top, along_x=False, floor=0.0)
+                self._drawUnderTrackOpening(middle, bottom, top, along_x=False)
+            for x0, x1, y0, y1 in pills:
+                self._drawCablePill((y0 + y1) / 2, (x0 + x1) / 2, along_x=False)
 
         def draw_aligned_holes_long():
             self.moveTo(0, side_long / 2 - side_orig)

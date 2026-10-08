@@ -130,8 +130,11 @@ class TestEndWalls:
         centre = (openings[0][0] + openings[1][1]) / 2
         ports = [b for b in wall if b[1] - b[0] > 20 and b not in openings
                  and (b[0] + b[1]) / 2 == pytest.approx(centre, abs=0.1)]
-        assert len(ports) == 2
-        assert all((b[0] + b[1]) / 2 == pytest.approx(centre, abs=0.1) for b in ports)
+        assert len(ports) == 1
+        # An upright cable slot near each end (14 wide, 30 tall).
+        pills = [b for b in wall if (round(b[1] - b[0]), round(b[3] - b[2])) == (14, 30)]
+        assert len(pills) == 2
+        assert pills[0][1] < openings[0][0] and pills[1][0] > openings[1][1]
 
     def test_dividers_take_the_full_lane(self) -> None:
         # Dividers register to nothing, so their openings needn't keep pilots.
@@ -209,15 +212,16 @@ class TestHexagonAccess:
         # end of each opening (end and centre pairs).
         assert sorted({a for a, _ in pilots(holes_)}) == pytest.approx(
             [45.0, 184.9, 308.2, 448.1], abs=0.1)
-        # The openings, the pilots, and the subway opening and its slot.
-        assert len(holes_) == 2 + 8 + 2
+        # The openings, the pilots, and the subway opening (no cable slots:
+        # no wiring crosses the ring's outside wall).
+        assert len(holes_) == 2 + 8 + 1
 
     def test_trapezoid_short_walls(self) -> None:
         # Edge 4 joins the next trapezoid across: two openings round the
         # post, which carries the subway opening.
         holes_ = hex_holes(HELIX_RING_N250["M2"], "wall edge 4")
         assert len(access(holes_)) == 2
-        assert len(big(holes_)) == 2 + 2
+        assert len(big(holes_)) == 2 + 1
 
     def test_lowered_trapezoid_walls_unchanged(self) -> None:
         for name in ("wall edge 3", "wall edge 4", "wall edge 5"):
@@ -232,8 +236,9 @@ class TestHexagonAccess:
             assert len(openings) == 2
             for y0, y1, x0, x1 in openings:
                 # The pairs here are too close for the centre ones to stay,
-                # so the end pairs stay and the openings run to the post.
-                assert (y1 - y0, x1 - x0) == pytest.approx((40.3, 50), abs=0.5)
+                # so the end pairs stay and the openings run to the post,
+                # 5 mm clear of the cable slot between each end pair.
+                assert (y1 - y0, x1 - x0) == pytest.approx((36.3, 50), abs=0.5)
             # The middle post is as wide as the spoke, over its middle.
             assert openings[1][0] - openings[0][1] == pytest.approx(60, abs=0.1)
             assert sorted({a for a, _ in pilots(holes_)}) == pytest.approx([45.0, 201.5], abs=0.1)

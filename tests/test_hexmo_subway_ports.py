@@ -2,10 +2,11 @@
 on by default since BOX-70).
 
 Each wall that joins another module gets the under-deck opening in its middle
-(where the spoke meets it) with a 30 × 14 mm cable slot under it, so a subway
-can carry on through any joint; an access wall carries it in its middle post.
-Walls whose middle can't take it (a track or spur opening there, a lowered
---lower_ground wall) are left as they are.
+(where the spoke meets it), so a subway can carry on through any joint; an
+access wall carries it in its middle post.  Walls whose middle can't take it
+(a track or spur opening there, a lowered --lower_ground wall) are left as
+they are.  Each joining access wall also gets an upright 14 × 30 mm cable slot
+at each end, between a pilot pair, clear of the subway's supports.
 
 These tests avoid lxml, so they run in the Docker image.
 """
@@ -42,8 +43,9 @@ HEX = ["--radius=250", "--thickness=3", "--h=80", "--edge_width=22", "--spoke_wi
 def ports(cls, args):
     """Part name → (cable slots, subway openings) found in it.
 
-    A slot is a 30 × 14 hole; an opening one 35 wide and taller than 40.
-    Each is ``(along, height above the floor)`` of its centre.
+    A slot is a 30 × 14 hole, as ``(x, y, w, h)``: its centre and size in
+    the part's frame; an opening one 35 wide and taller than 40, as its
+    bounding box ``(x0, x1, y0, y1)``.
     """
     box = cls()
     box.parseArgs(args + ["--subway_ports=1"])
@@ -59,7 +61,7 @@ def ports(cls, args):
             xs, ys = [p[0] for p in pts], [p[1] for p in pts]
             w, h = max(xs) - min(xs), max(ys) - min(ys)
             if {round(w), round(h)} == {30, 14}:
-                slots.append(((min(xs) + max(xs)) / 2, (min(ys) + max(ys)) / 2))
+                slots.append(((min(xs) + max(xs)) / 2, (min(ys) + max(ys)) / 2, w, h))
             elif round(min(w, h)) == 35 and max(w, h) > 40:
                 openings.append((min(xs), max(xs), min(ys), max(ys)))
         found[f.name] = (slots, openings)
@@ -67,6 +69,13 @@ def ports(cls, args):
 
 
 def ported(found, prefix="wall edge"):
+    """Parts with a subway opening."""
+    return sorted(n for n, (_, openings) in found.items()
+                  if n.startswith(prefix) and openings)
+
+
+def pilled(found, prefix="wall edge"):
+    """Parts with cable slots."""
     return sorted(n for n, (slots, _) in found.items() if n.startswith(prefix) and slots)
 
 
@@ -76,21 +85,40 @@ class TestHexagon:
         found = ports(HexmoHexagon, HEX)
         assert ported(found) == [f"wall edge {e}" for e in range(1, 7)]
 
-    def test_slot_centred_under_the_opening(self) -> None:
-        # Hex wall frame: x up from the floor panel, y along the wall.
-        slots, openings = ports(HexmoHexagon, HEX)["wall edge 2"]
-        (x, y), = slots
-        x0, x1, y0, y1 = openings[0]
-        assert x0 == pytest.approx(23.8)                     # the track height
-        assert x == pytest.approx(23.8 / 2)                  # midway to the floor
-        assert y == pytest.approx((y0 + y1) / 2)             # under the middle
+    def test_upright_slots_at_the_wall_ends(self) -> None:
+        # Hex wall frame: x up from the floor panel, y along the wall.  One
+        # slot near each end, 30 tall and 14 wide, in the pilot column 45 mm
+        # in (the g2 corner groups' pair), centred between its two pilots.
+        box = HexmoHexagon()
+        box.parseArgs(HEX)
+        box.open()
+        side, l = box._wallSize()
+        slots, _ = ports(HexmoHexagon, HEX)["wall edge 2"]
+        assert len(slots) == 2
+        for x, y, w, h in slots:
+            assert (w, h) == pytest.approx((30, 14))
+            assert x == pytest.approx(l / 2)
+        assert sorted(y for _, y, _, _ in slots) == pytest.approx([45, side - 45], abs=0.01)
+
+    def test_slots_on_every_joining_wall(self) -> None:
+        # Wiring crosses any joint, spur or not; the long wall joins nothing.
+        found = ports(HexmoHexagon, HELIX_RING_N250["M2"])
+        assert pilled(found) == ["wall edge 3", "wall edge 4", "wall edge 5"]
+        assert found["long wall"][0] == []
+
+    def test_slots_need_room_between_the_pilots(self) -> None:
+        # At h=70 the pilot pair is 34 mm apart inside: too little for the
+        # 30 mm slot with 4 mm of wood each side; the access openings stay.
+        found = ports(HexmoHexagon, HEX + ["--h=70"])
+        assert pilled(found) == []
 
     def test_trapezoid_short_walls(self) -> None:
         found = ports(HexmoHexagon, HEX[:-1] + ["--trapezoid=1",
                                                 "--support_edges=4@140,4@38/90"])
         assert ported(found) == ["wall edge 3", "wall edge 4", "wall edge 5"]
-        # The long wall joins nothing, but its access openings' post takes one.
-        assert found["long wall"][0] != []
+        # The long wall joins nothing, but its access openings' post takes
+        # the subway opening (no cable slots: no wiring crosses it).
+        assert found["long wall"][1] != [] and found["long wall"][0] == []
 
     def test_walls_with_a_spur_in_the_middle_are_left(self) -> None:
         # The ring's M2 has its spur 35 mm in on walls 3 and 5.
@@ -107,14 +135,18 @@ class TestHexagon:
         # same 12.5 mm of wood either side (60 mm post, 35 mm opening).
         found = ports(HexmoHexagon, HEX + ["--access_openings=1", "--access_edges=2,4,6"])
         assert ported(found) == [f"wall edge {e}" for e in range(1, 7)]
-        slots, openings = found["wall edge 2"]
+        box = HexmoHexagon()
+        box.parseArgs(HEX)
+        box.open()
+        side, _ = box._wallSize()
+        _, openings = found["wall edge 2"]
         (x0, x1, y0, y1), = openings
         assert (y1 - y0) == pytest.approx(35)
-        assert (y0 + y1) / 2 == pytest.approx(slots[0][1])
+        assert (y0 + y1) / 2 == pytest.approx(side / 2)
 
     def test_trapezoid_long_wall_with_access(self) -> None:
         found = ports(HexmoHexagon, HELIX_RING_N250["M2"] + ["--under_track_height=23.8"])
-        assert found["long wall"][0] and found["long wall"][1]
+        assert found["long wall"][1] and not found["long wall"][0]
 
     def test_middle_post_widens_for_the_opening(self) -> None:
         # A 40 mm spoke is narrower than the 35 mm opening plus 5 mm of wood
@@ -132,21 +164,40 @@ class TestHexagon:
         assert len(spans) == 2
         assert spans[1][0] - spans[0][1] == pytest.approx(45, abs=0.1)
 
-    def test_slot_left_out_without_room(self) -> None:
-        # At 15 mm the opening leaves too little wall under it for the slot,
-        # which goes; the opening stays.
+    def test_low_opening_keeps_the_slots(self) -> None:
+        # The slots are at the wall ends, so a low subway opening (15 mm)
+        # doesn't crowd them.
         found = ports(HexmoHexagon, [a for a in HEX if not a.startswith("--under_track_height")]
                       + ["--under_track_height=15"])
         slots, openings = found["wall edge 2"]
-        assert slots == [] and openings
+        assert len(slots) == 2 and openings
 
 
 class TestRectangle:
 
     def test_end_walls_and_dividers(self) -> None:
         found = ports(HexmoRectangle, HELIX_ENTRY_N250)
-        assert sorted(n for n, (slots, _) in found.items() if slots) == [
-            "divider 1", "end wall 1", "end wall 2"]
+        walls = {n: v for n, v in found.items() if n.startswith(("end wall", "divider"))}
+        assert ported(walls, "") == ["divider 1", "end wall 1", "end wall 2"]
+        # The end walls join a module; the dividers' lane openings pass a cable.
+        assert pilled(walls, "") == ["end wall 1", "end wall 2"]
+
+    def test_slots_line_up_with_the_hexagon(self) -> None:
+        # The entry's end wall and the M6 wall it joins (edge 1) have their
+        # slots in the same place, measured from the wall centre and the deck.
+        rect = HexmoRectangle()
+        rect.parseArgs(HELIX_ENTRY_N250)
+        rect.open()
+        half = (rect._rectLayout().W - 2 * rect.thickness) / 2
+        end = sorted((round(x - half, 1), round(y, 1))
+                     for x, y, _, _ in ports(HexmoRectangle, HELIX_ENTRY_N250)["end wall 1"][0])
+        hexagon = HexmoHexagon()
+        hexagon.parseArgs(HELIX_RING_N250["M6"])
+        hexagon.open()
+        side, l = hexagon._wallSize()
+        m6 = sorted((round(y - side / 2, 1), round(l - x, 1))
+                    for x, y, _, _ in ports(HexmoHexagon, HELIX_RING_N250["M6"])["wall edge 1"][0])
+        assert len(end) == 2 and end == m6
 
     def test_turns_on_the_openings(self) -> None:
         args = [a for a in HELIX_ENTRY_N250 if not a.startswith(("--subway=", "--under_track="))]

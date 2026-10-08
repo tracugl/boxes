@@ -30,8 +30,8 @@ from types import SimpleNamespace
 from boxes import Boxes, edges, boolarg
 from boxes.Color import Color
 from boxes.generators._hexmo_access import (
-    ACCESS_BAND, ACCESS_MIN, ACCESS_POST, access_fits, access_spans, end_columns,
-    openings_with_pilots, recorded_holes,
+    ACCESS_BAND, ACCESS_MIN, ACCESS_POST, PILOT_CLEAR, access_fits, access_spans,
+    end_columns, end_pills, openings_with_pilots, recorded_holes,
 )
 from boxes.generators._hexmo_track_openings import rect_circle_gap
 from boxes.generators._hexmo_big_holes import HexmoBigHoleMixin
@@ -1644,8 +1644,7 @@ class HexmoRectangle(HexmoStepFormatMixin, HexmoBigHoleMixin, HexmoTrackGuideMix
                 return
             end_wall_holes()
             if under_y is not None:
-                self._drawUnderTrackOpening(under_x + dx, *under_y, along_x=True,
-                                            floor=l_eff)
+                self._drawUnderTrackOpening(under_x + dx, *under_y, along_x=True)
 
         def end_wall_holes():
             """The end wall's normal registration and weight holes.
@@ -1699,8 +1698,9 @@ class HexmoRectangle(HexmoStepFormatMixin, HexmoBigHoleMixin, HexmoTrackGuideMix
             Worked out once, during the first end wall's callback (the pilots
             are found by recording its normal holes there).
 
-            @returns ``(openings, pilots)``: ``[(start, end)]`` across the wall
-                     (0 … W − 2t), and the pilots ``[(x, y, r)]`` to cut.
+            @returns ``(openings, pilots, pills)``: ``[(start, end)]`` across
+                     the wall (0 … W − 2t), the pilots ``[(x, y, r)]`` to cut,
+                     and the cable slots' centres ``[(x, y)]``.
             """
             if not end_layout:
                 with self.saved_context():
@@ -1708,12 +1708,28 @@ class HexmoRectangle(HexmoStepFormatMixin, HexmoBigHoleMixin, HexmoTrackGuideMix
                 pilots = [(x, y, r) for x, y, r in holes if abs(r - self._R3) < 1e-6]
                 # The pilot pair nearest each end stays: it registers with
                 # the HexmoHexagon wall this end wall joins (see end_columns).
-                spans = access_spans(0, W - 2 * t, end_solid + end_columns(pilots))
+                # With --subway_ports an upright cable slot stands between
+                # each pair, lining up with the hexagon's (see end_pills).
+                # The slots keep 2t + PILOT_CLEAR in from the hole pattern's
+                # ends (at −dx and s_hex − dx here), as on the hexagon wall
+                # this joins, so both pick the same pilot column.
+                length, width = self._CABLE_SLOT
+                edge = 2 * t + PILOT_CLEAR
+                pills = (end_pills(pilots, length, width, self._CABLE_SLOT_WOOD,
+                                   -dx + edge, s_hex - dx - edge)
+                         if self.subway_ports else [])
+                ends = end_columns(pilots) + [
+                    (x - width / 2 - PILOT_CLEAR, x + width / 2 + PILOT_CLEAR) for x, _ in pills]
+                spans = access_spans(0, W - 2 * t, end_solid + ends)
                 openings, kept = openings_with_pilots(
                     spans, pilots, [under_x] + [lane_pos(i) for i in range(n_div_v)])
+                pill_rects = [(x - width / 2, x + width / 2, y - length / 2, y + length / 2)
+                              for x, y in pills]
                 kept = [p for p in kept
-                        if all(rect_circle_gap(rect, p) >= self._MIN_CLEAR for rect in end_rects)]
-                end_layout["v"] = (openings, kept)
+                        if all(rect_circle_gap(rect, p) >= self._MIN_CLEAR for rect in end_rects)
+                        and all(rect_circle_gap(rect, p) >= self._CABLE_SLOT_WOOD - 1e-6
+                                for rect in pill_rects)]
+                end_layout["v"] = (openings, kept, pills)
             return end_layout["v"]
 
         def draw_end_access(body, pilots=False):
@@ -1726,7 +1742,7 @@ class HexmoRectangle(HexmoStepFormatMixin, HexmoBigHoleMixin, HexmoTrackGuideMix
                             dividers register to nothing, so theirs are the
                             full-size ``end_spans``.
             """
-            openings, kept = end_access_layout() if pilots else (end_spans, [])
+            openings, kept, pills = end_access_layout() if pilots else (end_spans, [], [])
             dy = body - 2 * self._ACCESS_BAND
             for x0, x1 in openings:
                 dx_ = x1 - x0
@@ -1736,8 +1752,10 @@ class HexmoRectangle(HexmoStepFormatMixin, HexmoBigHoleMixin, HexmoTrackGuideMix
             if pilots:
                 for x, y, r in kept:
                     self.hole(x, y, r)
+            for x, y in pills:
+                self._drawCablePill(x, y, along_x=True)
             if under_y is not None:
-                self._drawUnderTrackOpening(under_x, *under_y, along_x=True, floor=l_eff)
+                self._drawUnderTrackOpening(under_x, *under_y, along_x=True)
 
         # Long outer walls (H × h): four horizontal dividers pass through.
         # Divider i is centred at (i+1)·row_h + (2i+1)·t/2 along H (i = 0..3).
@@ -1947,8 +1965,7 @@ class HexmoRectangle(HexmoStepFormatMixin, HexmoBigHoleMixin, HexmoTrackGuideMix
                 # in its lane, the under-deck track opening.
                 spans = [(x - r4 - mc, x + r4 + mc) for x in bigs]
                 if under_y is not None and x_lo <= under_x <= x_hi:
-                    self._drawUnderTrackOpening(under_x, *under_y, along_x=True,
-                                                floor=l_eff)
+                    self._drawUnderTrackOpening(under_x, *under_y, along_x=True)
                     half = self.under_track_width / 2
                     spans = sorted(spans + [(under_x - half - mc, under_x + half + mc)])
                 los = [x_lo] + [hi for _, hi in spans]
