@@ -592,9 +592,13 @@ For a lower track that runs just *under the deck* (the helix ring's descending
 spur), chosen walls get a rectangular opening instead, on the wall's centre line:
 
 - its **top** is one material thickness under the deck underside;
-- its **bottom** is the track height, `--under_track_height` mm above the floor
-  panel. `0` (default) puts it as high as still leaves 43 mm for the track and a
-  40 mm train, i.e. 46 mm under the deck;
+- its **bottom** is one material thickness above the floor panel, the same as
+  the top, so the wall has no up side (with `--subway_ports`, the default; see
+  [Access walls](#access-walls-the-default)). Without `--subway_ports` it is the
+  track height, `--under_track_height` mm above the floor panel, and the wall
+  carries the track at the joint. `0` (default) puts the track as high as still
+  leaves 43 mm for it and a 40 mm train, i.e. 46 mm under the deck; the height is
+  checked either way;
 - its **width** along the wall is `--under_track_width` (default `30`).
 
 On HexmoHexagon, `--under_track_edges` lists the edges whose side walls get it
@@ -909,8 +913,10 @@ gives all of that, on every Hexmo module:
   between the end walls and short dividers gets a level bed, its top at the
   track height, whose supports slot into the floor strip down the middle lane
   (the spoke). The strip's weight-saving holes give way to the slots. The track
-  crosses each wall on its opening's bottom edge, as the helix spur does at its
-  joints. Supports stand 15 mm in from each end of a bed and at most
+  bridges each wall (the opening runs nearly to the floor, so the wall has no up
+  side), about 3 mm, or 6 mm across a joint's two walls; with
+  `--subway_ports=0` it crosses on the opening's bottom edge instead, as the
+  helix spur does at its joints. Supports stand 15 mm in from each end of a bed and at most
   `--riser_spacing` (default 80) apart.
 
 #### Access walls (the default)
@@ -924,16 +930,19 @@ both on by default; switch both off (`--access_openings=0 --subway_ports=0`) for
 the original walls with their round hole pattern.
 
 **Subway-ready walls (`--subway_ports`):** every wall that joins another module
-gets the under-deck opening in its middle (where the spoke meets it), at
-`--under_track_height` and `--under_track_width`, so a subway can carry on
-through any joint. HexmoRectangle: the end walls and
+gets the under-deck opening in its middle (where the spoke meets it),
+`--under_track_width` wide, so a subway can carry on through any joint. It runs
+from one material thickness under the deck to one above the floor (35 × 68 mm at
+h=80), the same top and bottom, so with the rest of an access wall's holes it
+has no up side: the panel goes in either way up. HexmoRectangle: the end walls and
 short dividers. Trapezoid: its short walls (3, 4 and 5), and its long wall's
 middle post. Full hexagon: all six. On an access wall it sits in the middle
 post, which widens if the opening needs it (35 mm opening plus 5 mm of wood each
 side). A wall whose middle already has a track or spur opening too close, or a
 lowered `--lower_ground` wall, is left as it is, as is any wall too low for the
-opening. Set `--under_track_height` to the subway's height (23.8 on the 250
-ring), the same on every module so the openings line up.
+opening (`--under_track_height`, or the automatic height, must leave the train
+room under the deck). Set `--under_track_height` to the subway's height (23.8 on
+the 250 ring).
 
 Wiring goes through **cable slots** at the wall's ends instead, clear of the
 subway's bed and supports down the middle: every access wall that joins another

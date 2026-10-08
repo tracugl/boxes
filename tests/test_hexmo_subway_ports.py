@@ -242,6 +242,58 @@ class TestRectangle:
         assert all(found[n][1] for n in ("end wall 1", "end wall 2", "divider 1"))
 
 
+class TestNoUpSide:
+    """The subway opening is as far above the floor as it is under the deck,
+    so a wall goes in either way up."""
+
+    def test_hexagon_opening_symmetric(self) -> None:
+        box = HexmoHexagon()
+        box.parseArgs(HEX)
+        box.open()
+        _, l = box._wallSize()
+        _, openings = ports(HexmoHexagon, HEX)["wall edge 2"]
+        (x0, x1, _, _), = openings                    # x up from the floor
+        assert (x0, l - x1) == pytest.approx((3, 3))
+
+    def test_whole_access_wall_symmetric(self) -> None:
+        # M6 edge 1 at radius 250: every hole mirrors top to bottom.
+        box = HexmoHexagon()
+        box.parseArgs(HELIX_RING_N250["M6"])
+        box.open()
+        _, l = box._wallSize()
+        frame = next(f for f in _hexmo_step._render_frames(box) if f.name == "wall edge 1")
+        loops = _hexmo_step._frame_loops(frame)
+        out = max(loops, key=len)
+        holes = []
+        for loop in loops:
+            if loop is out:
+                continue
+            xs = [p[0] for seg in loop for p in seg[1:]]
+            ys = [p[1] for seg in loop for p in seg[1:]]
+            holes.append((round(min(xs), 1), round(max(xs), 1),
+                          round(min(ys), 1), round(max(ys), 1)))
+        flipped = [(round(l - x1, 1), round(l - x0, 1), y0, y1) for x0, x1, y0, y1 in holes]
+        assert sorted(flipped) == sorted(holes)
+
+    def test_rectangle_opening_matches(self) -> None:
+        # The entry's end wall: the same 3 mm from the deck and from the floor.
+        rect = HexmoRectangle()
+        rect.parseArgs(HELIX_ENTRY_N250)
+        rect.open()
+        l = rect._hexWallHeight()
+        _, openings = ports(HexmoRectangle, HELIX_ENTRY_N250)["end wall 1"]
+        (_, _, y0, y1), = openings                    # y down from the deck
+        assert (y0, l - y1) == pytest.approx((3, 3))
+
+    def test_off_keeps_the_track_height_bottom(self) -> None:
+        # The original walls carry the track on the opening's bottom edge.
+        box = HexmoHexagon()
+        box.parseArgs(HEX + ["--subway_ports=0", "--access_openings=0"])
+        box.open()
+        _, l = box._wallSize()
+        assert box._underTrackSpan(l) == pytest.approx((23.8, l - 3))
+
+
 def test_on_by_default() -> None:
     box = HexmoHexagon()
     box.parseArgs([])

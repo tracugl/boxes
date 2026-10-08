@@ -53,10 +53,13 @@ class HexmoUnderTrackMixin:
         self.argparser.add_argument(
             "--under_track_height", action="store", type=float, default=0.0,
             help="Under-deck track opening: height (mm) of the lower track above "
-                 "the floor panel, which is the opening's bottom edge.  The top "
-                 "edge is always one material thickness under the deck.  0 "
-                 "(default) puts it as high as still leaves --train_envelope for "
-                 "the track and train.")
+                 "the floor panel.  The opening's top edge is always one material "
+                 "thickness under the deck.  With --subway_ports (the default) its "
+                 "bottom edge is one thickness above the floor, the same as the "
+                 "top, so a wall has no up side and the track bridges it; without, "
+                 "the bottom edge is this height and the wall carries the track.  "
+                 "0 (default) puts the track as high as still leaves "
+                 "--train_envelope for the track and train.")
         self.argparser.add_argument(
             "--under_track_width", action="store", type=float, default=30.0,
             help="Under-deck track opening: width (mm) along the wall, centred on "
@@ -87,6 +90,14 @@ class HexmoUnderTrackMixin:
     def _underTrackSpan(self, body):
         """Bottom and top of the opening, in mm above the floor panel.
 
+        With --subway_ports (the default) the opening is the same top and
+        bottom: one thickness under the deck and one above the floor, so a
+        wall has no "up side" and goes in either way up.  The track height
+        (--under_track_height, or the automatic one) is still checked to leave
+        the train room under the deck; the track bridges the wall at a joint.
+        Without it, the opening's bottom is the track height, so the wall
+        carries the track at the joint.
+
         @param body - Wall body height: floor panel top to deck underside (mm).
         @returns ``(bottom, top)``.
         @throws ValueError - If the width is not positive, the opening would
@@ -114,6 +125,9 @@ class HexmoUnderTrackMixin:
             raise ValueError(
                 f"--under_track_height {height:g} leaves no opening under the deck: "
                 f"the opening's top is {top:g} mm above the floor panel.")
+        if self.subway_ports:
+            # Symmetric: as far above the floor as the top is under the deck.
+            return body - top, top
         return bottom, top
 
     def _portFits(self, body):
