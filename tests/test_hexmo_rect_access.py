@@ -41,7 +41,7 @@ def holes(args, name):
     box.parseArgs(args)
     frame = next(f for f in _hexmo_step._render_frames(box) if f.name == name)
     loops = _hexmo_step._frame_loops(frame)
-    out = max(loops, key=len)
+    out = max(loops, key=_area)
     boxes_ = []
     for loop in loops:
         if loop is out:
@@ -50,6 +50,14 @@ def holes(args, name):
         xs, ys = [p[0] for p in pts], [p[1] for p in pts]
         boxes_.append((round(min(xs), 1), round(max(xs), 1), round(min(ys), 1), round(max(ys), 1)))
     return sorted(boxes_)
+
+
+def _area(loop):
+    """Bounding-box area of a loop: the part's outline is the biggest (a
+    rounded opening can have more points than it)."""
+    pts = [p for seg in loop for p in seg[1:]]
+    xs, ys = [p[0] for p in pts], [p[1] for p in pts]
+    return (max(xs) - min(xs)) * (max(ys) - min(ys))
 
 
 def big(boxes_):
@@ -166,6 +174,38 @@ class TestEndWalls:
             assert (a, b) == pytest.approx((c, d), abs=0.15)
 
 
+class TestFloorStrip:
+    """The floor strip (the spoke) takes access openings too, in place of its
+    round weight holes: one per cell, or one between each pair of subway
+    supports."""
+
+    def test_one_per_cell(self) -> None:
+        # The default module: five cells, 12 mm of wood along each long edge
+        # of the 120 mm strip, 15 mm clear of the dividers' slots.
+        openings = big(holes(["--access_openings=1"], "spoke"))
+        assert len(openings) == 5
+        for x0, x1, y0, y1 in openings:
+            assert (y0, y1) == pytest.approx((12, 108), abs=0.05)
+            assert x1 - x0 == pytest.approx(136, abs=0.5)
+
+    def test_between_the_subway_supports(self) -> None:
+        # The entry: each cell's supports are 60.7 mm apart, so an opening
+        # 37.7 long fits between each pair, 10 mm clear of their slots.
+        openings = big(holes(HELIX_ENTRY_N250, "spoke"))
+        assert len(openings) == 6
+        assert all(x1 - x0 == pytest.approx(37.7, abs=0.15) for x0, x1, _, _ in openings)
+
+    def test_off_keeps_the_round_holes(self) -> None:
+        openings = big(holes(["--access_openings=0"], "spoke"))
+        assert len(openings) == 5
+        assert all(y0 > 12 + 1 for _, _, y0, _ in openings)
+
+    def test_too_narrow_keeps_the_round_holes(self) -> None:
+        # A 40 mm strip leaves 16 mm between the edge bands: no openings.
+        args = ["--spoke_width=40"]
+        assert holes(args, "spoke") == holes(args + ["--access_openings=0"], "spoke")
+
+
 def test_helix_entry_has_access_openings() -> None:
     assert "--access_openings=1" in HELIX_ENTRY_N250
 
@@ -179,7 +219,7 @@ def hex_holes(args, name):
     box.parseArgs(args)
     frame = next(f for f in _hexmo_step._render_frames(box) if f.name == name)
     loops = _hexmo_step._frame_loops(frame)
-    out = max(loops, key=len)
+    out = max(loops, key=_area)
     found = []
     for loop in loops:
         if loop is out:

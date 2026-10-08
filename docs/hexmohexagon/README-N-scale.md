@@ -977,7 +977,11 @@ goes through both walls at every joint.
   dividers get the same, at full size (they register to nothing, so keep no
   dowels). On the 250 ring's three-lane entry the outer lanes are too narrow
   for an opening beside the end dowels, so its end walls keep just the dowels
-  and the subway opening; reach in through the long walls.
+  and the subway opening; reach in through the long walls. The floor strip down
+  the middle lane (the spoke) swaps its round weight holes for the same rounded
+  rectangles: one per cell, 12 mm of wood along each edge, or, with `--subway`,
+  one between each pair of support slots (10 mm clear of them; about 38 × 53 mm
+  on the 250 ring's entry). A strip under 59 mm wide keeps its round holes.
 - **Trapezoid:** its long wall gets two, about 124 × 50 mm each, with four
   dowel pairs; its short walls two each, as the full hexagon's.
 - **Full hexagon:** the walls listed in `--access_edges` (default all six) get

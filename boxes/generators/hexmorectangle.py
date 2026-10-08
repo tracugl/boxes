@@ -30,8 +30,8 @@ from types import SimpleNamespace
 from boxes import Boxes, edges, boolarg
 from boxes.Color import Color
 from boxes.generators._hexmo_access import (
-    ACCESS_BAND, ACCESS_MIN, ACCESS_POST, PILOT_CLEAR, access_fits, access_spans,
-    end_columns, end_pills, openings_with_pilots, recorded_holes,
+    ACCESS_BAND, ACCESS_MIN, ACCESS_POST, FINGER_MIN, PILOT_CLEAR, access_fits,
+    access_spans, end_columns, end_pills, openings_with_pilots, recorded_holes,
 )
 from boxes.generators._hexmo_track_openings import rect_circle_gap
 from boxes.generators._hexmo_big_holes import HexmoBigHoleMixin
@@ -266,6 +266,10 @@ class HexmoRectangle(HexmoStepFormatMixin, HexmoBigHoleMixin, HexmoTrackGuideMix
     _ACCESS_BAND = ACCESS_BAND
     _ACCESS_POST = ACCESS_POST
     _ACCESS_MIN = ACCESS_MIN
+    # Wood beside a subway support's slot in the floor strip, between the
+    # strip's access openings: less than _ACCESS_POST, so openings still fit
+    # between supports at most --riser_spacing (80) apart.
+    _FLOOR_SLOT_WOOD = 10.0
 
     def __init__(self) -> None:
         """Initialise argument parser with FingerJoint settings and the ``--radius`` parameter."""
@@ -2166,15 +2170,48 @@ class HexmoRectangle(HexmoStepFormatMixin, HexmoBigHoleMixin, HexmoTrackGuideMix
             # registers to nothing, so it needs no medium/small holes — centred
             # across the spoke's sw width and packed clear of the finger slots and
             # the finger-tabbed ends (_fillWeightSpan keeps _BIG_EDGE clearance).
+            stations = []
             if subway is not None:
                 # The subway's supports slot in here instead of weight holes.
                 for x0, x1 in subway_cells:
                     for x in support_stations(x1 - x0, self.riser_spacing):
                         self.fingerHolesAt(x0 + x, sw / 2 - subway[1] / 2, subway[1], 90)
+                        stations.append(x0 + x)
+            if floor_access:
+                draw_floor_access(stations)
+            elif subway is not None:
+                pass
             elif sw >= 2 * self._bigHoleRadius() + 2 * self._MIN_CLEAR:
                 bounds = [0.0] + [div_pos(i) for i in range(n_div_h)] + [H]
                 for g_lo, g_hi in zip(bounds[:-1], bounds[1:]):
                     self._fillWeightSpan(g_lo, g_hi, clusters=False, y_centre=sw / 2)
+
+        # --access_openings on the floor strip too, where it is wide enough
+        # for a finger-width opening between its 12 mm edge bands.
+        floor_access = self.access_openings and sw - 2 * self._ACCESS_BAND >= FINGER_MIN
+
+        def draw_floor_access(stations):
+            """The floor strip's access openings, in place of its weight holes.
+
+            One rounded rectangle per cell, as on the long walls: _ACCESS_POST
+            clear of the short dividers' finger slots and the strip's ends,
+            _ACCESS_BAND of wood along each long edge.  With --subway, also one
+            between each pair of support slots, _FLOOR_SLOT_WOOD clear of
+            them.  Gaps too short for fingers are left solid.
+
+            @param stations - Positions along H of the subway supports' slots
+                              (none without --subway).
+            """
+            # access_spans keeps _ACCESS_POST at the strip's ends itself.
+            post = t / 2 + self._ACCESS_POST
+            slot = t / 2 + self._FLOOR_SLOT_WOOD
+            solid = ([(x - post, x + post) for x in (div_pos(i) for i in range(n_div_h))]
+                     + [(x - slot, x + slot) for x in stations])
+            dy = sw - 2 * self._ACCESS_BAND
+            for x0, x1 in access_spans(0, H, solid):
+                r = max(0.0, self.big_hole_roundness) * min(x1 - x0, dy) / 2
+                self.rectangularHole((x0 + x1) / 2, sw / 2, x1 - x0, dy, r=r,
+                                     center_x=True, center_y=True)
 
         if sw > 0:
             self.rectangularWall(H, sw, "efef",

@@ -113,10 +113,12 @@ class TestRectangle:
         assert (box.under_track_height, box.under_track_width) == (23.8, 35)
 
     def test_floor_strip_carries_the_support_slots(self, parts) -> None:
-        # One slot per support (and the divider's), and no weight holes.
+        # One slot per support (and the divider's), and no weight holes; an
+        # access opening between each pair of supports in a cell (two cells).
         supports = len([n for n in parts if n.startswith("subway support")])
         loops = _hexmo_step._frame_loops(parts["spoke"])
-        assert len(loops) == 1 + supports + 2   # outline, supports, divider slot pair
+        # Outline, supports, divider slot pair, openings.
+        assert len(loops) == 1 + supports + 2 + (supports - 2)
 
     def test_parts_fit_in_3d(self) -> None:
         pytest.importorskip("build123d")
