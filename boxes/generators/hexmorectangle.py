@@ -1181,15 +1181,18 @@ class HexmoRectangle(HexmoStepFormatMixin, HexmoBigHoleMixin, HexmoTrackGuideMix
                             arrow="turnout leg side ->")
 
     def _drawRectSubway(self, subway, cells, H, step_frame):
-        """Cut the subway's level bed and supports for each cell (see --subway).
+        """Cut the subway's level bed and its supports (see --subway).
 
-        Each cell between the end walls and short dividers gets a bed the
-        cell's length, its top at the track height, and supports standing in
+        One bed runs the module's whole length, from the outer face of one end
+        wall to the other's, through the under-deck openings in the end walls
+        and short dividers, its top at the track height; it meets the next
+        module's bed at the joint with no gap.  It is _SUBWAY_BED_CLEAR
+        narrower than the openings, so it slides through them.  Each cell
+        between the end walls and short dividers gets supports standing in
         the floor strip (the spoke) 15 mm in from each end and evenly between,
-        at most --riser_spacing apart.  Each support is the bed's width wide and
-        as tall as the bed's underside, finger-jointed into the strip below and
-        the bed above, as a HexmoHexagon riser support is.  The track crosses
-        each wall on its under-deck opening's bottom edge, at the same height.
+        at most --riser_spacing apart.  Each support is the bed's width wide
+        and as tall as the bed's underside, finger-jointed into the strip below
+        and the bed above, as a HexmoHexagon riser support is.
 
         @param subway     - ``(height, width)`` from _rectSubway.
         @param cells      - ``(start, end)`` along H of each cell (wall faces).
@@ -1197,34 +1200,36 @@ class HexmoRectangle(HexmoStepFormatMixin, HexmoBigHoleMixin, HexmoTrackGuideMix
         @param step_frame - render's 3D-export frame recorder.
         """
         t = self.thickness
-        height, width = subway
+        height = subway[0]
+        width = self._subwayBedWidth(subway[1])
         body = height - t
         if body < 2 * t:
             raise ValueError(f"--subway {height:g} leaves no room for supports under "
                              "the bed; raise it.")
-        for x0, x1 in cells:
-            length = x1 - x0
-            stations = support_stations(length, self.riser_spacing)
+        # Support positions along H, from the inner face of end wall 1.
+        stations = [x0 + x for x0, x1 in cells
+                    for x in support_stations(x1 - x0, self.riser_spacing)]
 
-            def bed_cb(x0=x0, stations=stations):
-                # The bed lies level, its top at the track height.
-                step_frame("subway bed", "riser", (-H / 2 + x0, -width / 2, body),
-                           (1, 0, 0), (0, 1, 0))
-                for x in stations:
-                    self.fingerHolesAt(x, 0, width, 90)
-
-            self.rectangularWall(length, width, "eeee", callback=[bed_cb], move="right",
-                                 label=f"subway bed {length:.0f}")
+        def bed_cb():
+            # The bed lies level, its top at the track height, from the outer
+            # face of end wall 1 (−t along H).
+            step_frame("subway bed", "riser", (-H / 2 - t, -width / 2, body),
+                       (1, 0, 0), (0, 1, 0))
             for x in stations:
-                def support_cb(x=x0 + x):
-                    step_frame("subway support", "riser", (-H / 2 + x - t / 2, -width / 2, 0.0),
-                               (0, 1, 0), (0, 0, 1))
-                    if self.part_text:
-                        self.text(f"{height:g}", width / 2, body / 2, align="middle center",
-                                  fontsize=min(4.0, body / 3), color=Color.ETCHING)
+                self.fingerHolesAt(x + t, 0, width, 90)
 
-                self.rectangularWall(width, body, "fefe", callback=[support_cb],
-                                     move="right", label=f"subway {height:g}")
+        self.rectangularWall(H + 2 * t, width, "eeee", callback=[bed_cb], move="right",
+                             label=f"subway bed {H + 2 * t:.0f}")
+        for x in stations:
+            def support_cb(x=x):
+                step_frame("subway support", "riser", (-H / 2 + x - t / 2, -width / 2, 0.0),
+                           (0, 1, 0), (0, 0, 1))
+                if self.part_text:
+                    self.text(f"{height:g}", width / 2, body / 2, align="middle center",
+                              fontsize=min(4.0, body / 3), color=Color.ETCHING)
+
+            self.rectangularWall(width, body, "fefe", callback=[support_cb],
+                                 move="right", label=f"subway {height:g}")
 
     def _etchTurnoutLeg(self, segments):
         """Etch one turnout's diverging leg, styled like the straight track lines.
@@ -1552,6 +1557,13 @@ class HexmoRectangle(HexmoStepFormatMixin, HexmoBigHoleMixin, HexmoTrackGuideMix
                     raise
                 # Only the default --subway_ports asked for it: go without.
                 self.under_track = False
+        if under_y is not None and subway is not None and not self.subway_ports:
+            # The subway's bed runs on through the opening, so it reaches a
+            # corner radius below the bed's underside, its rounded corners
+            # clear of the bed's (with --subway_ports it already runs nearly
+            # to the floor).  y runs down from the deck.
+            corner = max(0.0, self.big_hole_roundness) * self.under_track_width / 2
+            under_y = (under_y[0], min(l_eff - t, under_y[1] + t + corner))
         if under_y is not None:
             half = self.under_track_width / 2
             big_half = self._bigHoleHalfExtent(self._bigHoleRadius())[0]
@@ -2173,9 +2185,10 @@ class HexmoRectangle(HexmoStepFormatMixin, HexmoBigHoleMixin, HexmoTrackGuideMix
             stations = []
             if subway is not None:
                 # The subway's supports slot in here instead of weight holes.
+                bed = self._subwayBedWidth(subway[1])
                 for x0, x1 in subway_cells:
                     for x in support_stations(x1 - x0, self.riser_spacing):
-                        self.fingerHolesAt(x0 + x, sw / 2 - subway[1] / 2, subway[1], 90)
+                        self.fingerHolesAt(x0 + x, sw / 2 - bed / 2, bed, 90)
                         stations.append(x0 + x)
             if floor_access:
                 draw_floor_access(stations)

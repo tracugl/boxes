@@ -40,7 +40,7 @@ from boxes.generators._hexmo_track_guide import HexmoTrackGuideMixin
 from boxes.generators._hexmo_track_template import HexmoTrackTemplateMixin
 from boxes.generators._hexmo_under_track import HexmoUnderTrackMixin
 from boxes.generators._hexmo_deck_slots import (
-    OVERRUN, centreline_points, parse_deck_slots, slot_outline, trim_segments,
+    OVERRUN, _tangent, centreline_points, parse_deck_slots, slot_outline, trim_segments,
 )
 from boxes.generators._hexmo_risers import (
     parse_risers, point_at, point_in_convex, spine_kites, strip_outline, strip_points,
@@ -1945,14 +1945,16 @@ class HexmoHexagon(HexmoStepFormatMixin, HexmoBigHoleMixin, HexmoTrackGuideMixin
                              another riser's track, on a support wall's slot,
                              or against a side wall.
         """
-        # --subway adds a level riser along each of its routes.
+        # --subway adds a level riser along each of its routes, after the
+        # --risers entries.
         specs = parse_risers(self._withSubwayRisers(self.risers))
         if not specs:
             return []
+        n_given = len(parse_risers(self.risers))
         t = self.thickness
         apothem = r * math.sqrt(3.0) / 2.0
         plan = []
-        for spec in specs:
+        for index, spec in enumerate(specs):
             name = f"--risers {spec.start}-{spec.end}"
             if isTrapezoid and not {spec.start, spec.end} <= self._TRAPEZOID_EDGES:
                 raise ValueError(f"{name}: the trapezoid only has edges 3, 4 and 5.")
@@ -1980,6 +1982,10 @@ class HexmoHexagon(HexmoStepFormatMixin, HexmoBigHoleMixin, HexmoTrackGuideMixin
                 point, direction = point_at(segments, s)
                 height = spec.h0 + (spec.h1 - spec.h0) * s / length
                 stations.append((point, direction, height))
+            if index >= n_given:
+                # A subway's bed runs on through the wall openings at both
+                # ends to the walls' outer faces (the supports stay inside).
+                segments = self._throughWalls(segments, lo <= 1e-6, hi >= total - 1e-6)
             key = (spec.start, spec.start_offset, spec.end, spec.end_offset,
                    spec.lo, spec.hi, width)
             plan.append({"segments": segments, "width": width,
@@ -1994,6 +2000,29 @@ class HexmoHexagon(HexmoStepFormatMixin, HexmoBigHoleMixin, HexmoTrackGuideMixin
                          "bed_in_slot": key in self._slotBedKeys()})
         self._checkRiserFootprints(r, isTrapezoid, plan)
         return plan
+
+    def _throughWalls(self, segments, at_start, at_end):
+        """A bed's centreline carried on through the walls it ends at.
+
+        Each end that reaches a wall (the route's inner-face end) gets a
+        straight piece one thickness long, on along the route's direction
+        there, so the bed reaches the wall's outer face and meets the next
+        module's bed at the joint.
+
+        @param segments - The bed's centreline (deck frame).
+        @param at_start - Its start is at a wall.
+        @param at_end   - Its end is at a wall.
+        @returns The longer centreline.
+        """
+        t = self.thickness
+        out = list(segments)
+        if at_start:
+            p, (dx, dy) = segments[0].p0, _tangent(segments[0], True)
+            out.insert(0, Line((p[0] - dx * t, p[1] - dy * t), p))
+        if at_end:
+            p, (dx, dy) = segments[-1].p1, _tangent(segments[-1], False)
+            out.append(Line(p, (p[0] + dx * t, p[1] + dy * t)))
+        return out
 
     def _checkRiserBedWidth(self, spec, geometry, lo, hi, total, width, name,
                             apothem, notches):
@@ -2807,17 +2836,31 @@ class HexmoHexagon(HexmoStepFormatMixin, HexmoBigHoleMixin, HexmoTrackGuideMixin
                                        else range(1, n + 1))
                            if e not in feature_edges)
 
+        # Where a --subway crosses a wall (its bed runs on through).
+        subway_crossings = {(edge, round(pos, 3)) for _, edge, pos in self._subwayWallCrossings()}
+
         def wall_openings(edge):
             """This edge's track openings in the wall-hole frame.
 
             Positions are along the wall's top edge in its drawing direction;
             fitted with that direction anticlockwise, they match the deck.
+
+            A --subway's opening reaches below the track height, since its bed
+            runs on through it: with --subway_ports to one thickness above the
+            floor, the same as the top (no up side, as the under-deck
+            opening); without, a corner radius below the bed's underside, so
+            the opening's rounded corners clear the bed's.
             """
             rects = []
             for o, notch in opening_plan.get(edge, []):
                 centre = side_orig / 2 + o.position
                 top = l if notch else l - self.thickness
-                rects.append(((o.height, top, centre - o.width / 2, centre + o.width / 2),
+                bottom = o.height
+                if (edge, round(o.position, 3)) in subway_crossings:
+                    corner = max(0.0, self.big_hole_roundness) * o.width / 2
+                    bottom = (self.thickness if self.subway_ports
+                              else max(self.thickness, o.height - self.thickness - corner))
+                rects.append(((bottom, top, centre - o.width / 2, centre + o.width / 2),
                               not notch))
             return rects
 

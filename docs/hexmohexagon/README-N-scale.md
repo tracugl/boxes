@@ -905,19 +905,25 @@ gives all of that, on every Hexmo module:
   panel) and the bed width (default `--under_track_width`), e.g.
   `--subway 4:0-1:0~23.8`. It adds the wall openings at both ends of the route
   (as `--track_openings` would) and a level riser along it (as `--risers` would):
-  a bed, and supports slotted into the floor. Straight or curved; several may be
-  given, comma-separated.
+  a bed, and supports slotted into the floor. The bed runs on through the wall
+  openings at both ends to the walls' outer faces. Straight or curved; several
+  may be given, comma-separated.
 - **HexmoRectangle:** `HEIGHT[/WIDTH]`, e.g. `--subway 23.8`. The track runs down
   the centre line from end wall to end wall, through the under-deck openings
-  (`--under_track`, turned on at the subway's height and width). Each cell
-  between the end walls and short dividers gets a level bed, its top at the
-  track height, whose supports slot into the floor strip down the middle lane
-  (the spoke). The strip's weight-saving holes give way to the slots. The track
-  bridges each wall (the opening runs nearly to the floor, so the wall has no up
-  side), about 3 mm, or 6 mm across a joint's two walls; with
-  `--subway_ports=0` it crosses on the opening's bottom edge instead, as the
-  helix spur does at its joints. Supports stand 15 mm in from each end of a bed and at most
-  `--riser_spacing` (default 80) apart.
+  (`--under_track`, turned on at the subway's height and width). One level bed,
+  its top at the track height, runs the module's whole length, from the outer
+  face of one end wall to the other's, through the short dividers. In each cell
+  between the end walls and short dividers its supports slot into the floor
+  strip down the middle lane (the spoke), 15 mm in from each end of the cell and
+  at most `--riser_spacing` (default 80) apart. The strip's weight-saving holes
+  give way to the slots.
+
+Either way the bed reaches the module's outside, so when two modules are lined
+up their beds meet at the joint with no gap. It is 1 mm narrower than the wall
+openings (0.5 mm each side), so it slides through them. With `--subway_ports`
+(the default) the openings already run nearly to the floor; with
+`--subway_ports=0` a subway's openings reach a corner radius below the bed, so
+their rounded corners clear it.
 
 #### Access walls (the default)
 
