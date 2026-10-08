@@ -28,7 +28,7 @@ except ImportError:
     sys.path.append(Path(__file__).resolve().parent.parent.__str__())
     import boxes
 
-from hexmo_testutil import IGNORE_CORE_MATMUL, apply
+from hexmo_testutil import IGNORE_CORE_MATMUL, apply, PLAIN_WALLS
 
 # Silence only the matmul deprecation raised by upstream's boxes/drawing.py
 # (see hexmo_testutil); every other warning still shows.
@@ -57,7 +57,7 @@ def render_recorded(args, monkeypatch):
              crossing-slot notches drawn while each panel's outline was drawn.
     """
     box = HexmoRectangle()
-    box.parseArgs(args)
+    box.parseArgs(args + PLAIN_WALLS)
     box.open()
     rec = {"panels": [], "slots": [], "big": [], "crossings": {}}
     cur = {"kind": None}
@@ -258,7 +258,7 @@ def big_holes_by_panel(args):
     @returns ``{kind: sorted [(x, y)]}`` using the first panel of each kind.
     """
     box = HexmoRectangle()
-    box.parseArgs(args)
+    box.parseArgs(args + PLAIN_WALLS)
     box.open()
     found: dict[str, list] = {}
     cur = {"kind": None, "origin": None}

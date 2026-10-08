@@ -1,10 +1,11 @@
-"""Tests for --subway_ports: every joining wall made subway-ready (BOX-69).
+"""Tests for --subway_ports: every joining wall made subway-ready (BOX-69,
+on by default since BOX-70).
 
 Each wall that joins another module gets the under-deck opening in its middle
 (where the spoke meets it) with a 30 × 14 mm cable slot under it, so a subway
-can carry on through any joint.  Walls whose middle can't take it (a track or
-spur opening there, a lowered --lower_ground wall, access openings) are left
-as they are.
+can carry on through any joint; an access wall carries it in its middle post.
+Walls whose middle can't take it (a track or spur opening there, a lowered
+--lower_ground wall) are left as they are.
 
 These tests avoid lxml, so they run in the Docker image.
 """
@@ -88,7 +89,8 @@ class TestHexagon:
         found = ports(HexmoHexagon, HEX[:-1] + ["--trapezoid=1",
                                                 "--support_edges=4@140,4@38/90"])
         assert ported(found) == ["wall edge 3", "wall edge 4", "wall edge 5"]
-        assert found["long wall"][0] == []
+        # The long wall joins nothing, but its access openings' post takes one.
+        assert found["long wall"][0] != []
 
     def test_walls_with_a_spur_in_the_middle_are_left(self) -> None:
         # The ring's M2 has its spur 35 mm in on walls 3 and 5.
@@ -114,21 +116,29 @@ class TestHexagon:
         found = ports(HexmoHexagon, HELIX_RING_N250["M2"] + ["--under_track_height=23.8"])
         assert found["long wall"][0] and found["long wall"][1]
 
-    def test_middle_post_too_narrow(self) -> None:
+    def test_middle_post_widens_for_the_opening(self) -> None:
+        # A 40 mm spoke is narrower than the 35 mm opening plus 5 mm of wood
+        # each side: the post widens to 45 and the openings give way.
+        found = ports(HexmoHexagon, HEX + ["--spoke_width=40"])
+        assert ported(found) == [f"wall edge {e}" for e in range(1, 7)]
         box = HexmoHexagon()
-        box.parseArgs(HEX + ["--access_openings=1", "--access_edges=2", "--subway_ports=1",
-                             "--spoke_width=40"])
-        with pytest.raises(ValueError, match="middle post"):
-            box.open()
-            box.render()
+        box.parseArgs(HEX + ["--spoke_width=40"])
+        wall = _hexmo_step._frame_loops(next(f for f in _hexmo_step._render_frames(box)
+                                             if f.name == "wall edge 2"))
+        spans = sorted((min(p[1] for seg in loop for p in seg[1:]),
+                        max(p[1] for seg in loop for p in seg[1:])) for loop in wall
+                       if max(p[0] for seg in loop for p in seg[1:])
+                       - min(p[0] for seg in loop for p in seg[1:]) == pytest.approx(50, abs=0.5))
+        assert len(spans) == 2
+        assert spans[1][0] - spans[0][1] == pytest.approx(45, abs=0.1)
 
-    def test_needs_room_for_the_slot(self) -> None:
-        box = HexmoHexagon()
-        box.parseArgs([a for a in HEX if not a.startswith("--under_track_height")]
-                      + ["--under_track_height=15", "--subway_ports=1"])
-        with pytest.raises(ValueError, match="cable slot"):
-            box.open()
-            box.render()
+    def test_slot_left_out_without_room(self) -> None:
+        # At 15 mm the opening leaves too little wall under it for the slot,
+        # which goes; the opening stays.
+        found = ports(HexmoHexagon, [a for a in HEX if not a.startswith("--under_track_height")]
+                      + ["--under_track_height=15"])
+        slots, openings = found["wall edge 2"]
+        assert slots == [] and openings
 
 
 class TestRectangle:
@@ -144,7 +154,22 @@ class TestRectangle:
         assert all(found[n][1] for n in ("end wall 1", "end wall 2", "divider 1"))
 
 
-def test_off_by_default() -> None:
+def test_on_by_default() -> None:
     box = HexmoHexagon()
     box.parseArgs([])
-    assert not box.subway_ports
+    assert box.subway_ports
+    assert HexmoRectangle().parseArgs([]) is None
+
+
+@pytest.mark.parametrize("cls, args", [
+    (HexmoHexagon, ["--h=50"]),                       # too low for the opening
+    (HexmoRectangle, ["--h=50"]),
+    (HexmoRectangle, ["--num_rows=2", "--spoke_width=0"]),  # a support on the centre line
+])
+def test_default_ports_never_refuse(cls, args) -> None:
+    # On by default, so a module that can't take them renders without them.
+    box = cls()
+    box.parseArgs(args)
+    box.open()
+    box.render()
+    box.close()

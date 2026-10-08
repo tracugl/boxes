@@ -151,5 +151,5 @@ def test_helix_entry_presets() -> None:
     # The 250 ring's entry carries the lower level on a subway; the 220
     # ring's is unchanged.
     assert "--subway=23.8" in HELIX_ENTRY_N250
-    assert not any(a.startswith("--subway") for a in HELIX_ENTRY_N)
+    assert not any(a.startswith("--subway=") for a in HELIX_ENTRY_N)
     render(HexmoRectangle, HELIX_ENTRY_N250)

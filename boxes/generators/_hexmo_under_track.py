@@ -68,18 +68,18 @@ class HexmoUnderTrackMixin:
                  "under-deck opening's automatic height, and whether a track "
                  "opening can be a closed hole or must be a notch open at the top.")
         self.argparser.add_argument(
-            "--subway_ports", action="store", type=boolarg, default=False,
-            help="Make every wall that joins another module subway-ready: the "
-                 "under-deck opening (--under_track_height, --under_track_width) "
-                 "in the middle of the wall, where the spoke meets it, with a "
-                 "30 × 14 mm cable slot under it.  A subway can then carry on "
+            "--subway_ports", action="store", type=boolarg, default=True,
+            help="Subway-ready walls (default on): every wall that joins another "
+                 "module gets the under-deck opening (--under_track_height, "
+                 "--under_track_width) in its middle, where the spoke meets it, "
+                 "with a 30 × 14 mm cable slot under it, so a subway can carry on "
                  "through any joint.  On HexmoRectangle the end walls and short "
-                 "dividers; on the trapezoid its short walls; on the full hexagon "
-                 "all six.  Walls with --access_openings (the trapezoid's long "
-                 "wall, the hexagon's --access_edges) get it in the middle post "
-                 "between their openings.  Walls whose middle already has a track "
-                 "or spur opening, and the lowered --lower_ground walls, are left "
-                 "as they are.")
+                 "dividers; on the trapezoid its short walls (and its long wall, "
+                 "with --access_openings); on the full hexagon all six.  Access "
+                 "walls carry it in the middle post between their openings.  Walls "
+                 "whose middle already has a track or spur opening, the lowered "
+                 "--lower_ground walls, and walls too small for it are left as "
+                 "they are.")
 
     def _underTrackSpan(self, body):
         """Bottom and top of the opening, in mm above the floor panel.
@@ -113,6 +113,21 @@ class HexmoUnderTrackMixin:
                 f"the opening's top is {top:g} mm above the floor panel.")
         return bottom, top
 
+    def _portFits(self, body):
+        """Whether a --subway_ports opening fits a wall of this height.
+
+        --subway_ports is on by default, so a wall too low for the opening
+        simply goes without one.
+
+        @param body - Wall body height (mm).
+        @returns True when _underTrackSpan accepts it.
+        """
+        try:
+            self._underTrackSpan(body)
+        except ValueError:
+            return False
+        return True
+
     def _checkUnderTrackClearsCorners(self, s):
         """Make sure the opening keeps clear of the corner hole groups.
 
@@ -138,9 +153,7 @@ class HexmoUnderTrackMixin:
                          walls), False when x runs up the wall (hex side walls).
         @param floor   - Where the wall meets the floor, in the same up/down
                          coordinate; with --subway_ports a cable slot is cut
-                         centred between it and the opening.
-        @throws ValueError - With --subway_ports, if the cable slot doesn't fit
-                             under the opening.
+                         centred between it and the opening, where it fits.
         """
         if self.subway_ports and floor is not None:
             self._drawCableSlot(centre, lo, hi, along_x, floor)
@@ -157,22 +170,22 @@ class HexmoUnderTrackMixin:
     def _drawCableSlot(self, centre, lo, hi, along_x, floor):
         """The 30 × 14 mm cable slot centred under a subway opening.
 
+        Left out when it doesn't fit between the opening and the floor with
+        _CABLE_SLOT_WOOD to spare each side.
+
         @param centre  - Along-wall position (the wall centre).
         @param lo, hi  - The opening's extent up/down the wall.
         @param along_x - As for _drawUnderTrackOpening.
         @param floor   - Where the wall meets the floor.
-        @throws ValueError - If the slot doesn't fit between the opening and the
-                             floor with _CABLE_SLOT_WOOD to spare each side.
         """
         # The gap between the floor and the opening's nearer edge.
         near = lo if abs(lo - floor) < abs(hi - floor) else hi
         gap = abs(near - floor)
         length, width = self._CABLE_SLOT
         if gap < width + 2 * self._CABLE_SLOT_WOOD:
-            raise ValueError(
-                f"--subway_ports: only {gap:.1f} mm of wall under the subway opening; "
-                f"the cable slot needs {width + 2 * self._CABLE_SLOT_WOOD:g}.  Raise "
-                "--under_track_height.")
+            # No room under the opening: --subway_ports is on by default, so
+            # the wall just goes without the slot.
+            return
         mid = (near + floor) / 2.0
         if along_x:
             self.rectangularHole(centre, mid, length, width, r=width / 2,

@@ -382,6 +382,12 @@ you move the tracks with `--track_spacing` or `--track_center_offset`.
 
 ## Reducing laser cut time
 
+> The walls are **access walls** by default: hand-access openings round a middle
+> post that carries the subway opening (see [Access walls](README-N-scale.md#access-walls-the-default)).
+> Everything in this section is about the original hole-pattern walls
+> (`--access_openings=0 --subway_ports=0`); on an access wall these options
+> still shape the deck, floor and support panels.
+
 Most of the cut *time* on these panels is pierces, and the small Ø6 registration
 pilot holes dominate the count. The biggest lever is the corner cluster at each
 end of every side panel:

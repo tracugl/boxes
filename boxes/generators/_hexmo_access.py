@@ -1,14 +1,15 @@
-"""Hand-access openings in walls nothing joins (``--access_openings``).
+"""Hand-access openings in the walls (``--access_openings``, on by default).
 
 A track under the deck (a subway, the helix's lower level) needs a hand to
-re-rail a train.  A wall that joins no other module needs no registration
-holes, so it can carry large rounded-rectangle openings instead, leaving a
-band of wood above and below and a post at each end.
+re-rail a train.  Each wall's registration and weight holes give way to large
+rounded-rectangle openings, leaving a band of wood above and below, a post at
+each end, and the Ø6 registration pilots nearest the openings' ends, so a wall
+that joins another module still lines up with it.
 
 Used on HexmoRectangle's long walls and long supports (one opening per cell),
-and on the HexmoHexagon trapezoid's long wall and the full hexagon's chosen
-side walls: two each, either side of a middle post as wide as the spoke, so
-the post stands over the floor's spoke (and the support on it).
+its end walls and short dividers, and on every HexmoHexagon wall: two openings
+either side of a middle post as wide as the spoke, so the post stands over the
+floor's spoke (and the support on it) and carries the subway opening.
 
 The module name starts with an underscore, so generator discovery skips it.
 """
@@ -34,18 +35,38 @@ def access_pair(lo, hi, middle):
     return [(lo + ACCESS_POST, centre - middle / 2), (centre + middle / 2, hi - ACCESS_POST)]
 
 
-def check_access_size(width, height, where):
-    """Refuse an opening too small for a hand.
+def access_fits(width, height):
+    """Whether an opening is big enough for a hand (ACCESS_MIN).
+
+    The openings are on by default, so a module too small for them keeps its
+    normal walls rather than being refused.
 
     @param width, height - The opening (mm).
-    @param where         - What to name in the message.
-    @throws ValueError - If it is smaller than ACCESS_MIN.
+    @returns True when it is at least ACCESS_MIN.
     """
-    if width < ACCESS_MIN[0] or height < ACCESS_MIN[1]:
-        raise ValueError(
-            f"--access_openings: {where} leaves only a {width:.0f} × {height:.0f} mm "
-            f"opening (a hand needs about {ACCESS_MIN[0]:g} × {ACCESS_MIN[1]:g}); "
-            "use a taller --h or a bigger module.")
+    return width >= ACCESS_MIN[0] and height >= ACCESS_MIN[1]
+
+
+def access_spans(lo, hi, posts):
+    """The openings along a stretch of wall, around the parts kept solid.
+
+    @param lo, hi - The wall body (mm along it); the openings start
+                    ACCESS_POST in from each end.
+    @param posts  - ``[(start, end)]`` to keep solid: the middle post, slots
+                    for crossing panels, track openings, each already widened
+                    by whatever wood it needs.
+    @returns ``[(start, end)]`` of the gaps between them, those shorter than
+             FINGER_MIN left out (too narrow to reach through).
+    """
+    spans = []
+    start, end = lo + ACCESS_POST, hi - ACCESS_POST
+    for a, b in sorted(posts):
+        if a > start:
+            spans.append((start, min(a, end)))
+        start = max(start, b)
+    if end > start:
+        spans.append((start, end))
+    return [(a, b) for a, b in spans if b - a >= FINGER_MIN]
 
 
 # The Ø6 registration pilots kept beside the openings, and the wood left
@@ -83,6 +104,26 @@ def recorded_holes(box, draw):
     finally:
         del box.hole, box.rectangularHole
     return found
+
+
+def end_columns(pilots):
+    """Keep-solid stretches round a wall's outermost pilot columns.
+
+    A wall that joins another module always keeps the Ø6 pilot pair nearest
+    each of its ends.  Those are the corner groups' outer pilots, which sit
+    at the same place on every HexmoHexagon side wall and HexmoRectangle end
+    wall, so a dowel passes through both walls at every joint, whatever
+    openings each has.
+
+    @param pilots - ``[(along, across, r)]`` of the wall's pilot holes.
+    @returns ``[(start, end)]`` for :func:`access_spans`: each end column
+             with PILOT_CLEAR of wood round it (empty if there are none).
+    """
+    if not pilots:
+        return []
+    r = max(p[2] for p in pilots)
+    along = [p[0] for p in pilots]
+    return [(c - r - PILOT_CLEAR, c + r + PILOT_CLEAR) for c in (min(along), max(along))]
 
 
 def openings_with_pilots(spans, pilots, middles):

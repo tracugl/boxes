@@ -34,7 +34,7 @@ except ImportError:
     sys.path.append(Path(__file__).resolve().parent.parent.__str__())
     import boxes
 
-from hexmo_testutil import IGNORE_CORE_MATMUL, apply
+from hexmo_testutil import IGNORE_CORE_MATMUL, apply, PLAIN_WALLS
 
 # Silence only the matmul deprecation raised by upstream's boxes/drawing.py
 # (see hexmo_testutil); every other warning still shows.
@@ -82,7 +82,7 @@ def hex_wall_holes(radius, thickness, outside, h=100):
              body.
     """
     box = HexmoHexagon()
-    box.parseArgs(_args(radius, thickness, outside, h))
+    box.parseArgs(_args(radius, thickness, outside, h) + PLAIN_WALLS)
     box.open()
     frames: list[tuple[float, float]] = []
     holes: list[tuple[float, float, float]] = []
@@ -115,7 +115,7 @@ def rect_end_wall_holes(radius, thickness, outside, h=100):
              :func:`hex_wall_holes`.
     """
     box = HexmoRectangle()
-    box.parseArgs(_args(radius, thickness, outside, h))
+    box.parseArgs(_args(radius, thickness, outside, h) + PLAIN_WALLS)
     box.open()
     holes: list[tuple[float, float, float]] = []
     state = {"origin": None, "length": None, "calls": 0}

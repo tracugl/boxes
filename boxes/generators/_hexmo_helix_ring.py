@@ -67,10 +67,11 @@ class RingSize:
     @ivar exit       - The lower level's height leaving M6 at edge 1.
     @ivar subway     - Carry the lower level through the entry rectangle on a
                        level bed and supports (--subway), at the exit height.
-    @ivar access     - Hand-access openings (--access_openings) in the walls
-                       that join nothing: the trapezoids' long walls (the
-                       ring's outside), M6's edges 2, 4 and 6, and the entry
-                       rectangle's long walls and supports.
+    @ivar access     - Access walls (--access_openings and --subway_ports,
+                       both on by default): hand-access openings in every
+                       wall, with the subway opening and its cable slot in
+                       the middle post.  Off pins the original walls (the
+                       220 ring, kept as it was built).
     """
 
     radius: float
@@ -92,6 +93,17 @@ SIZE_250 = RingSize(250, 20, (74, 65.6, 57.6, 49.5, 41.4, 33.3), 178, 233, "4@14
                     slot_height=28, exit=23.8, subway=True, access=True)
 
 
+def _walls(size):
+    """The wall options for a size.
+
+    @param size - :class:`RingSize`.
+    @returns Access walls with subway ports, or the original walls.
+    """
+    if size.access:
+        return ["--access_openings=1", "--subway_ports=1"]
+    return ["--access_openings=0", "--subway_ports=0"]
+
+
 def helix_ring(size):
     """The six ring modules' settings for a module size.
 
@@ -101,9 +113,11 @@ def helix_ring(size):
     common = [f"--radius={size.radius:g}", "--thickness=3", "--h=80", "--edge_width=22",
               "--spoke_width=60", "--bottom=spoke", "--support_length=55",
               f"--track_lead_in={size.lead_in:g}",
-              "--track_width=17", "--under_track_width=35"] + _CUT
-    access = ["--access_openings=1"] if size.access else []
-    trapezoid = common + ["--trapezoid=1", f"--support_edges={size.supports}"] + access
+              "--track_width=17", "--under_track_width=35",
+              # Every subway opening at the lower level's exit height, so they
+              # line up all round (M6's edge 1 is the lower level's own).
+              f"--under_track_height={size.exit:g}"] + _CUT + _walls(size)
+    trapezoid = common + ["--trapezoid=1", f"--support_edges={size.supports}"]
     j = size.joints
     ring = {"M1": trapezoid + [
         "--track_routes=3:17.5-5:17.5,3:-17.5-5:-35",
@@ -120,10 +134,10 @@ def helix_ring(size):
             f"--risers=3:-35-5:-35~{a:g}..{b:g}/35"]
     s, e = size.spur_start, size.return_end
     h, x = size.slot_height, size.exit
-    ring["M6"] = common + (access + ["--access_edges=2,4,6"] if size.access else []) + [
+    ring["M6"] = common + [
         "--support_edges=2,4,6",
         "--track_routes=1:-35-5:-17.5,3:-17.5-1:-35,1:0-5:17.5",
-        "--under_track_edges=1", f"--under_track_height={x:g}",
+        "--under_track_edges=1",
         f"--track_openings=5:17.5:74:35,3:-35:{j[5]:g}:35",
         f"--deck_slots=1:0-5:17.5@{s:g}../35,3:35-1:0@..{e:g}/35",
         f"--risers=1:0-5:17.5@{s:g}..~77..74/35,3:35-1:0@..{e:g}~{j[5]:g}..{h:g}/35,"
@@ -146,8 +160,7 @@ def helix_entry(size):
             "--under_track=1",
             f"--under_track_height={size.exit:g}", "--under_track_width=35",
             "--turnouts=10:0:-35,133.7:0:35"] + _CUT + (
-        [f"--subway={size.exit:g}"] if size.subway else []) + (
-        ["--access_openings=1"] if size.access else [])
+        [f"--subway={size.exit:g}"] if size.subway else []) + _walls(size)
 
 
 def with_ground(ring, size):
