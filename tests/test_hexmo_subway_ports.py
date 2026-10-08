@@ -43,7 +43,8 @@ HEX = ["--radius=250", "--thickness=3", "--h=80", "--edge_width=22", "--spoke_wi
 def ports(cls, args):
     """Part name → (cable slots, subway openings) found in it.
 
-    A slot is a 30 × 14 hole, as ``(x, y, w, h)``: its centre and size in
+    A slot is a hole 14 wide and at least 30 long (30 between a pilot pair,
+    the access openings' height outside one), as ``(x, y, w, h)``: its centre and size in
     the part's frame; an opening one 35 wide and taller than 40, as its
     bounding box ``(x0, x1, y0, y1)``.
     """
@@ -60,7 +61,7 @@ def ports(cls, args):
             pts = [p for seg in loop for p in seg[1:]]
             xs, ys = [p[0] for p in pts], [p[1] for p in pts]
             w, h = max(xs) - min(xs), max(ys) - min(ys)
-            if {round(w), round(h)} == {30, 14}:
+            if round(min(w, h)) == 14 and round(max(w, h)) >= 30:
                 slots.append(((min(xs) + max(xs)) / 2, (min(ys) + max(ys)) / 2, w, h))
             elif round(min(w, h)) == 35 and max(w, h) > 40:
                 openings.append((min(xs), max(xs), min(ys), max(ys)))
@@ -87,9 +88,10 @@ class TestHexagon:
 
     def test_upright_slots_at_the_wall_ends(self) -> None:
         # Hex wall frame: x up from the floor panel, y along the wall.  One
-        # slot near each end, 30 tall and 14 wide, just outside the end pilot
-        # pair (45 mm in, the g2 corner groups'): 4 mm of wood to the Ø6
-        # pilots puts its centre 3 + 4 + 7 = 14 mm further out, at 31.
+        # slot near each end, 14 wide, just outside the end pilot pair (45 mm
+        # in, the g2 corner groups'): 4 mm of wood to the Ø6 pilots puts its
+        # centre 3 + 4 + 7 = 14 mm further out, at 31.  It is as tall as the
+        # access openings: 12 mm of wood above and below.
         box = HexmoHexagon()
         box.parseArgs(HEX)
         box.open()
@@ -97,7 +99,7 @@ class TestHexagon:
         slots, _ = ports(HexmoHexagon, HEX)["wall edge 2"]
         assert len(slots) == 2
         for x, y, w, h in slots:
-            assert (w, h) == pytest.approx((30, 14))
+            assert (w, h) == pytest.approx((l - 24, 14))
             assert x == pytest.approx(l / 2)
         assert sorted(y for _, y, _, _ in slots) == pytest.approx([31, side - 31], abs=0.01)
 
@@ -124,7 +126,9 @@ class TestHexagon:
         side, l = box._wallSize()
         slots, _ = ports(HexmoHexagon, [])["wall edge 1"]
         assert sorted(y for _, y, _, _ in slots) == pytest.approx([30, side - 30], abs=0.01)
-        assert all(x == pytest.approx(l / 2) for x, _, _, _ in slots)
+        # Between the pair it is the usual 30 mm, centred on the wall.
+        assert all(x == pytest.approx(l / 2) and w == pytest.approx(30)
+                   for x, _, w, _ in slots)
 
     def test_default_rectangle_end_wall_matches(self) -> None:
         # The same slots on the default rectangle's end wall, from its centre
@@ -192,6 +196,8 @@ class TestHexagon:
                         max(p[1] for seg in loop for p in seg[1:])) for loop in wall
                        if max(p[0] for seg in loop for p in seg[1:])
                        - min(p[0] for seg in loop for p in seg[1:]) == pytest.approx(50, abs=0.5))
+        # The access openings, not the 14 mm cable slots of the same height.
+        spans = [sp for sp in spans if sp[1] - sp[0] > 20]
         assert len(spans) == 2
         assert spans[1][0] - spans[0][1] == pytest.approx(45, abs=0.1)
 

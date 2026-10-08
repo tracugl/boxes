@@ -937,15 +937,16 @@ ring), the same on every module so the openings line up.
 
 Wiring goes through **cable slots** at the wall's ends instead, clear of the
 subway's bed and supports down the middle: every access wall that joins another
-module gets an upright 14 × 30 mm slot near each end, just outside its end pair
-of Ø6 dowel holes (between them and the wall's end), 4 mm clear of them and
-level with the middle of the pair. On the 250 ring that puts each slot's centre
-31 mm in from the end, with about 21 mm of wood to the wall's edge. Those dowel
+module gets an upright 14 mm wide slot near each end, just outside its end pair
+of Ø6 dowel holes (between them and the wall's end), 4 mm clear of them and as
+tall as the access openings (12 mm of wood above and below, so 14 × 50 mm at
+h=80). On the 250 ring that puts each slot's centre 31 mm in from the end, with
+about 21 mm of wood to the wall's edge. Those dowel
 holes sit in the same place on every hexagon wall and rectangle end wall, so
 the slots line up through every joint. Where the end pair is too close to the
-wall's end for that (15 mm in at the default sizes), the slot stands between a
-pair instead, the next one in (30 mm in), whose two dowel holes then need their
-centres at least 44 mm apart. The short dividers have none (their lane openings
+wall's end for that (15 mm in at the default sizes), a 14 × 30 mm slot stands
+between a pair instead, the next one in (30 mm in), whose two dowel holes then
+need their centres at least 44 mm apart. The short dividers have none (their lane openings
 pass a cable), nor has the trapezoid's long wall (no wiring crosses the ring's
 outside).
 

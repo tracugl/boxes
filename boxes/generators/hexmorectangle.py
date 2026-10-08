@@ -1700,7 +1700,7 @@ class HexmoRectangle(HexmoStepFormatMixin, HexmoBigHoleMixin, HexmoTrackGuideMix
 
             @returns ``(openings, pilots, pills)``: ``[(start, end)]`` across
                      the wall (0 … W − 2t), the pilots ``[(x, y, r)]`` to cut,
-                     and the cable slots' centres ``[(x, y)]``.
+                     and the cable slots ``[(x, y, length)]``.
             """
             if not end_layout:
                 with self.saved_context():
@@ -1715,16 +1715,19 @@ class HexmoRectangle(HexmoStepFormatMixin, HexmoBigHoleMixin, HexmoTrackGuideMix
                 # this joins, so both pick the same pilot column.
                 length, width = self._CABLE_SLOT
                 edge = 2 * t + PILOT_CLEAR
+                # Outside a pilot pair a slot is as tall as the access
+                # openings, as on the hexagon wall.
                 pills = (end_pills(pilots, length, width, self._CABLE_SLOT_WOOD,
-                                   -dx + edge, s_hex - dx - edge)
+                                   -dx + edge, s_hex - dx - edge,
+                                   tall=l_eff - 2 * self._ACCESS_BAND)
                          if self.subway_ports else [])
                 ends = end_columns(pilots) + [
-                    (x - width / 2 - PILOT_CLEAR, x + width / 2 + PILOT_CLEAR) for x, _ in pills]
+                    (x - width / 2 - PILOT_CLEAR, x + width / 2 + PILOT_CLEAR) for x, _, _ in pills]
                 spans = access_spans(0, W - 2 * t, end_solid + ends)
                 openings, kept = openings_with_pilots(
                     spans, pilots, [under_x] + [lane_pos(i) for i in range(n_div_v)])
-                pill_rects = [(x - width / 2, x + width / 2, y - length / 2, y + length / 2)
-                              for x, y in pills]
+                pill_rects = [(x - width / 2, x + width / 2, y - tall / 2, y + tall / 2)
+                              for x, y, tall in pills]
                 kept = [p for p in kept
                         if all(rect_circle_gap(rect, p) >= self._MIN_CLEAR for rect in end_rects)
                         and all(rect_circle_gap(rect, p) >= self._CABLE_SLOT_WOOD - 1e-6
@@ -1752,8 +1755,8 @@ class HexmoRectangle(HexmoStepFormatMixin, HexmoBigHoleMixin, HexmoTrackGuideMix
             if pilots:
                 for x, y, r in kept:
                     self.hole(x, y, r)
-            for x, y in pills:
-                self._drawCablePill(x, y, along_x=True)
+            for x, y, tall in pills:
+                self._drawCablePill(x, y, along_x=True, length=tall)
             if under_y is not None:
                 self._drawUnderTrackOpening(under_x, *under_y, along_x=True)
 

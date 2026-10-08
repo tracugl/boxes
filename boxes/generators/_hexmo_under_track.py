@@ -37,8 +37,9 @@ class HexmoUnderTrackMixin:
     # Minimum solid material between the opening and any other hole or slot.
     _UNDER_TRACK_CLEAR = 5.0
     # --subway_ports: the upright cable slot at each end of an access wall
-    # (length up the wall, width; mm), and the least wood between it and the
-    # pilots above and below it.
+    # (length up the wall where it stands between a pilot pair, width; mm),
+    # and the least wood between it and the pilots beside it.  Outside the
+    # pair it runs the access openings' height.
     _CABLE_SLOT = (30.0, 14.0)
     _CABLE_SLOT_WOOD = 4.0
 
@@ -164,14 +165,17 @@ class HexmoUnderTrackMixin:
             self.rectangularHole(mid, centre, span, width, r=corner,
                                  center_x=True, center_y=True)
 
-    def _drawCablePill(self, along, across, along_x):
-        """One upright 14 × 30 mm cable slot (--subway_ports), at a wall end.
+    def _drawCablePill(self, along, across, along_x, length=None):
+        """One upright cable slot (--subway_ports), at a wall end.
 
         @param along   - Its centre along the wall.
         @param across  - Its centre up (or down) the wall.
         @param along_x - As for _drawUnderTrackOpening.
+        @param length  - Its length up the wall (default the 30 mm of
+                         _CABLE_SLOT); it is _CABLE_SLOT's 14 mm wide.
         """
-        length, width = self._CABLE_SLOT
+        default, width = self._CABLE_SLOT
+        length = default if length is None else length
         if along_x:
             self.rectangularHole(along, across, width, length, r=width / 2,
                                  center_x=True, center_y=True)

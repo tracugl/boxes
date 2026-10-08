@@ -2954,12 +2954,13 @@ class HexmoHexagon(HexmoStepFormatMixin, HexmoBigHoleMixin, HexmoTrackGuideMixin
             # ends (the same from the hole pattern's ends as a rectangle end
             # wall's, so joined walls pick the same pilot column).
             edge = self.thickness + PILOT_CLEAR
-            pills = [(across - length / 2, across + length / 2, along - width / 2,
+            # Outside a pilot pair a slot is as tall as the access openings.
+            pills = [(across - tall / 2, across + tall / 2, along - width / 2,
                       along + width / 2)
-                     for along, across in (end_pills(pilots, length, width,
-                                                     self._CABLE_SLOT_WOOD,
-                                                     lo + edge, hi - edge)
-                                           if self.subway_ports and joins else [])]
+                     for along, across, tall in (
+                         end_pills(pilots, length, width, self._CABLE_SLOT_WOOD,
+                                   lo + edge, hi - edge, tall=l - 2 * ACCESS_BAND)
+                         if self.subway_ports and joins else [])]
             # Not where a track opening comes too close.
             pills = [p for p in pills
                      if all(min(p[1], q[1]) - max(p[0], q[0]) < -self._TRACK_OPENING_CLEAR
@@ -2996,7 +2997,8 @@ class HexmoHexagon(HexmoStepFormatMixin, HexmoBigHoleMixin, HexmoTrackGuideMixin
             if port:
                 self._drawUnderTrackOpening(middle, bottom, top, along_x=False)
             for x0, x1, y0, y1 in pills:
-                self._drawCablePill((y0 + y1) / 2, (x0 + x1) / 2, along_x=False)
+                self._drawCablePill((y0 + y1) / 2, (x0 + x1) / 2, along_x=False,
+                                    length=x1 - x0)
 
         def draw_aligned_holes_long():
             self.moveTo(0, side_long / 2 - side_orig)

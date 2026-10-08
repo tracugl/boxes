@@ -128,14 +128,15 @@ def end_columns(pilots):
     return [(c - r - PILOT_CLEAR, c + r + PILOT_CLEAR) for c in (min(along), max(along))]
 
 
-def end_pills(pilots, length, width, wood, lo, hi):
+def end_pills(pilots, length, width, wood, lo, hi, tall=None):
     """Upright cable slots at a wall's ends, beside or between pilot pairs.
 
     Wiring crosses a joint near the wall's ends, clear of a subway's bed and
     supports down the middle.  Each slot goes just outside the outermost
     column of the wall's Ø6 pilots (see end_columns), between it and the wall
     end, ``wood`` clear of the pilots and level with the middle of the pair,
-    so it lines up through every joint as they do.  Where that would bring it
+    so it lines up through every joint as they do.  There it is ``tall``
+    long, as tall as the access openings, since the pilots don't hem it in.  Where that would bring it
     nearer the wall end than ``lo``/``hi`` (a column close to the end), it
     stands in a column instead, centred between the column's outermost two
     pilots: the outermost column, or the next one in where that one is also
@@ -150,9 +151,11 @@ def end_pills(pilots, length, width, wood, lo, hi):
                     pilots' frame.  Callers put them the same distance in from
                     the shared hole pattern's ends, so joined walls choose the
                     same column.
-    @returns ``[(along, across)]`` of each slot's centre: at most one per end
-             (none where the wall is too low for it).  The slot is upright:
-             ``length`` across the wall, ``width`` along it.
+    @param tall   - A slot's length outside the end column (default ``length``).
+    @returns ``[(along, across, length)]`` of each slot: its centre and its
+             length up the wall, at most one per end (none where the wall is
+             too low for it).  The slot is upright: ``length`` across the
+             wall, ``width`` along it.
     """
     if not pilots:
         return []
@@ -166,7 +169,8 @@ def end_pills(pilots, length, width, wood, lo, hi):
         end = ordered[0]
         across = sorted(p[1] for p in pilots if abs(p[0] - end) < 1e-6)
         if len(across) >= 2 and ok(end + out):
-            pills.append((end + out, (across[0] + across[-1]) / 2))
+            pills.append((end + out, (across[0] + across[-1]) / 2,
+                          length if tall is None else tall))
             continue
         for c in ordered[:3]:
             across = sorted(p[1] for p in pilots if abs(p[0] - c) < 1e-6)
@@ -174,7 +178,7 @@ def end_pills(pilots, length, width, wood, lo, hi):
                 continue
             bottom, top = across[0] + r + wood, across[-1] - r - wood
             if top - bottom >= length:
-                pills.append((c, (bottom + top) / 2))
+                pills.append((c, (bottom + top) / 2, length))
             break
     # On a short wall both ends could pick the same column.
     return list(dict.fromkeys(pills))

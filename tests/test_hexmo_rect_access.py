@@ -131,7 +131,8 @@ class TestEndWalls:
         ports = [b for b in wall if b[1] - b[0] > 20 and b not in openings
                  and (b[0] + b[1]) / 2 == pytest.approx(centre, abs=0.1)]
         assert len(ports) == 1
-        # An upright cable slot near each end (14 wide, 30 tall).
+        # An upright cable slot near each end (14 wide; 30 tall between the
+        # end pilot pair at this size).
         pills = [b for b in wall if (round(b[1] - b[0]), round(b[3] - b[2])) == (14, 30)]
         assert len(pills) == 2
         assert pills[0][1] < openings[0][0] and pills[1][0] > openings[1][1]
