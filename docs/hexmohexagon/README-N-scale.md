@@ -937,15 +937,17 @@ ring), the same on every module so the openings line up.
 
 Wiring goes through **cable slots** at the wall's ends instead, clear of the
 subway's bed and supports down the middle: every access wall that joins another
-module gets an upright 14 × 30 mm slot near each end, standing between a pair of
-Ø6 dowel holes with 4 mm of wood to each. It uses the pair nearest the end (45 mm
-in on the 250 ring), or the next one in where that pair is too close to the
-wall's edge (30 mm in at the default sizes). Those dowel holes sit in the same
-place on every hexagon wall and rectangle end wall, so the slots line up through
-every joint. The pair's centres have to be at least 44 mm apart (h=80 and up); on a
-lower wall the slots are left out. The short dividers have none (their lane
-openings pass a cable), nor has the trapezoid's long wall (no wiring crosses the
-ring's outside).
+module gets an upright 14 × 30 mm slot near each end, just outside its end pair
+of Ø6 dowel holes (between them and the wall's end), 4 mm clear of them and
+level with the middle of the pair. On the 250 ring that puts each slot's centre
+31 mm in from the end, with about 21 mm of wood to the wall's edge. Those dowel
+holes sit in the same place on every hexagon wall and rectangle end wall, so
+the slots line up through every joint. Where the end pair is too close to the
+wall's end for that (15 mm in at the default sizes), the slot stands between a
+pair instead, the next one in (30 mm in), whose two dowel holes then need their
+centres at least 44 mm apart. The short dividers have none (their lane openings
+pass a cable), nor has the trapezoid's long wall (no wiring crosses the ring's
+outside).
 
 **Access openings (`--access_openings`):** each opening leaves 12 mm of wood
 above and below and 15 mm at each end. The wall keeps some of its Ø6 dowel
@@ -969,8 +971,8 @@ goes through both walls at every joint.
 - **Trapezoid:** its long wall gets two, about 124 × 50 mm each, with four
   dowel pairs; its short walls two each, as the full hexagon's.
 - **Full hexagon:** the walls listed in `--access_edges` (default all six) get
-  two each: about 36 × 50 mm at radius 250, for fingers, with a dowel pair and
-  its cable slot at each end.
+  two each: about 40 × 50 mm at radius 250, for fingers, with a dowel pair and
+  a cable slot outside it at each end.
 
 The openings stop 15 mm short of a track or spur opening that cuts into the
 wall, so a wall with one keeps the opening on its other side (M1–M5's spur

@@ -236,9 +236,8 @@ class TestHexagonAccess:
             assert len(openings) == 2
             for y0, y1, x0, x1 in openings:
                 # The pairs here are too close for the centre ones to stay,
-                # so the end pairs stay and the openings run to the post,
-                # 5 mm clear of the cable slot between each end pair.
-                assert (y1 - y0, x1 - x0) == pytest.approx((36.3, 50), abs=0.5)
+                # so the end pairs stay and the openings run to the post.
+                assert (y1 - y0, x1 - x0) == pytest.approx((40.3, 50), abs=0.5)
             # The middle post is as wide as the spoke, over its middle.
             assert openings[1][0] - openings[0][1] == pytest.approx(60, abs=0.1)
             assert sorted({a for a, _ in pilots(holes_)}) == pytest.approx([45.0, 201.5], abs=0.1)

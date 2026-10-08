@@ -87,8 +87,9 @@ class TestHexagon:
 
     def test_upright_slots_at_the_wall_ends(self) -> None:
         # Hex wall frame: x up from the floor panel, y along the wall.  One
-        # slot near each end, 30 tall and 14 wide, in the pilot column 45 mm
-        # in (the g2 corner groups' pair), centred between its two pilots.
+        # slot near each end, 30 tall and 14 wide, just outside the end pilot
+        # pair (45 mm in, the g2 corner groups'): 4 mm of wood to the Ø6
+        # pilots puts its centre 3 + 4 + 7 = 14 mm further out, at 31.
         box = HexmoHexagon()
         box.parseArgs(HEX)
         box.open()
@@ -98,7 +99,7 @@ class TestHexagon:
         for x, y, w, h in slots:
             assert (w, h) == pytest.approx((30, 14))
             assert x == pytest.approx(l / 2)
-        assert sorted(y for _, y, _, _ in slots) == pytest.approx([45, side - 45], abs=0.01)
+        assert sorted(y for _, y, _, _ in slots) == pytest.approx([31, side - 31], abs=0.01)
 
     def test_slots_on_every_joining_wall(self) -> None:
         # Wiring crosses any joint, spur or not; the long wall joins nothing.
@@ -106,11 +107,41 @@ class TestHexagon:
         assert pilled(found) == ["wall edge 3", "wall edge 4", "wall edge 5"]
         assert found["long wall"][0] == []
 
-    def test_slots_need_room_between_the_pilots(self) -> None:
-        # At h=70 the pilot pair is 34 mm apart inside: too little for the
-        # 30 mm slot with 4 mm of wood each side; the access openings stay.
+    def test_beside_the_pair_on_a_low_wall_too(self) -> None:
+        # Outside the pair a slot needn't fit between its pilots, so a lower
+        # wall (h=70) keeps them, level with the pair's middle.
         found = ports(HexmoHexagon, HEX + ["--h=70"])
-        assert pilled(found) == []
+        assert pilled(found) == [f"wall edge {e}" for e in range(1, 7)]
+
+    def test_between_a_pair_when_the_end_is_too_near(self) -> None:
+        # The default module (6 mm stock, full corner groups) has its end
+        # pilot column only 15 mm in: no room outside it, so each slot stands
+        # in the next column in (30 mm), between its pair, as on a
+        # rectangle end wall there.
+        box = HexmoHexagon()
+        box.parseArgs([])
+        box.open()
+        side, l = box._wallSize()
+        slots, _ = ports(HexmoHexagon, [])["wall edge 1"]
+        assert sorted(y for _, y, _, _ in slots) == pytest.approx([30, side - 30], abs=0.01)
+        assert all(x == pytest.approx(l / 2) for x, _, _, _ in slots)
+
+    def test_default_rectangle_end_wall_matches(self) -> None:
+        # The same slots on the default rectangle's end wall, from its centre
+        # and the deck, as on the default hexagon's wall.
+        rect = HexmoRectangle()
+        rect.parseArgs([])
+        rect.open()
+        half = (rect._rectLayout().W - 2 * rect.thickness) / 2
+        end = sorted((round(x - half, 1), round(y, 1))
+                     for x, y, _, _ in ports(HexmoRectangle, [])["end wall 1"][0])
+        hexagon = HexmoHexagon()
+        hexagon.parseArgs([])
+        hexagon.open()
+        side, l = hexagon._wallSize()
+        wall = sorted((round(y - side / 2, 1), round(l - x, 1))
+                      for x, y, _, _ in ports(HexmoHexagon, [])["wall edge 1"][0])
+        assert len(end) == 2 and end == wall
 
     def test_trapezoid_short_walls(self) -> None:
         found = ports(HexmoHexagon, HEX[:-1] + ["--trapezoid=1",
