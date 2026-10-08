@@ -94,10 +94,33 @@ class TestHexagon:
         # The ring's M2 has its spur 35 mm in on walls 3 and 5.
         assert ported(ports(HexmoHexagon, HELIX_RING_N250["M2"])) == ["wall edge 4"]
 
-    def test_lowered_and_access_walls_are_left(self) -> None:
-        # M6 with scenery: 3 and 5 are stepped, 2, 4 and 6 have access
-        # openings; edge 1 (the lower level's own opening) gets its slot.
-        assert ported(ports(HexmoHexagon, HELIX_RING_N250_GROUND["M6"])) == ["wall edge 1"]
+    def test_lowered_walls_are_left(self) -> None:
+        # M6 with scenery: 3 and 5 are stepped, so left; edge 1 (the lower
+        # level's own opening) and the access walls 2, 4 and 6 get ports.
+        assert ported(ports(HexmoHexagon, HELIX_RING_N250_GROUND["M6"])) == [
+            "wall edge 1", "wall edge 2", "wall edge 4", "wall edge 6"]
+
+    def test_access_walls_get_it_in_the_middle_post(self) -> None:
+        # Between the two access openings, centred on the wall, with the
+        # same 12.5 mm of wood either side (60 mm post, 35 mm opening).
+        found = ports(HexmoHexagon, HEX + ["--access_openings=1", "--access_edges=2,4,6"])
+        assert ported(found) == [f"wall edge {e}" for e in range(1, 7)]
+        slots, openings = found["wall edge 2"]
+        (x0, x1, y0, y1), = openings
+        assert (y1 - y0) == pytest.approx(35)
+        assert (y0 + y1) / 2 == pytest.approx(slots[0][1])
+
+    def test_trapezoid_long_wall_with_access(self) -> None:
+        found = ports(HexmoHexagon, HELIX_RING_N250["M2"] + ["--under_track_height=23.8"])
+        assert found["long wall"][0] and found["long wall"][1]
+
+    def test_middle_post_too_narrow(self) -> None:
+        box = HexmoHexagon()
+        box.parseArgs(HEX + ["--access_openings=1", "--access_edges=2", "--subway_ports=1",
+                             "--spoke_width=40"])
+        with pytest.raises(ValueError, match="middle post"):
+            box.open()
+            box.render()
 
     def test_needs_room_for_the_slot(self) -> None:
         box = HexmoHexagon()

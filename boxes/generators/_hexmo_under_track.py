@@ -75,9 +75,11 @@ class HexmoUnderTrackMixin:
                  "30 × 14 mm cable slot under it.  A subway can then carry on "
                  "through any joint.  On HexmoRectangle the end walls and short "
                  "dividers; on the trapezoid its short walls; on the full hexagon "
-                 "all six.  Walls whose middle already has a track or spur "
-                 "opening, the lowered --lower_ground walls and walls with "
-                 "--access_openings are left as they are.")
+                 "all six.  Walls with --access_openings (the trapezoid's long "
+                 "wall, the hexagon's --access_edges) get it in the middle post "
+                 "between their openings.  Walls whose middle already has a track "
+                 "or spur opening, and the lowered --lower_ground walls, are left "
+                 "as they are.")
 
     def _underTrackSpan(self, body):
         """Bottom and top of the opening, in mm above the floor panel.

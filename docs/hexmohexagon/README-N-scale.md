@@ -913,9 +913,11 @@ gets the under-deck opening in its middle (where the spoke meets it), at
 under it, centred between the opening and the floor. A subway can then carry on
 through any joint, and wiring can follow it. HexmoRectangle: the end walls and
 short dividers. Trapezoid: its short walls (3, 4 and 5). Full hexagon: all six.
-A wall whose middle already has a track or spur opening too close, a lowered
-`--lower_ground` wall, or one with `--access_openings` (it joins nothing) is left
-as it is. The slot needs about 22 mm under the opening; set
+Walls with `--access_openings` (the trapezoid's long wall, the hexagon's
+`--access_edges`) get theirs in the spoke-wide middle post between their two
+openings, with 12.5 mm of wood either side at the usual 60 mm spoke and 35 mm
+opening. A wall whose middle already has a track or spur opening too close, or
+a lowered `--lower_ground` wall, is left as it is. The slot needs about 22 mm under the opening; set
 `--under_track_height` to the subway's height (23.8 on the 250 ring).
 
 **Access for re-railing (`--access_openings`):** a wall that joins no other

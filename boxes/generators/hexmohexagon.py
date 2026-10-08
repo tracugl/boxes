@@ -1414,8 +1414,10 @@ class HexmoHexagon(HexmoStepFormatMixin, HexmoBigHoleMixin, HexmoTrackGuideMixin
         Every wall that joins another module (all six on the full hexagon,
         the short walls 3, 4 and 5 on the trapezoid), less those that can't
         take an opening in their middle: a track or spur opening (including a
-        --subway's) too close to it, a --lower_ground step or lowered wall, or
-        --access_openings (those walls join nothing).
+        --subway's) too close to it, or a --lower_ground step or lowered wall.
+        Walls with --access_openings are left out here too, but get their
+        port in the middle post between their openings instead (see
+        draw_access_with_pilots in render).
 
         @param isTrapezoid - True for the half-hexagon.
         @returns Set of edges.
@@ -2875,7 +2877,9 @@ class HexmoHexagon(HexmoStepFormatMixin, HexmoBigHoleMixin, HexmoTrackGuideMixin
 
             The wall's normal holes are worked out (not cut) to find its Ø6
             pilots; the openings then shrink to keep the pairs nearest their
-            ends (see openings_with_pilots), and those pilots are cut.
+            ends (see openings_with_pilots), and those pilots are cut.  With
+            --subway_ports the middle post also gets the subway opening and
+            its cable slot.
 
             @param normal_holes - Draws the wall's normal holes (hole frame).
             @param spans        - Full-size openings ``[(start, end)]`` along it.
@@ -2890,6 +2894,17 @@ class HexmoHexagon(HexmoStepFormatMixin, HexmoBigHoleMixin, HexmoTrackGuideMixin
                 draw_access_opening(y0, y1)
             for y, x, r in kept:
                 self.hole(x, y, r)
+            if self.subway_ports:
+                # --subway_ports: the subway opening and its cable slot in the
+                # middle post, where the spoke meets the wall.
+                if self.spoke_width < self.under_track_width + 2 * self._UNDER_TRACK_CLEAR:
+                    raise ValueError(
+                        f"--subway_ports: the {self.under_track_width:g} mm subway opening "
+                        f"needs a middle post of at least "
+                        f"{self.under_track_width + 2 * self._UNDER_TRACK_CLEAR:g} mm between "
+                        f"the access openings, but --spoke_width is {self.spoke_width:g}.")
+                bottom, top = self._underTrackSpan(l)
+                self._drawUnderTrackOpening(middle, bottom, top, along_x=False, floor=0.0)
 
         def draw_aligned_holes_long():
             self.moveTo(0, side_long / 2 - side_orig)
