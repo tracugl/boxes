@@ -149,15 +149,19 @@ class TestGround:
         with pytest.raises(ValueError, match="above the spur"):
             box.render()
 
-    def test_trapezoid_support_turned_under_the_main_line(self) -> None:
-        # A radial support at 64 would straddle the deck's cut-back edge.
-        assert "--support_edges=4@285,4@60/90" in self.GROUND["M3"]
-        args = [a.replace("4@285,4@60/90", "4@64,4@285") for a in self.GROUND["M3"]]
+    def test_supports_clear_of_the_deck_edge(self) -> None:
+        # The track-following floor places the supports itself, each wholly
+        # under the deck or wholly under the lower plate, never straddling
+        # the deck's cut-back edge.
         box = HexmoHexagon()
-        box.parseArgs(args)
+        box.parseArgs(self.GROUND["M3"])
         box.open()
-        with pytest.raises(ValueError, match="neither under the lower plate"):
-            box.render()
+        box.render()
+        plan = box._lower_plan
+        r, _ = box._innerSize()
+        supports = box._supportLayout(r, True)
+        assert supports
+        assert len(plan.lower) < len(supports)      # some under the deck
 
     def test_in_the_ring_export(self) -> None:
         assert RINGS["HO-ground"][0] == self.GROUND

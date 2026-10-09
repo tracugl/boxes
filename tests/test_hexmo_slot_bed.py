@@ -34,7 +34,7 @@ APOTHEM = R_IN * math.sqrt(3) / 2
 
 # Helix ring M1 at h=80, everything 35 mm wide.
 M1 = ["--radius=220", "--thickness=3", "--h=80", "--trapezoid=1", "--track_lead_in=26",
-      "--track_width=17", "--bottom=spoke", "--edge_width=22", "--spoke_width=60",
+      "--track_width=17", "--bottom=kites", "--edge_width=22", "--spoke_width=60",
       "--support_length=55", "--support_edges=4@132,4@30/90",
       "--track_routes=3:17.5-5:17.5,3:-17.5-5:-35",
       "--track_openings=3:-17.5:73.6:35,5:35:65.9:35"]

@@ -407,14 +407,26 @@ class HexmoLowerGroundMixin:
         reach = self.thickness / 2 + _SUPPORT_EDGE_CLEAR
         plate_in = _side(plan.plate_curve, inner_mark)
         deck_in = _side(plan.deck_curve, inner_mark)
+        under_plate = lambda pts: all(_side(plan.plate_curve, p) == plate_in
+                                      and _distance(plan.plate_curve, p) >= reach for p in pts)
+        under_deck = lambda pts: all(_side(plan.deck_curve, p) != deck_in
+                                     and _distance(plan.deck_curve, p) >= reach for p in pts)
+        if self._trackFloor(True):
+            # The track-following floor places its own supports: again, each
+            # wholly under the lower plate or wholly under the deck (sliding
+            # along itself to get there), never straddling the deck's edge.
+            self._placing_supports = True
+            try:
+                self._track_supports = self._placeTrackSupports(
+                    r, True, accept=lambda pts: under_plate(pts) or under_deck(pts))
+            finally:
+                self._placing_supports = False
         lower = set()
         for i, support in enumerate(self._supportLayout(r, True)):
             pts = self._supportPoints(support)
-            if all(_side(plan.plate_curve, p) == plate_in
-                   and _distance(plan.plate_curve, p) >= reach for p in pts):
+            if under_plate(pts):
                 lower.add(i)
-            elif not all(_side(plan.deck_curve, p) != deck_in
-                         and _distance(plan.deck_curve, p) >= reach for p in pts):
+            elif not under_deck(pts):
                 raise ValueError(
                     f"--lower_ground: the support towards edge {support[2]} at "
                     f"{support[3]:g} mm from the centre is neither under the lower "

@@ -34,6 +34,7 @@ from boxes.generators._hexmo_access import (
 from boxes.generators._hexmo_big_holes import HexmoBigHoleMixin
 from boxes.generators._hexmo_lower_ground import HexmoLowerGroundMixin
 from boxes.generators._hexmo_subway import HexmoSubwayMixin
+from boxes.generators._hexmo_track_floor import HexmoTrackFloorMixin, TrackSupport
 from boxes.generators._hexmo_step_format import HexmoStepFormatMixin
 from boxes.generators import _hexmo_step
 from boxes.generators._hexmo_track_guide import HexmoTrackGuideMixin
@@ -58,7 +59,7 @@ from boxes.generators._hexmo_track_routes import (
 
 class HexmoHexagon(HexmoStepFormatMixin, HexmoBigHoleMixin, HexmoTrackGuideMixin,
                    HexmoTrackTemplateMixin, HexmoUnderTrackMixin, HexmoLowerGroundMixin,
-                   HexmoSubwayMixin, Boxes):
+                   HexmoSubwayMixin, HexmoTrackFloorMixin, Boxes):
     """Box with a regular hexagon or half hexagon as the base. """
 
     ui_group = "Box"
@@ -91,8 +92,15 @@ class HexmoHexagon(HexmoStepFormatMixin, HexmoBigHoleMixin, HexmoTrackGuideMixin
             help="style of the top")
         self.argparser.add_argument(
             "--bottom", action="store", type=str, default="spoke",
-            choices=["spoke", "closed"],
-            help="style of the bottom")
+            choices=["spoke", "kites", "closed"],
+            help="Style of the bottom.  spoke (default): a rim plus a strip "
+                 "--spoke_width wide under every track route (and riser or "
+                 "subway), the rest cut away; the support walls stand across the "
+                 "tracks on those strips (--support_spacing apart), and "
+                 "--support_edges / --support_position don't apply.  A module "
+                 "with no track routes gets the kite floor.  kites: the rim plus "
+                 "straight spokes from the centre, with kite-shaped openings "
+                 "between them.  closed: a solid floor.")
         self.argparser.add_argument(
             "--edge_width", action="store", type=float, default=60.0,
             help="Width of the outer hexagonal frame for spoke bottom.")
@@ -338,6 +346,8 @@ class HexmoHexagon(HexmoStepFormatMixin, HexmoBigHoleMixin, HexmoTrackGuideMixin
         self._addTrackTemplateArgs()
         # --lower_ground and --upper_edge_gap (see _hexmo_lower_ground).
         self._addLowerGroundArgs()
+        # --support_spacing for the track-following spoke floor.
+        self._addTrackFloorArgs()
         # --subway: a level lower track under the deck (see _hexmo_subway).
         self._addSubwayArgs()
         self.argparser.add_argument(
@@ -527,22 +537,30 @@ class HexmoHexagon(HexmoStepFormatMixin, HexmoBigHoleMixin, HexmoTrackGuideMixin
         lower = plan.lower if plan is not None else frozenset()
         seen = {}
         for index, support in enumerate(layout[:n_supports]):
-            edge = support[2]
-            seen[edge] = seen.get(edge, 0) + 1
-            name = f"support edge {edge}" + ("" if seen[edge] == 1 else f" #{seen[edge]}")
+            if isinstance(support, TrackSupport):
+                # On the track-following floor: numbered in drawing order.
+                name = f"support {index + 1}"
+            else:
+                edge = support[2]
+                seen[edge] = seen.get(edge, 0) + 1
+                name = f"support edge {edge}" + ("" if seen[edge] == 1 else f" #{seen[edge]}")
             low = index in lower
 
             def frame_and_holes(support=support, name=name, low=low):
                 # The 3D export: the body frame (x along the support, y up from
                 # the floor panel), centred on the support's line.
-                _, _, edge, d, turned = support
-                theta = math.radians(EDGE_ANGLES[edge])
-                u = (math.cos(theta), math.sin(theta))
-                along = (-u[1], u[0]) if turned else u
+                if isinstance(support, TrackSupport):
+                    centre, along = support.centre, support.along
+                else:
+                    _, _, edge, d, turned = support
+                    theta = math.radians(EDGE_ANGLES[edge])
+                    u = (math.cos(theta), math.sin(theta))
+                    along = (-u[1], u[0]) if turned else u
+                    centre = (u[0] * d, u[1] * d)
                 normal = (along[1], -along[0])
                 t = self.thickness
-                origin = (u[0] * d - along[0] * sl / 2 - normal[0] * t / 2,
-                          u[1] * d - along[1] * sl / 2 - normal[1] * t / 2, 0.0)
+                origin = (centre[0] - along[0] * sl / 2 - normal[0] * t / 2,
+                          centre[1] - along[1] * sl / 2 - normal[1] * t / 2, 0.0)
                 self._stepFrame(name, "support", origin, (along[0], along[1], 0),
                                 (0, 0, 1), (0.0, t))
                 if low:
@@ -614,9 +632,17 @@ class HexmoHexagon(HexmoStepFormatMixin, HexmoBigHoleMixin, HexmoTrackGuideMixin
         # places the centre at y = H + thickness + burn from V0 — identical in both
         # modes.  No special trapezoid correction is needed here.
 
-        for index, (spoke_angle, side, _, d, turned) in enumerate(layout):
+        for index, support in enumerate(layout):
             if only is not None and index not in only:
                 continue
+            if isinstance(support, TrackSupport):
+                # Across its track, centred on it (true-centre frame).
+                with self.saved_context():
+                    self.moveTo(r / 2, H)
+                    self.moveTo(support.centre[0], support.centre[1], support.angle)
+                    self.fingerHolesAt(-sl / 2, 0, sl, angle=0)
+                continue
+            spoke_angle, side, _, d, turned = support
             with self.saved_context():
                 # Translate to the hex centre then rotate to the spoke axis.
                 self.moveTo(r / 2, H, spoke_angle)
@@ -1691,12 +1717,20 @@ class HexmoHexagon(HexmoStepFormatMixin, HexmoBigHoleMixin, HexmoTrackGuideMixin
 
         @param r           - Inner hexagon circumradius (the panels').
         @param isTrapezoid - True for the half-hexagon (lower half-spokes only).
-        @returns ``[(spoke angle, side, edge, d, turned)]`` in drawing order.
+        On the track-following spoke floor they are instead
+        :class:`TrackSupport` entries standing across the deck tracks (see
+        _hexmo_track_floor), and --support_edges does not apply.
+
+        @returns ``[(spoke angle, side, edge, d, turned)]`` in drawing order,
+                 or ``[TrackSupport]`` on the track-following floor.
         @throws ValueError - On a malformed entry, an edge the module lacks, a
                              support reaching the centre or a wall, two
                              supports too close, or (spoke floor) a support
                              slot over a kite.
         """
+        if self._trackFloor(isTrapezoid):
+            # The track-following floor: supports across the deck tracks.
+            return self._trackSupports(r, isTrapezoid)
         apothem = r * math.sqrt(3.0) / 2.0
         default_d = self.support_position or apothem / 2.0
         by_edge = {hs[2]: hs for hs in self._HALF_SPOKES}
@@ -1743,6 +1777,8 @@ class HexmoHexagon(HexmoStepFormatMixin, HexmoBigHoleMixin, HexmoTrackGuideMixin
 
     def _supportPoints(self, support, n=20):
         """Points along a support's slot, in the true-centre frame (y up)."""
+        if isinstance(support, TrackSupport):
+            return self._trackSupportPoints(support, n)
         _, _, edge, d, turned = support
         sl = self.support_length
         th = math.radians(EDGE_ANGLES[edge])
@@ -1786,7 +1822,7 @@ class HexmoHexagon(HexmoStepFormatMixin, HexmoBigHoleMixin, HexmoTrackGuideMixin
                     raise ValueError(
                         f"--support_edges: the supports towards edges {supports[i][2]} "
                         f"and {supports[j][2]} would run into each other.")
-        if self.bottom == "spoke":
+        if self.bottom in ("spoke", "kites") and not self._trackFloor(isTrapezoid):
             kites = self._kitePolygons(r, isTrapezoid)
             lift = t if isTrapezoid else 0.0      # kites sit t below the true centre
             for sp, pts in zip(supports, points):
@@ -1903,12 +1939,14 @@ class HexmoHexagon(HexmoStepFormatMixin, HexmoBigHoleMixin, HexmoTrackGuideMixin
         centre = centreline_points(segments)
         reach = width / 2.0 + self.thickness / 2.0 + self._DECK_SLOT_CLEAR
         for support in self._supportLayout(r, isTrapezoid):
-            edge, d = support[2], support[3]
             for p in self._supportPoints(support):
                 if min(math.dist(p, q) for q in centre) < reach:
+                    if isinstance(support, TrackSupport):
+                        # Placed clear of every slot, so this is a bug.
+                        raise ValueError(f"{name} crosses a track-floor support.")
                     raise ValueError(
-                        f"{name} crosses the support towards edge {edge} at "
-                        f"{d:g} mm from the centre.  A support there would block "
+                        f"{name} crosses the support towards edge {support[2]} at "
+                        f"{support[3]:g} mm from the centre.  A support there would block "
                         "the track; leave it out or move it with --support_edges "
                         "(or --support_position), or use --supports 0.")
 
@@ -2596,6 +2634,8 @@ class HexmoHexagon(HexmoStepFormatMixin, HexmoBigHoleMixin, HexmoTrackGuideMixin
         n, isTrapezoid = self.n, self.trapezoid
         # Outside measurements are converted to inside ones (see _innerSize).
         r, h = self._innerSize()
+        # The track-following floor's supports are worked out afresh.
+        self._resetTrackFloor()
 
         t = self.thickness
 
@@ -2678,10 +2718,14 @@ class HexmoHexagon(HexmoStepFormatMixin, HexmoBigHoleMixin, HexmoTrackGuideMixin
             return deck
 
         def spoke_floor(r, joint_type, trapezoid):
-            """A spoke face's centre callback: its kites, split by ribs under
-            any riser supports, and the risers' floor slots."""
-            self.drawKites(r=r, joint_type=joint_type, isTrapezoid=trapezoid,
-                           ribs=self._kiteSpines(riser_plan, trapezoid))
+            """A spoke face's centre callback: its openings (strips under the
+            tracks, or kites split by ribs under any riser supports), and the
+            risers' floor slots."""
+            if self._trackFloor(trapezoid):
+                self.drawTrackFloor(r, trapezoid, riser_plan)
+            else:
+                self.drawKites(r=r, joint_type=joint_type, isTrapezoid=trapezoid,
+                               ribs=self._kiteSpines(riser_plan, trapezoid))
             if riser_plan:
                 self.drawRiserFloorHoles(riser_plan, trapezoid)
 
@@ -2770,7 +2814,7 @@ class HexmoHexagon(HexmoStepFormatMixin, HexmoBigHoleMixin, HexmoTrackGuideMixin
                 return cbs
 
             if isTrapezoid:
-                if top_type == "spoke":
+                if top_type in ("spoke", "kites"):
                     # Build spoke callbacks; only append drawSupportHoles when
                     # supports are enabled so the slot geometry matches the walls.
                     spoke_cbs = [lambda: spoke_floor(r, joint_type, True)]
@@ -2788,7 +2832,7 @@ class HexmoHexagon(HexmoStepFormatMixin, HexmoBigHoleMixin, HexmoTrackGuideMixin
                     self.drawTrapezoidWall(r=r, edges_char=deck_edges(joint_type, is_top),
                                            move="right", callback=framed(support_cb))
             else:
-                if top_type == "spoke":
+                if top_type in ("spoke", "kites"):
                     spoke_cbs = [lambda: spoke_floor(r, joint_type, False)]
                     if self.supports:
                         spoke_cbs.append(lambda: self.drawSupportHoles(r=r))
@@ -2834,7 +2878,7 @@ class HexmoHexagon(HexmoStepFormatMixin, HexmoBigHoleMixin, HexmoTrackGuideMixin
         fingers_top = self.top in ("closed", "hole", "angled hole",
                                    "round lid", "angled lid2", "bayonet mount")
         fingers_bottom = self.bottom in ("closed", "hole", "angled hole",
-                                         "round lid", "angled lid2", "spoke")
+                                         "round lid", "angled lid2", "spoke", "kites")
 
         t_ = self.edges["G"].startWidth()
         bottom_edge = ('y' if fingers_bottom else 'e')

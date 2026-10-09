@@ -30,7 +30,7 @@ from boxes.generators._hexmo_track_routes import EDGE_ANGLES
 from boxes.generators.hexmohexagon import HexmoHexagon
 
 N = ["--radius=220", "--thickness=3", "--h=80", "--track_lead_in=26", "--track_width=17",
-     "--support_length=55", "--bottom=spoke"]
+     "--support_length=55", "--bottom=kites"]
 R_IN = 220 - 3 / math.cos(math.radians(30))
 APOTHEM = R_IN * math.sqrt(3) / 2
 
@@ -188,8 +188,8 @@ class TestHelixRing:
 class TestTurnedSupports:
     """``E@position/90``: a support turned to run across its half-spoke."""
 
-    M1_SPOKE = [a if a != "--bottom=spoke" else a for a in M1] + [
-        "--bottom=spoke", "--edge_width=22", "--spoke_width=60",
+    M1_SPOKE = [a if a != "--bottom=kites" else a for a in M1] + [
+        "--bottom=kites", "--edge_width=22", "--spoke_width=60",
         "--risers=3:-17.5-5:-35~72.5..65.2"]
 
     def _slots(self, args):

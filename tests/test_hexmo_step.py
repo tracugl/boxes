@@ -40,7 +40,7 @@ A_OUT = R_OUT * math.sqrt(3) / 2
 
 # The helix ring's M6 (N, h=80), as in the N README.
 M6 = ["--radius=220", "--thickness=3", "--h=80", "--edge_width=22", "--spoke_width=60",
-      "--bottom=spoke", "--support_length=55", "--support_edges=2,4,6",
+      "--bottom=kites", "--support_length=55", "--support_edges=2,4,6",
       "--track_lead_in=26", "--track_width=17",
       "--track_routes=1:-35-5:-17.5,3:-17.5-1:-35,1:0-5:17.5",
       "--under_track_edges=1", "--under_track_height=27.8", "--under_track_width=35",
@@ -49,7 +49,7 @@ M6 = ["--radius=220", "--thickness=3", "--h=80", "--edge_width=22", "--spoke_wid
       "--risers=1:0-5:17.5@169..~77..74/35,3:35-1:0@..186~35.6..31/35,"
       "3:35-1:0@186..~31..27.8/35"] + PLAIN_WALLS
 # The helix ring's M1 (a trapezoid).
-M1 = ["--radius=220", "--thickness=3", "--h=80", "--trapezoid=1", "--bottom=spoke",
+M1 = ["--radius=220", "--thickness=3", "--h=80", "--trapezoid=1", "--bottom=kites",
       "--edge_width=22", "--spoke_width=60", "--support_length=55",
       "--support_edges=4@132,4@30/90", "--track_lead_in=26", "--track_width=17",
       "--track_routes=3:17.5-5:17.5,3:-17.5-5:-35",
