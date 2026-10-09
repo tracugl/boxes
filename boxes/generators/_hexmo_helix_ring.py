@@ -179,6 +179,82 @@ def with_ground(ring, size):
             for name, args in ring.items()}
 
 
+# ------------------------------------------------------------------ HO
+
+# The HO ring: the HO README's design (radius 500, 6 mm stock, h=100, the
+# main line 40 mm outside the centre line, the spur 80 mm inside, 60 mm notches,
+# slots and beds), with the lower level taken all the way down to the floor.
+# One steady 1.89 % grade from the M6/M1 joint (88, on the wall tops) to M6's
+# edge 1 (6: the bed lying on the floor), over the routes' 4336 mm: M1 722.4,
+# M2–M5 695.0 each, M6's return 833.6.  Under M6's deck (past the return's
+# slot, @490) the track is at most 12.5, leaving the 70 mm train envelope
+# room under the 88 mm deck underside.  The return's riser has supports down to
+# 12 (2t); its bed then slopes the last ~330 mm onto the floor strip at edge 1.
+# Every module after the helix carries the lower level on the floor (a flat
+# bed on the floor strip, --subway 6), so needs no supports.
+_HO_JOINTS = (88, 74.3, 61.2, 48.1, 34.9, 21.8)
+_HO_UNDER_DECK = 12.5         # the return's height where its deck slot ends
+_HO_FLOOR = 6                 # the lower level: one thickness, on the floor
+
+# The HO README's cut settings, with every subway opening at the floor level.
+_HO_COMMON = ["--radius=500", "--h=100", "--thickness=6", "--edge_width=60",
+              "--spoke_width=120", "--bottom=spoke", "--top=closed",
+              "--corner_holes=g2", "--gap_holes=g2", "--big_hole_shape=rounded_rect",
+              "--FingerJoint_play=0.1", "--FingerJoint_extra_length=0.05",
+              "--track_lines=1", "--draw_track=1", "--track_width=30",
+              "--track_lead_in=23", "--support_length=110", "--train_envelope=70",
+              "--under_track_width=60", f"--under_track_height={_HO_FLOOR}",
+              "--access_openings=1", "--subway_ports=1", "--labels=0", "--reference=0"]
+
+
+def helix_ring_ho():
+    """The HO ring's six modules (see the HO notes above).
+
+    @returns ``{"M1": [...], …, "M6": [...]}``: HexmoHexagon options.
+    """
+    j = _HO_JOINTS
+    trapezoid = _HO_COMMON + ["--trapezoid=1", "--support_edges=4@64,4@285"]
+    ring = {"M1": trapezoid + [
+        "--track_routes=3:40-5:40,3:-40-5:-80",
+        f"--track_openings=3:-40:{j[0]:g}:60,5:80:{j[1]:g}:60",
+        "--deck_slots=3:-40-5:-80/60",
+        f"--risers=3:-40-5:-80~{j[0]:g}..{j[1]:g}/60"]}
+    for k in range(2, 6):
+        a, b = j[k - 1], j[k]
+        ring[f"M{k}"] = trapezoid + [
+            "--track_routes=3:40-5:40,3:-80-5:-80",
+            f"--track_openings=3:-80:{a:g}:60,5:80:{b:g}:60",
+            "--deck_slots=3:-80-5:-80/60",
+            f"--risers=3:-80-5:-80~{a:g}..{b:g}/60"]
+    u, f = _HO_UNDER_DECK, _HO_FLOOR
+    ring["M6"] = _HO_COMMON + [
+        "--support_edges=2,4,6",
+        "--track_routes=1:-80-5:-40,3:-40-1:-80,1:0-5:40",
+        "--under_track_edges=1",
+        f"--track_openings=5:40:88:60,3:-80:{j[5]:g}:60",
+        "--deck_slots=1:0-5:40@327../60,3:80-1:0@..490/60",
+        f"--risers=1:0-5:40@327..~94..88/60,3:80-1:0@..490~{j[5]:g}..{u:g}/60,"
+        f"3:80-1:0@490..~{u:g}..{f:g}/60"]
+    return ring
+
+
+def helix_entry_ho():
+    """The HO ring's entry rectangle at M6 edge 1.
+
+    M6's three deck tracks (±80 and the centre line) run straight on, the
+    lower level on the floor underneath.  No turnouts: --turnouts models
+    Peco's N medium turnout only.
+
+    @returns HexmoRectangle options.
+    """
+    return [a for a in _HO_COMMON
+            if not a.startswith(("--edge_width", "--bottom", "--top", "--support_length",
+                                 "--train_envelope"))] + [
+        "--slot_tolerance=1", "--num_columns=3", "--num_rows=3",
+        "--track_line_count=3", "--track_spacing=80",
+        "--under_track=1", f"--subway={_HO_FLOOR}/60"]
+
+
 HELIX_RING_N = helix_ring(SIZE_220)
 HELIX_ENTRY_N = helix_entry(SIZE_220)
 HELIX_RING_N_GROUND = with_ground(HELIX_RING_N, SIZE_220)
@@ -190,4 +266,5 @@ HELIX_RING_N250_GROUND = with_ground(HELIX_RING_N250, SIZE_250)
 RINGS = {"N": (HELIX_RING_N, HELIX_ENTRY_N),
          "N-ground": (HELIX_RING_N_GROUND, HELIX_ENTRY_N),
          "N250": (HELIX_RING_N250, HELIX_ENTRY_N250),
-         "N250-ground": (HELIX_RING_N250_GROUND, HELIX_ENTRY_N250)}
+         "N250-ground": (HELIX_RING_N250_GROUND, HELIX_ENTRY_N250),
+         "HO": (helix_ring_ho(), helix_entry_ho())}

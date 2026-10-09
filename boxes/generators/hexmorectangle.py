@@ -1180,32 +1180,61 @@ class HexmoRectangle(HexmoStepFormatMixin, HexmoBigHoleMixin, HexmoTrackGuideMix
                             label="track guide turnout leg end",
                             arrow="turnout leg side ->")
 
+    def _rectSubwayOnFloor(self, subway):
+        """Whether a --subway runs on the floor: its track height one thickness.
+
+        The bed then lies flat on the floor strip, needing no supports.
+
+        @param subway - ``(height, width)`` from _rectSubway, or None.
+        @returns True for a subway on the floor.
+        """
+        return subway is not None and subway[0] <= self.thickness + 1e-6
+
     def _drawRectSubway(self, subway, cells, H, step_frame):
         """Cut the subway's level bed and its supports (see --subway).
 
-        One bed runs the module's whole length, from the outer face of one end
-        wall to the other's, through the under-deck openings in the end walls
-        and short dividers, its top at the track height; it meets the next
-        module's bed at the joint with no gap.  It is _SUBWAY_BED_CLEAR
-        narrower than the openings, so it slides through them.  Each cell
-        between the end walls and short dividers gets supports standing in
-        the floor strip (the spoke) 15 mm in from each end and evenly between,
-        at most --riser_spacing apart.  Each support is the bed's width wide
-        and as tall as the bed's underside, finger-jointed into the strip below
-        and the bed above, as a HexmoHexagon riser support is.
+        Raised (track height at least 2t): one bed runs the module's whole
+        length, from the outer face of one end wall to the other's, through
+        the under-deck openings in the end walls and short dividers, its top
+        at the track height; it meets the next module's bed at the joint with
+        no gap.  It is _SUBWAY_BED_CLEAR narrower than the openings, so it
+        slides through them.  Each cell between the end walls and short
+        dividers gets supports standing in the floor strip (the spoke) 15 mm
+        in from each end and evenly between, at most --riser_spacing apart.
+        Each support is the bed's width wide and as tall as the bed's
+        underside, finger-jointed into the strip below and the bed above, as a
+        HexmoHexagon riser support is.
+
+        On the floor (track height one thickness): each cell gets a bed lying
+        flat on the floor strip, wall face to wall face, and no supports.  The
+        track crosses each wall on its strip above the floor joint, level with
+        the beds.
 
         @param subway     - ``(height, width)`` from _rectSubway.
         @param cells      - ``(start, end)`` along H of each cell (wall faces).
         @param H          - Inner length (the module frame is centred on it).
         @param step_frame - render's 3D-export frame recorder.
+        @throws ValueError - On a track height between the floor and the
+                             lowest a support fits under.
         """
         t = self.thickness
         height = subway[0]
         width = self._subwayBedWidth(subway[1])
+        if self._rectSubwayOnFloor(subway):
+            for x0, x1 in cells:
+                def floor_bed_cb(x0=x0):
+                    # Flat on the floor strip: its top one thickness up.
+                    step_frame("subway bed", "riser", (-H / 2 + x0, -width / 2, 0.0),
+                               (1, 0, 0), (0, 1, 0))
+
+                self.rectangularWall(x1 - x0, width, "eeee", callback=[floor_bed_cb],
+                                     move="right", label=f"subway bed {x1 - x0:.0f}")
+            return
         body = height - t
-        if body < 2 * t:
+        if body < t:
             raise ValueError(f"--subway {height:g} leaves no room for supports under "
-                             "the bed; raise it.")
+                             f"the bed; use {2 * t:g} or more, or {t:g} to lay it on "
+                             "the floor.")
         # Support positions along H, from the inner face of end wall 1.
         stations = [x0 + x for x0, x1 in cells
                     for x in support_stations(x1 - x0, self.riser_spacing)]
@@ -1557,7 +1586,8 @@ class HexmoRectangle(HexmoStepFormatMixin, HexmoBigHoleMixin, HexmoTrackGuideMix
                     raise
                 # Only the default --subway_ports asked for it: go without.
                 self.under_track = False
-        if under_y is not None and subway is not None and not self.subway_ports:
+        if (under_y is not None and subway is not None and not self.subway_ports
+                and not self._rectSubwayOnFloor(subway)):
             # The subway's bed runs on through the opening, so it reaches a
             # corner radius below the bed's underside, its rounded corners
             # clear of the bed's (with --subway_ports it already runs nearly
@@ -2183,7 +2213,7 @@ class HexmoRectangle(HexmoStepFormatMixin, HexmoBigHoleMixin, HexmoTrackGuideMix
             # across the spoke's sw width and packed clear of the finger slots and
             # the finger-tabbed ends (_fillWeightSpan keeps _BIG_EDGE clearance).
             stations = []
-            if subway is not None:
+            if subway is not None and not self._rectSubwayOnFloor(subway):
                 # The subway's supports slot in here instead of weight holes.
                 bed = self._subwayBedWidth(subway[1])
                 for x0, x1 in subway_cells:
@@ -2193,6 +2223,7 @@ class HexmoRectangle(HexmoStepFormatMixin, HexmoBigHoleMixin, HexmoTrackGuideMix
             if floor_access:
                 draw_floor_access(stations)
             elif subway is not None:
+                # Solid: a subway on the floor lies on this strip.
                 pass
             elif sw >= 2 * self._bigHoleRadius() + 2 * self._MIN_CLEAR:
                 bounds = [0.0] + [div_pos(i) for i in range(n_div_h)] + [H]
@@ -2201,7 +2232,9 @@ class HexmoRectangle(HexmoStepFormatMixin, HexmoBigHoleMixin, HexmoTrackGuideMix
 
         # --access_openings on the floor strip too, where it is wide enough
         # for a finger-width opening between its 12 mm edge bands.
-        floor_access = self.access_openings and sw - 2 * self._ACCESS_BAND >= FINGER_MIN
+        # Not under a subway lying on the floor: the strip carries its beds.
+        floor_access = (self.access_openings and sw - 2 * self._ACCESS_BAND >= FINGER_MIN
+                        and not self._rectSubwayOnFloor(subway))
 
         def draw_floor_access(stations):
             """The floor strip's access openings, in place of its weight holes.

@@ -24,7 +24,10 @@ The heights are introduced by ``~``, not ``=``: the boxes web server splits
 each URL parameter on every ``=``, so a value cannot contain one.
 
 Supports go 15 mm in from each end of the bed and evenly between, no more
-than ``--riser_spacing`` apart.
+than ``--riser_spacing`` apart, wherever the track is at least two thicknesses
+up (a support needs one thickness of body between the floor and the bed).  A
+riser may come down to one thickness, its bed then lying on the floor: below
+two thicknesses it has no supports and slopes on to rest there.
 
 The module name starts with an underscore, so generator discovery skips it.
 """

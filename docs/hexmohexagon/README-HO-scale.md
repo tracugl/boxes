@@ -476,9 +476,9 @@ this section gives the HO numbers.
 | Spur radius | R620 (M2–M5, M6 return); R580 where it shifts (M1); R660 on M6 |
 | Main line radius | R740 (M1–M5); R580 on M6's loop legs |
 | Notch / deck slot / riser bed width | 60 mm: HO coaches (~37 mm) plus overhang on R580–R620 |
-| Run, drop, grade | 4.47 m, 76 mm: 1.25 % on M6, then **1.75 %** |
-| Spur height at the joints (M6/M1 … M5/M6) | 88.0 (on the wall tops), 75.3, 63.1, 51.0, 38.8, 26.6 |
-| Under M6's deck / out at M6 edge 1 | 18.0 by the end of the return slot, then level at 18 to edge 1 |
+| Run, drop, grade | 4.34 m from the M6/M1 joint to M6 edge 1, 82 mm: **1.89 %** all the way (1.25 % on M6's deck before it) |
+| Spur height at the joints (M6/M1 … M5/M6) | 88.0 (on the wall tops), 74.3, 61.2, 48.1, 34.9, 21.8 |
+| Under M6's deck / out at M6 edge 1 | 12.5 where the return's slot ends, then on down to **6 at edge 1: on the floor** |
 | M6 slots | outbound `@327..` (as soon as it is clear of the return below), return `@..490` (clear of the spur's deck stretch, with a 10 mm web between the slots) |
 
 As in N, the spur leaves M6's deck as soon as it is clear of the return running
@@ -486,54 +486,71 @@ below it, sinks one deck thickness (94 → 88) and crosses the M6/M1 joint resti
 on the wall tops, so neither wall there is cut (a flush `--track_openings` entry
 at the deck underside).
 
+**The lower level on the floor.** The spur keeps one steady grade all the way
+round and comes down to the floor at M6's edge 1: its track 6 mm up, on a bed
+lying on the floor strip, level with each wall's strip above the floor joint, so
+the rails cross the walls on that strip. Every module after the helix carries it
+the same way, on flat bed pieces on its floor strip (`--subway 6/60` on a
+HexmoRectangle), with no supports at all. A riser support needs at least one
+thickness between the floor and the bed, so M6's return has supports down to
+12 mm; its bed then slopes the last ~330 mm onto the floor strip at edge 1,
+supported only at its ends. Past the return's slot the track is at most 12.5 mm
+up, leaving the 70 mm train room under the 88 mm deck; through edge 1's wall it
+has 76 mm under the opening's top.
+
 **Supports.** The preset's 150 mm supports can't fit either side of a 60 mm
 slot, so the helix modules use `support_length=110`. The trapezoids have two
 radial supports on the edge-4 half-spoke: `4@64` under the main line and `4@285`
 past the spur (both on the 120 mm spoke). M6 keeps the three clear of its spur,
 `2,4,6`.
 
-**Height.** At h = 100 the lower level ends up 18 mm above the floor panel, which
-is enough for the risers but leaves little else. The spur then levels off at 18
-once it is under M6's deck: going further down would leave no room for a riser.
-At h = 120 everything sits 20 mm higher (lower level at 38) with the same grade;
-the rest of an HO layout would need the same h so that the deck tops line up.
-
-**Settings for each module** (all at h = 100; every module renders as given):
+**Settings for each module** (all at h = 100, with access walls and every subway
+opening at the floor level, `under_track_height=6`; every module renders as given,
+and `python -m boxes.generators._hexmo_step ring.step --ring=HO` exports the
+whole ring in 3D):
 
 **M1**
 
 ```
-http://localhost:4455/HexmoHexagon?radius=500&h=100&thickness=6&edge_width=60&spoke_width=120&bottom=spoke&top=closed&corner_holes=g2&gap_holes=g2&big_hole_shape=rounded_rect&FingerJoint_play=0.1&FingerJoint_extra_length=0.05&track_lines=1&draw_track=1&track_width=30&track_lead_in=23&support_length=110&train_envelope=70&under_track_width=60&trapezoid=1&support_edges=4@64,4@285&track_routes=3:40-5:40,3:-40-5:-80&track_openings=3:-40:88:60,5:80:75.3:60&deck_slots=3:-40-5:-80/60&risers=3:-40-5:-80~88..75.3/60
+http://localhost:4455/HexmoHexagon?radius=500&h=100&thickness=6&edge_width=60&spoke_width=120&bottom=spoke&top=closed&corner_holes=g2&gap_holes=g2&big_hole_shape=rounded_rect&FingerJoint_play=0.1&FingerJoint_extra_length=0.05&track_lines=1&draw_track=1&track_width=30&track_lead_in=23&support_length=110&train_envelope=70&under_track_width=60&under_track_height=6&access_openings=1&subway_ports=1&labels=0&reference=0&trapezoid=1&support_edges=4@64,4@285&track_routes=3:40-5:40,3:-40-5:-80&track_openings=3:-40:88:60,5:80:74.3:60&deck_slots=3:-40-5:-80/60&risers=3:-40-5:-80~88..74.3/60
 ```
 
 **M2**
 
 ```
-http://localhost:4455/HexmoHexagon?radius=500&h=100&thickness=6&edge_width=60&spoke_width=120&bottom=spoke&top=closed&corner_holes=g2&gap_holes=g2&big_hole_shape=rounded_rect&FingerJoint_play=0.1&FingerJoint_extra_length=0.05&track_lines=1&draw_track=1&track_width=30&track_lead_in=23&support_length=110&train_envelope=70&under_track_width=60&trapezoid=1&support_edges=4@64,4@285&track_routes=3:40-5:40,3:-80-5:-80&track_openings=3:-80:75.3:60,5:80:63.1:60&deck_slots=3:-80-5:-80/60&risers=3:-80-5:-80~75.3..63.1/60
+http://localhost:4455/HexmoHexagon?radius=500&h=100&thickness=6&edge_width=60&spoke_width=120&bottom=spoke&top=closed&corner_holes=g2&gap_holes=g2&big_hole_shape=rounded_rect&FingerJoint_play=0.1&FingerJoint_extra_length=0.05&track_lines=1&draw_track=1&track_width=30&track_lead_in=23&support_length=110&train_envelope=70&under_track_width=60&under_track_height=6&access_openings=1&subway_ports=1&labels=0&reference=0&trapezoid=1&support_edges=4@64,4@285&track_routes=3:40-5:40,3:-80-5:-80&track_openings=3:-80:74.3:60,5:80:61.2:60&deck_slots=3:-80-5:-80/60&risers=3:-80-5:-80~74.3..61.2/60
 ```
 
 **M3**
 
 ```
-http://localhost:4455/HexmoHexagon?radius=500&h=100&thickness=6&edge_width=60&spoke_width=120&bottom=spoke&top=closed&corner_holes=g2&gap_holes=g2&big_hole_shape=rounded_rect&FingerJoint_play=0.1&FingerJoint_extra_length=0.05&track_lines=1&draw_track=1&track_width=30&track_lead_in=23&support_length=110&train_envelope=70&under_track_width=60&trapezoid=1&support_edges=4@64,4@285&track_routes=3:40-5:40,3:-80-5:-80&track_openings=3:-80:63.1:60,5:80:51.0:60&deck_slots=3:-80-5:-80/60&risers=3:-80-5:-80~63.1..51.0/60
+http://localhost:4455/HexmoHexagon?radius=500&h=100&thickness=6&edge_width=60&spoke_width=120&bottom=spoke&top=closed&corner_holes=g2&gap_holes=g2&big_hole_shape=rounded_rect&FingerJoint_play=0.1&FingerJoint_extra_length=0.05&track_lines=1&draw_track=1&track_width=30&track_lead_in=23&support_length=110&train_envelope=70&under_track_width=60&under_track_height=6&access_openings=1&subway_ports=1&labels=0&reference=0&trapezoid=1&support_edges=4@64,4@285&track_routes=3:40-5:40,3:-80-5:-80&track_openings=3:-80:61.2:60,5:80:48.1:60&deck_slots=3:-80-5:-80/60&risers=3:-80-5:-80~61.2..48.1/60
 ```
 
 **M4**
 
 ```
-http://localhost:4455/HexmoHexagon?radius=500&h=100&thickness=6&edge_width=60&spoke_width=120&bottom=spoke&top=closed&corner_holes=g2&gap_holes=g2&big_hole_shape=rounded_rect&FingerJoint_play=0.1&FingerJoint_extra_length=0.05&track_lines=1&draw_track=1&track_width=30&track_lead_in=23&support_length=110&train_envelope=70&under_track_width=60&trapezoid=1&support_edges=4@64,4@285&track_routes=3:40-5:40,3:-80-5:-80&track_openings=3:-80:51.0:60,5:80:38.8:60&deck_slots=3:-80-5:-80/60&risers=3:-80-5:-80~51.0..38.8/60
+http://localhost:4455/HexmoHexagon?radius=500&h=100&thickness=6&edge_width=60&spoke_width=120&bottom=spoke&top=closed&corner_holes=g2&gap_holes=g2&big_hole_shape=rounded_rect&FingerJoint_play=0.1&FingerJoint_extra_length=0.05&track_lines=1&draw_track=1&track_width=30&track_lead_in=23&support_length=110&train_envelope=70&under_track_width=60&under_track_height=6&access_openings=1&subway_ports=1&labels=0&reference=0&trapezoid=1&support_edges=4@64,4@285&track_routes=3:40-5:40,3:-80-5:-80&track_openings=3:-80:48.1:60,5:80:34.9:60&deck_slots=3:-80-5:-80/60&risers=3:-80-5:-80~48.1..34.9/60
 ```
 
 **M5**
 
 ```
-http://localhost:4455/HexmoHexagon?radius=500&h=100&thickness=6&edge_width=60&spoke_width=120&bottom=spoke&top=closed&corner_holes=g2&gap_holes=g2&big_hole_shape=rounded_rect&FingerJoint_play=0.1&FingerJoint_extra_length=0.05&track_lines=1&draw_track=1&track_width=30&track_lead_in=23&support_length=110&train_envelope=70&under_track_width=60&trapezoid=1&support_edges=4@64,4@285&track_routes=3:40-5:40,3:-80-5:-80&track_openings=3:-80:38.8:60,5:80:26.6:60&deck_slots=3:-80-5:-80/60&risers=3:-80-5:-80~38.8..26.6/60
+http://localhost:4455/HexmoHexagon?radius=500&h=100&thickness=6&edge_width=60&spoke_width=120&bottom=spoke&top=closed&corner_holes=g2&gap_holes=g2&big_hole_shape=rounded_rect&FingerJoint_play=0.1&FingerJoint_extra_length=0.05&track_lines=1&draw_track=1&track_width=30&track_lead_in=23&support_length=110&train_envelope=70&under_track_width=60&under_track_height=6&access_openings=1&subway_ports=1&labels=0&reference=0&trapezoid=1&support_edges=4@64,4@285&track_routes=3:40-5:40,3:-80-5:-80&track_openings=3:-80:34.9:60,5:80:21.8:60&deck_slots=3:-80-5:-80/60&risers=3:-80-5:-80~34.9..21.8/60
 ```
 
 **M6**
 
 ```
-http://localhost:4455/HexmoHexagon?radius=500&h=100&thickness=6&edge_width=60&spoke_width=120&bottom=spoke&top=closed&corner_holes=g2&gap_holes=g2&big_hole_shape=rounded_rect&FingerJoint_play=0.1&FingerJoint_extra_length=0.05&track_lines=1&draw_track=1&track_width=30&track_lead_in=23&support_length=110&train_envelope=70&under_track_width=60&support_edges=2,4,6&track_routes=1:-80-5:-40,3:-40-1:-80,1:0-5:40&under_track_edges=1&under_track_height=18&track_openings=5:40:88:60,3:-80:26.6:60&deck_slots=1:0-5:40@327../60,3:80-1:0@..490/60&risers=1:0-5:40@327..~94..88/60,3:80-1:0@..490~26.6..18/60,3:80-1:0@490..~18..18/60
+http://localhost:4455/HexmoHexagon?radius=500&h=100&thickness=6&edge_width=60&spoke_width=120&bottom=spoke&top=closed&corner_holes=g2&gap_holes=g2&big_hole_shape=rounded_rect&FingerJoint_play=0.1&FingerJoint_extra_length=0.05&track_lines=1&draw_track=1&track_width=30&track_lead_in=23&support_length=110&train_envelope=70&under_track_width=60&under_track_height=6&access_openings=1&subway_ports=1&labels=0&reference=0&support_edges=2,4,6&track_routes=1:-80-5:-40,3:-40-1:-80,1:0-5:40&under_track_edges=1&track_openings=5:40:88:60,3:-80:21.8:60&deck_slots=1:0-5:40@327../60,3:80-1:0@..490/60&risers=1:0-5:40@327..~94..88/60,3:80-1:0@..490~21.8..12.5/60,3:80-1:0@490..~12.5..6/60
+```
+
+**Entry rectangle** (at M6 edge 1: M6's three deck tracks run straight on at
+±80 and the centre line, the lower level on the floor underneath; no turnouts,
+since `--turnouts` models Peco's N medium turnout only)
+
+```
+http://localhost:4455/HexmoRectangle?radius=500&h=100&thickness=6&spoke_width=120&corner_holes=g2&gap_holes=g2&big_hole_shape=rounded_rect&FingerJoint_play=0.1&FingerJoint_extra_length=0.05&track_lines=1&draw_track=1&track_width=30&track_lead_in=23&under_track_width=60&under_track_height=6&access_openings=1&subway_ports=1&labels=0&reference=0&slot_tolerance=1&num_columns=3&num_rows=3&track_line_count=3&track_spacing=80&under_track=1&subway=6/60
 ```
 
 ### Helper-part text (`--part_text`)

@@ -198,7 +198,10 @@ class HexmoHexagon(HexmoStepFormatMixin, HexmoBigHoleMixin, HexmoTrackGuideMixin
                  "'route[@from..to]~h0..h1[/width]': route and stretch as for "
                  "--deck_slots; h0..h1 the track height (bed top) above the floor "
                  "panel at the stretch's start and end; width default "
-                 "--track_width.  E.g. '3:-17.5-5:-35~72.5..65.2'.")
+                 "--track_width.  E.g. '3:-17.5-5:-35~72.5..65.2'.  Supports stand "
+                 "wherever the track is at least two thicknesses up; a riser may "
+                 "come down to one thickness, its bed then sloping on to rest on "
+                 "the floor (a lower level on the floor).")
         self.argparser.add_argument(
             "--riser_spacing", action="store", type=float, default=80.0,
             help="Largest gap (mm) between neighbouring riser supports.")
@@ -1959,11 +1962,21 @@ class HexmoHexagon(HexmoStepFormatMixin, HexmoBigHoleMixin, HexmoTrackGuideMixin
             if isTrapezoid and not {spec.start, spec.end} <= self._TRAPEZOID_EDGES:
                 raise ValueError(f"{name}: the trapezoid only has edges 3, 4 and 5.")
             for height in (spec.h0, spec.h1):
-                if not 3 * t <= height <= l + t:
+                if not t - 1e-6 <= height <= l + t:
                     raise ValueError(
                         f"{name}: a track height of {height:g} mm is out of range; "
-                        f"it must be from {3 * t:g} (room for a support) up to the "
+                        f"it must be from {t:g} (the bed lying on the floor) up to the "
                         f"deck top, {l + t:g} mm above the floor panel.")
+            # A support needs at least one thickness between the floor and the
+            # bed; lower than that the bed must come all the way down and rest
+            # on the floor, or nothing would hold its end up.
+            low = min(spec.h0, spec.h1)
+            if t + 1e-6 < low < self._riserMinSupport() - 1e-6:
+                raise ValueError(
+                    f"{name}: a track height of {low:g} mm is too low for a support "
+                    f"(at least {self._riserMinSupport():g}) but above the floor; "
+                    f"take it down to {t:g}, where the bed rests on the floor, or up "
+                    f"to {self._riserMinSupport():g}.")
             geometry = route_geometry(spec.start, spec.start_offset, spec.end,
                                       spec.end_offset, apothem, self.track_lead_in)
             total = sum(seg.length for seg in geometry.segments)
@@ -1981,10 +1994,15 @@ class HexmoHexagon(HexmoStepFormatMixin, HexmoBigHoleMixin, HexmoTrackGuideMixin
             for s in support_stations(length, self.riser_spacing):
                 point, direction = point_at(segments, s)
                 height = spec.h0 + (spec.h1 - spec.h0) * s / length
-                stations.append((point, direction, height))
-            if index >= n_given:
+                # Where the bed is too low for a support it slopes on down
+                # to rest on the floor.
+                if height >= self._riserMinSupport() - 1e-6:
+                    stations.append((point, direction, height))
+            if index >= n_given and spec.h0 > t + 1e-6:
                 # A subway's bed runs on through the wall openings at both
                 # ends to the walls' outer faces (the supports stay inside).
+                # On the floor it can't: each wall's strip above the floor
+                # joint is there, and carries the track across instead.
                 segments = self._throughWalls(segments, lo <= 1e-6, hi >= total - 1e-6)
             key = (spec.start, spec.start_offset, spec.end, spec.end_offset,
                    spec.lo, spec.hi, width)
@@ -2000,6 +2018,17 @@ class HexmoHexagon(HexmoStepFormatMixin, HexmoBigHoleMixin, HexmoTrackGuideMixin
                          "bed_in_slot": key in self._slotBedKeys()})
         self._checkRiserFootprints(r, isTrapezoid, plan)
         return plan
+
+    def _riserMinSupport(self):
+        """The lowest track height a riser support fits under (mm).
+
+        A support's body (floor to bed underside) must be at least one
+        thickness, so its finger joints have wood between them: track height
+        = bed thickness + body ≥ 2t.
+
+        @returns ``2 * thickness``.
+        """
+        return 2 * self.thickness
 
     def _throughWalls(self, segments, at_start, at_end):
         """A bed's centreline carried on through the walls it ends at.
