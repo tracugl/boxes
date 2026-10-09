@@ -74,11 +74,11 @@ class TestAccessOpenings:
 
     def test_one_opening_per_cell(self) -> None:
         # Each cell's opening shrinks to keep the Ø6 pilot pairs nearest its
-        # ends: about 132 × 50 mm at radius 250.
+        # ends: about 126 × 50 mm at radius 250.
         openings = big(holes(BASE + ["--access_openings=1"], "long wall 1"))
         assert len(openings) == 2
         for x0, x1, y0, y1 in openings:
-            assert x1 - x0 == pytest.approx(131.7, abs=0.5)
+            assert x1 - x0 == pytest.approx(125.7, abs=0.5)
             assert y1 - y0 == pytest.approx(50, abs=0.5)
 
     def test_keeps_the_end_pilot_pairs_where_they_were(self) -> None:
@@ -139,9 +139,9 @@ class TestEndWalls:
         ports = [b for b in wall if b[1] - b[0] > 20 and b not in openings
                  and (b[0] + b[1]) / 2 == pytest.approx(centre, abs=0.1)]
         assert len(ports) == 1
-        # An upright cable slot near each end (14 wide; 30 tall between the
+        # An upright cable slot near each end (20 wide; 30 tall between the
         # end pilot pair at this size).
-        pills = [b for b in wall if (round(b[1] - b[0]), round(b[3] - b[2])) == (14, 30)]
+        pills = [b for b in wall if (round(b[1] - b[0]), round(b[3] - b[2])) == (20, 30)]
         assert len(pills) == 2
         assert pills[0][1] < openings[0][0] and pills[1][0] > openings[1][1]
 
@@ -247,7 +247,7 @@ class TestHexagonAccess:
         openings = access(holes_)
         assert len(openings) == 2
         for y0, y1, x0, x1 in openings:
-            assert y1 - y0 == pytest.approx(123.9, abs=0.5)
+            assert y1 - y0 == pytest.approx(117.9, abs=0.5)
             assert x1 - x0 == pytest.approx(50, abs=0.5)
         # Either side of the middle, between the pilot pairs kept at each
         # end of each opening (end and centre pairs).
@@ -278,7 +278,7 @@ class TestHexagonAccess:
             for y0, y1, x0, x1 in openings:
                 # The pairs here are too close for the centre ones to stay,
                 # so the end pairs stay and the openings run to the post.
-                assert (y1 - y0, x1 - x0) == pytest.approx((40.3, 50), abs=0.5)
+                assert (y1 - y0, x1 - x0) == pytest.approx((37.3, 50), abs=0.5)
             # The middle post is as wide as the spoke, over its middle.
             assert openings[1][0] - openings[0][1] == pytest.approx(60, abs=0.1)
             assert sorted({a for a, _ in pilots(holes_)}) == pytest.approx([45.0, 201.5], abs=0.1)

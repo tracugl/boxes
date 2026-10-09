@@ -5,7 +5,7 @@ Each wall that joins another module gets the under-deck opening in its middle
 (where the spoke meets it), so a subway can carry on through any joint; an
 access wall carries it in its middle post.  Walls whose middle can't take it
 (a track or spur opening there, a lowered --lower_ground wall) are left as
-they are.  Each joining access wall also gets an upright 14 × 30 mm cable slot
+they are.  Each joining access wall also gets an upright 20 mm wide cable slot
 at each end, between a pilot pair, clear of the subway's supports.
 
 These tests avoid lxml, so they run in the Docker image.
@@ -43,7 +43,7 @@ HEX = ["--radius=250", "--thickness=3", "--h=80", "--edge_width=22", "--spoke_wi
 def ports(cls, args):
     """Part name → (cable slots, subway openings) found in it.
 
-    A slot is a hole 14 wide and at least 30 long (30 between a pilot pair,
+    A slot is a hole 20 wide and at least 30 long (30 between a pilot pair,
     the access openings' height outside one), as ``(x, y, w, h)``: its centre and size in
     the part's frame; an opening one 35 wide and taller than 40, as its
     bounding box ``(x0, x1, y0, y1)``.
@@ -61,7 +61,7 @@ def ports(cls, args):
             pts = [p for seg in loop for p in seg[1:]]
             xs, ys = [p[0] for p in pts], [p[1] for p in pts]
             w, h = max(xs) - min(xs), max(ys) - min(ys)
-            if round(min(w, h)) == 14 and round(max(w, h)) >= 30:
+            if round(min(w, h)) == 20 and round(max(w, h)) >= 30:
                 slots.append(((min(xs) + max(xs)) / 2, (min(ys) + max(ys)) / 2, w, h))
             elif round(min(w, h)) == 35 and max(w, h) > 40:
                 openings.append((min(xs), max(xs), min(ys), max(ys)))
@@ -88,10 +88,11 @@ class TestHexagon:
 
     def test_upright_slots_at_the_wall_ends(self) -> None:
         # Hex wall frame: x up from the floor panel, y along the wall.  One
-        # slot near each end, 14 wide, just outside the end pilot pair (45 mm
-        # in, the g2 corner groups'): 4 mm of wood to the Ø6 pilots puts its
-        # centre 3 + 4 + 7 = 14 mm further out, at 31.  It is as tall as the
-        # access openings: 12 mm of wood above and below.
+        # slot near each end, 20 wide, outside the end pilot pair (45 mm in,
+        # the g2 corner groups') and as far out as it may go: a thickness and
+        # 5 mm in from the wall body's end (at 3), so 3 + 3 + 5 = 11 to 31,
+        # centred at 21, leaving 11 mm of wood to the Ø6 pilots.  It is as
+        # tall as the access openings: 12 mm of wood above and below.
         box = HexmoHexagon()
         box.parseArgs(HEX)
         box.open()
@@ -99,9 +100,9 @@ class TestHexagon:
         slots, _ = ports(HexmoHexagon, HEX)["wall edge 2"]
         assert len(slots) == 2
         for x, y, w, h in slots:
-            assert (w, h) == pytest.approx((l - 24, 14))
+            assert (w, h) == pytest.approx((l - 24, 20))
             assert x == pytest.approx(l / 2)
-        assert sorted(y for _, y, _, _ in slots) == pytest.approx([31, side - 31], abs=0.01)
+        assert sorted(y for _, y, _, _ in slots) == pytest.approx([21, side - 21], abs=0.01)
 
     def test_slots_on_every_joining_wall(self) -> None:
         # Wiring crosses any joint, spur or not; the long wall joins nothing.
@@ -196,8 +197,8 @@ class TestHexagon:
                         max(p[1] for seg in loop for p in seg[1:])) for loop in wall
                        if max(p[0] for seg in loop for p in seg[1:])
                        - min(p[0] for seg in loop for p in seg[1:]) == pytest.approx(50, abs=0.5))
-        # The access openings, not the 14 mm cable slots of the same height.
-        spans = [sp for sp in spans if sp[1] - sp[0] > 20]
+        # The access openings, not the 20 mm cable slots of the same height.
+        spans = [sp for sp in spans if sp[1] - sp[0] > 25]
         assert len(spans) == 2
         assert spans[1][0] - spans[0][1] == pytest.approx(45, abs=0.1)
 

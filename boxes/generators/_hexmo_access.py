@@ -74,6 +74,9 @@ def access_spans(lo, hi, posts):
 # The Ø6 registration pilots kept beside the openings, and the wood left
 # between a pilot and an opening (mm).
 PILOT_CLEAR = 5.0
+# The wood left between a Ø6 pilot and an access opening (mm): more than
+# PILOT_CLEAR, so the pilots, which can't move, keep a sturdy rim.
+ACCESS_PILOT_CLEAR = 8.0
 # Narrowest opening still worth cutting once pilots are kept beside it:
 # room for fingers.
 FINGER_MIN = 35.0
@@ -119,25 +122,27 @@ def end_columns(pilots):
 
     @param pilots - ``[(along, across, r)]`` of the wall's pilot holes.
     @returns ``[(start, end)]`` for :func:`access_spans`: each end column
-             with PILOT_CLEAR of wood round it (empty if there are none).
+             with ACCESS_PILOT_CLEAR of wood round it (empty if there are none).
     """
     if not pilots:
         return []
     r = max(p[2] for p in pilots)
     along = [p[0] for p in pilots]
-    return [(c - r - PILOT_CLEAR, c + r + PILOT_CLEAR) for c in (min(along), max(along))]
+    return [(c - r - ACCESS_PILOT_CLEAR, c + r + ACCESS_PILOT_CLEAR)
+            for c in (min(along), max(along))]
 
 
 def end_pills(pilots, length, width, wood, lo, hi, tall=None):
     """Upright cable slots at a wall's ends, beside or between pilot pairs.
 
     Wiring crosses a joint near the wall's ends, clear of a subway's bed and
-    supports down the middle.  Each slot goes just outside the outermost
-    column of the wall's Ø6 pilots (see end_columns), between it and the wall
-    end, ``wood`` clear of the pilots and level with the middle of the pair,
-    so it lines up through every joint as they do.  There it is ``tall``
-    long, as tall as the access openings, since the pilots don't hem it in.  Where that would bring it
-    nearer the wall end than ``lo``/``hi`` (a column close to the end), it
+    supports down the middle.  Each slot goes outside the outermost column of
+    the wall's Ø6 pilots (see end_columns), between it and the wall end, as far
+    out as ``lo``/``hi`` allow, level with the middle of the pair; it lines up
+    through every joint as the pilots do, since ``lo``/``hi`` are measured from
+    the shared hole pattern.  There it is ``tall`` long, as tall as the access
+    openings, since the pilots don't hem it in.  Where that would leave less
+    than ``wood`` between it and the pilots (a column close to the end), it
     stands in a column instead, centred between the column's outermost two
     pilots: the outermost column, or the next one in where that one is also
     too near the end.  Any pilots between such a pair (the full corner groups
@@ -162,14 +167,17 @@ def end_pills(pilots, length, width, wood, lo, hi, tall=None):
     r = max(p[2] for p in pilots)
     columns = sorted({round(p[0], 6) for p in pilots})
     pills = []
-    outside = r + wood + width / 2           # end column to slot centre
-    for ordered, ok, out in ((columns, lambda c: c - width / 2 >= lo, -outside),
-                             (columns[::-1], lambda c: c + width / 2 <= hi, outside)):
-        # Outside the end column, towards the wall end, where there's room.
+    # Each end: the farthest-out slot centre, and its wood to a column there.
+    for ordered, ok, out, gap in (
+            (columns, lambda c: c - width / 2 >= lo, lo + width / 2,
+             lambda c: (c - r) - (lo + width)),
+            (columns[::-1], lambda c: c + width / 2 <= hi, hi - width / 2,
+             lambda c: (hi - width) - (c + r))):
+        # Outside the end column, as far towards the wall end as allowed.
         end = ordered[0]
         across = sorted(p[1] for p in pilots if abs(p[0] - end) < 1e-6)
-        if len(across) >= 2 and ok(end + out):
-            pills.append((end + out, (across[0] + across[-1]) / 2,
+        if len(across) >= 2 and gap(end) >= wood - 1e-6:
+            pills.append((out, (across[0] + across[-1]) / 2,
                           length if tall is None else tall))
             continue
         for c in ordered[:3]:
@@ -190,7 +198,7 @@ def openings_with_pilots(spans, pilots, middles):
     The pilots come in pairs across the wall (one near the floor, one near
     the deck), so they are grouped by their position along it.  In each
     opening the pairs nearest its two ends stay, the opening shrinks to clear
-    them by PILOT_CLEAR, and any pairs between are dropped.  Where that leaves
+    them by ACCESS_PILOT_CLEAR, and any pairs between are dropped.  Where that leaves
     less than ACCESS_MIN wide (pairs close together, as on a hexagon side
     wall), the pair at the opening's middle end (beside the middle post or a
     divider, listed in ``middles``) is dropped instead and the opening runs to
@@ -203,7 +211,7 @@ def openings_with_pilots(spans, pilots, middles):
     @returns ``(openings, kept)``: the openings ``[(start, end)]`` and the
              pilots ``[(along, across, r)]`` to cut.
     """
-    clear_of = lambda r: r + PILOT_CLEAR
+    clear_of = lambda r: r + ACCESS_PILOT_CLEAR
     columns = sorted({round(a, 3) for a, _, _ in pilots})
     dropped = set()
     openings = []

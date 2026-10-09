@@ -952,23 +952,24 @@ the 250 ring).
 
 Wiring goes through **cable slots** at the wall's ends instead, clear of the
 subway's bed and supports down the middle: every access wall that joins another
-module gets an upright 14 mm wide slot near each end, just outside its end pair
-of Ø6 dowel holes (between them and the wall's end), 4 mm clear of them and as
-tall as the access openings (12 mm of wood above and below, so 14 × 50 mm at
-h=80). On the 250 ring that puts each slot's centre 31 mm in from the end, with
-about 21 mm of wood to the wall's edge. Those dowel
-holes sit in the same place on every hexagon wall and rectangle end wall, so
-the slots line up through every joint. Where the end pair is too close to the
-wall's end for that (15 mm in at the default sizes), a 14 × 30 mm slot stands
-between a pair instead, the next one in (30 mm in), whose two dowel holes then
-need their centres at least 44 mm apart. The short dividers have none (their lane openings
+module gets an upright 20 mm wide slot near each end, outside its end pair of
+Ø6 dowel holes (between them and the wall's end), as tall as the access openings
+(12 mm of wood above and below, so 20 × 50 mm at h=80). It goes as far towards
+the wall's end as it can: a thickness and 5 mm in from the end of the wall's body
+(measured from the shared hole pattern, so it lines up through every joint as the
+dowel holes do). On the 250 ring that is 11 to 31 mm in, leaving 11 mm of wood to
+the dowel holes; on the HO ring, with 6 mm stock, 17 to 37 mm, leaving 5. Where
+the end pair is too close to the wall's end for at least 4 mm of wood (15 mm in
+at the default sizes), a 20 × 30 mm slot stands between a pair instead, the next
+one in (30 mm in), whose two dowel holes then need their centres at least 44 mm
+apart. The short dividers have none (their lane openings
 pass a cable), nor has the trapezoid's long wall (no wiring crosses the ring's
 outside).
 
 **Access openings (`--access_openings`):** each opening leaves 12 mm of wood
 above and below and 15 mm at each end. The wall keeps some of its Ø6 dowel
 holes, at their usual places: in each opening, the pairs nearest its two ends
-stay (5 mm clear of it) and the opening shrinks between them; any pairs in
+stay (8 mm of wood between them and it) and the opening shrinks between them; any pairs in
 between go. Where the pairs are too close together for that, the pair beside
 the middle post goes instead and the opening runs to the post. A wall that
 joins another module always keeps the pair nearest each of its ends: those sit
@@ -976,7 +977,7 @@ in the same place on every hexagon side wall and rectangle end wall, so a dowel
 goes through both walls at every joint.
 
 - **HexmoRectangle:** each long wall gets one opening per cell, about
-  132 × 50 mm at radius 250 and h=80, with four dowel pairs. The long supports
+  126 × 50 mm at radius 250 and h=80, with four dowel pairs. The long supports
   get the same openings, lined up, so you can reach through the outer lanes into
   the subway in the middle lane. The end walls get one per lane, clear of the
   long supports' slots, the middle lane's split round the post; the short
@@ -988,10 +989,10 @@ goes through both walls at every joint.
   rectangles: one per cell, 12 mm of wood along each edge, or, with `--subway`,
   one between each pair of support slots (10 mm clear of them; about 38 × 53 mm
   on the 250 ring's entry). A strip under 59 mm wide keeps its round holes.
-- **Trapezoid:** its long wall gets two, about 124 × 50 mm each, with four
+- **Trapezoid:** its long wall gets two, about 118 × 50 mm each, with four
   dowel pairs; its short walls two each, as the full hexagon's.
 - **Full hexagon:** the walls listed in `--access_edges` (default all six) get
-  two each: about 40 × 50 mm at radius 250, for fingers, with a dowel pair and
+  two each: about 37 × 50 mm at radius 250, for fingers, with a dowel pair and
   a cable slot outside it at each end.
 
 The openings stop 15 mm short of a track or spur opening that cuts into the

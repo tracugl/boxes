@@ -40,7 +40,7 @@ class HexmoUnderTrackMixin:
     # (length up the wall where it stands between a pilot pair, width; mm),
     # and the least wood between it and the pilots beside it.  Outside the
     # pair it runs the access openings' height.
-    _CABLE_SLOT = (30.0, 14.0)
+    _CABLE_SLOT = (30.0, 20.0)
     _CABLE_SLOT_WOOD = 4.0
 
     def _addUnderTrackArgs(self):
@@ -78,8 +78,9 @@ class HexmoUnderTrackMixin:
                  "module gets the under-deck opening (--under_track_height, "
                  "--under_track_width) in its middle, where the spoke meets it, "
                  "so a subway can carry on through any joint; and each such access "
-                 "wall (--access_openings) an upright 14 × 30 mm cable slot at each end, "
-                 "between its end pair of Ø6 pilots, clear of the subway's supports, "
+                 "wall (--access_openings) an upright 20 mm wide cable slot at each "
+                 "end, outside its end pair of Ø6 pilots (as tall as the access "
+                 "openings), clear of the subway's supports, "
                  "lining up through the joint.  On HexmoRectangle the end walls and "
                  "short dividers; on the trapezoid its short walls (and its long "
                  "wall's middle post); on the full hexagon all six.  Walls whose "
@@ -186,7 +187,7 @@ class HexmoUnderTrackMixin:
         @param across  - Its centre up (or down) the wall.
         @param along_x - As for _drawUnderTrackOpening.
         @param length  - Its length up the wall (default the 30 mm of
-                         _CABLE_SLOT); it is _CABLE_SLOT's 14 mm wide.
+                         _CABLE_SLOT); it is _CABLE_SLOT's 20 mm wide.
         """
         default, width = self._CABLE_SLOT
         length = default if length is None else length
