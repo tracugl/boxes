@@ -411,31 +411,26 @@ class HexmoHexagon(HexmoStepFormatMixin, HexmoBigHoleMixin, HexmoTrackGuideMixin
         # One identical wall per supported half-spoke (see _supportLayout).
         n_supports = len(self._supportLayout(self.radius, isTrapezoid))
 
-        def draw_subway_holes(body):
-            """--access_openings: one subway-shaped opening in place of the holes.
+        def draw_support_opening(body):
+            """--access_openings: one large opening in place of the holes.
 
-            Centred on the support, so where a track runs through the middle of
-            a support (a turned one across its half-spoke) the opening is on
-            its line.  It runs from one thickness above the floor to one under
-            the deck, as the walls' subway openings do (no up side), and is as
-            wide as the support allows while keeping a post at each end to
-            carry the deck: ACCESS_POST, or three thicknesses where that is
-            more.  It is never narrower than the subway opening
-            (--under_track_width); then the posts shrink, down to three
-            thicknesses each.  Corners rounded as the walls' openings are.
+            A rounded rectangle centred on the support (so it lines up with a
+            track through the middle of a turned support), with the same wood
+            all round it to keep the support stiff: ACCESS_POST, or three
+            thicknesses where that is more.  Corners rounded as the walls'
+            openings are.
 
             @param body - The support's height between its finger joints.
-            @returns True when drawn; False when even a subway-wide opening
-                     leaves less than three thicknesses each side (or the
+            @returns True when drawn; False when the opening would be narrower
+                     than a cable slot (_CABLE_SLOT's width) either way (or the
                      access openings are off), leaving the usual holes.
             """
-            t = self.thickness
-            width = max(self.under_track_width, sl - 2 * max(ACCESS_POST, 3 * t))
-            span = body - 2 * t
-            if not self.access_openings or span <= 0 or (sl - width) / 2 < 3 * t:
+            rim = max(ACCESS_POST, 3 * self.thickness)
+            width, height = sl - 2 * rim, body - 2 * rim
+            if not self.access_openings or min(width, height) < self._CABLE_SLOT[1]:
                 return False
-            corner = max(0.0, self.big_hole_roundness) * min(width, span) / 2
-            self.rectangularHole(sl / 2, body / 2, width, span, r=corner,
+            corner = max(0.0, self.big_hole_roundness) * min(width, height) / 2
+            self.rectangularHole(sl / 2, body / 2, width, height, r=corner,
                                  center_x=True, center_y=True)
             return True
 
@@ -452,7 +447,7 @@ class HexmoHexagon(HexmoStepFormatMixin, HexmoBigHoleMixin, HexmoTrackGuideMixin
             Fires at the bottom-left origin (edge 0) of each rectangularWall
             call.  The x-axis runs right along sl and y runs up along h.
             """
-            if draw_subway_holes(h):
+            if draw_support_opening(h):
                 return
             sp = self._SPACER
 
@@ -511,7 +506,7 @@ class HexmoHexagon(HexmoStepFormatMixin, HexmoBigHoleMixin, HexmoTrackGuideMixin
 
             @param hh - The shortened support's height (mm).
             """
-            if draw_subway_holes(hh):
+            if draw_support_opening(hh):
                 return
             r2, sp = self._R2, self._SPACER
             if hh < 2 * (r2 + MIN_CLEAR):

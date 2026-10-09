@@ -330,8 +330,9 @@ class TestHexagonAccess:
 
 
 class TestSupports:
-    """Access walls give each hexagon support one subway-shaped opening,
-    centred on it, in place of its round holes."""
+    """Access walls give each hexagon support one large rounded-rectangle
+    opening, centred on it, with the same wood all round, in place of its
+    round holes."""
 
     @staticmethod
     def support_holes(args):
@@ -343,20 +344,20 @@ class TestSupports:
         return [(min(p[0] for p in q), max(p[0] for p in q), min(p[1] for p in q),
                  max(p[1] for p in q)) for q in out]
 
-    @pytest.mark.parametrize("args, width, post", [
-        (HELIX_RING_N250["M6"], 35, 10),       # a 55 mm support: subway-wide
-        ([], 114, 18),                          # 150 mm, 6 mm stock: 3t posts
+    @pytest.mark.parametrize("args, rim", [
+        (HELIX_RING_N250["M6"], 15),           # 3 mm stock: 15 mm all round
+        ([], 18),                              # 6 mm stock: three thicknesses
     ], ids=["n250", "default"])
-    def test_one_centred_opening(self, args, width, post) -> None:
+    def test_one_centred_opening_with_an_even_rim(self, args, rim) -> None:
         outline, *holes = self.support_holes(args)
         (x0, x1, y0, y1), = holes
-        length = outline[1] - outline[0]
-        assert (x1 - x0, x0, length - x1) == pytest.approx((width, post, post), abs=0.05)
-        # One thickness from the floor and the deck: no up side.
         box = HexmoHexagon()
         box.parseArgs(args)
         t = box.thickness
-        assert y0 == pytest.approx(t) and (outline[3] - t) - y1 == pytest.approx(t)
+        # The outline's y runs over the finger tabs (t each end).
+        body = (outline[2] + t, outline[3] - t)
+        assert (x0 - outline[0], outline[1] - x1) == pytest.approx((rim, rim), abs=0.05)
+        assert (y0 - body[0], body[1] - y1) == pytest.approx((rim, rim), abs=0.05)
 
     def test_off_keeps_the_round_holes(self) -> None:
         # A 55 mm support's usual hole is one 25 mm medium hole.
