@@ -28,7 +28,9 @@ from hexmo_testutil import IGNORE_CORE_MATMUL
 pytestmark = IGNORE_CORE_MATMUL
 
 from boxes.generators import _hexmo_step
-from boxes.generators._hexmo_helix_ring import RINGS, helix_entry_ho, helix_ring_ho
+from boxes.generators._hexmo_helix_ring import (
+    RINGS, helix_entry_ho, helix_ring_ho, helix_ring_ho_ground,
+)
 from boxes.generators.hexmohexagon import HexmoHexagon
 from boxes.generators.hexmorectangle import HexmoRectangle
 
@@ -120,6 +122,62 @@ class TestRing:
                and (common := b.solid & p.solid)
                and sum(x.volume for x in common.solids()) > 1.0]
         assert bad == []
+
+
+class TestGround:
+    """The HO ring opened up for scenery (``--ring=HO-ground``)."""
+
+    GROUND = helix_ring_ho_ground()
+
+    @pytest.mark.parametrize("name", ["M1", "M2", "M3", "M4", "M5", "M6"])
+    def test_module_renders(self, name) -> None:
+        args = self.GROUND[name]
+        assert "--lower_ground=21.8" in args and "--upper_edge_gap=25" in args
+        box = HexmoHexagon()
+        box.parseArgs(args)
+        box.open()
+        box.render()
+        box.close()
+
+    def test_lower_ground_meets_the_spur_at_its_lowest_joint(self) -> None:
+        # 21.8 is the spur's height at the M5/M6 joint; any higher and the
+        # ground would stand above the spur where M5 and M6 step their walls.
+        args = [a.replace("--lower_ground=21.8", "--lower_ground=22") for a in self.GROUND["M5"]]
+        box = HexmoHexagon()
+        box.parseArgs(args)
+        box.open()
+        with pytest.raises(ValueError, match="above the spur"):
+            box.render()
+
+    def test_trapezoid_support_turned_under_the_main_line(self) -> None:
+        # A radial support at 64 would straddle the deck's cut-back edge.
+        assert "--support_edges=4@285,4@60/90" in self.GROUND["M3"]
+        args = [a.replace("4@285,4@60/90", "4@64,4@285") for a in self.GROUND["M3"]]
+        box = HexmoHexagon()
+        box.parseArgs(args)
+        box.open()
+        with pytest.raises(ValueError, match="neither under the lower plate"):
+            box.render()
+
+    def test_in_the_ring_export(self) -> None:
+        assert RINGS["HO-ground"][0] == self.GROUND
+
+    def test_tracks_meet_at_every_joint(self) -> None:
+        pytest.importorskip("build123d")
+        ends = _hexmo_step.ring_track_ends("HO-ground")
+        unmatched = sorted(
+            (m, round(z, 1)) for i, (m, p, z) in enumerate(ends)
+            if not any(j != i and mm != m and math.dist(pp, p) < 0.5 and abs(zz - z) < 0.05
+                       for j, (mm, pp, zz) in enumerate(ends)))
+        assert unmatched == [("M6", 6.0), ("entry", 94.0), ("entry", 94.0), ("entry", 94.0)]
+
+    @pytest.mark.parametrize("name", ["M1", "M6"])
+    def test_builds_in_3d(self, name) -> None:
+        pytest.importorskip("build123d")
+        box = HexmoHexagon()
+        box.parseArgs(self.GROUND[name])
+        parts = _hexmo_step.exact_hexmo_parts(box, clearance="none")
+        assert all(p.solid.is_valid for p in parts if p.kind not in ("track", "clearance"))
 
 
 class TestOnTheFloor:

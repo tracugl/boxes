@@ -238,6 +238,33 @@ def helix_ring_ho():
     return ring
 
 
+# The HO ring opened up for scenery (see with_ground): the lower ground at the
+# spur's lowest trapezoid joint (M5/M6, 21.8), so it meets the track there and
+# the spur climbs above it everywhere else; the decks stop 25 mm inside the main
+# line (N's 15, scaled to HO's 30 mm track).  The trapezoids' support under the
+# main line is turned across the half-spoke (60 mm out, just inside the main
+# line, which crosses at 68): a radial one there would straddle the deck's new
+# edge.
+_HO_GROUND = 21.8
+_HO_EDGE_GAP = 25
+_HO_GROUND_SUPPORTS = "4@285,4@60/90"
+
+
+def helix_ring_ho_ground():
+    """The HO ring with upper and lower ground (--lower_ground 21.8).
+
+    @returns ``{"M1": [...], …, "M6": [...]}``: HexmoHexagon options.
+    """
+    ring = {}
+    for name, args in helix_ring_ho().items():
+        if name != "M6":
+            args = [f"--support_edges={_HO_GROUND_SUPPORTS}" if a.startswith("--support_edges")
+                    else a for a in args]
+        ring[name] = args + [f"--lower_ground={_HO_GROUND:g}",
+                             f"--upper_edge_gap={_HO_EDGE_GAP:g}"]
+    return ring
+
+
 def helix_entry_ho():
     """The HO ring's entry rectangle at M6 edge 1.
 
@@ -267,4 +294,5 @@ RINGS = {"N": (HELIX_RING_N, HELIX_ENTRY_N),
          "N-ground": (HELIX_RING_N_GROUND, HELIX_ENTRY_N),
          "N250": (HELIX_RING_N250, HELIX_ENTRY_N250),
          "N250-ground": (HELIX_RING_N250_GROUND, HELIX_ENTRY_N250),
-         "HO": (helix_ring_ho(), helix_entry_ho())}
+         "HO": (helix_ring_ho(), helix_entry_ho()),
+         "HO-ground": (helix_ring_ho_ground(), helix_entry_ho())}
