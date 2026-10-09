@@ -27,8 +27,12 @@ import re
 
 from boxes import Boxes, edges, boolarg, holeCol, restore
 from boxes.Color import *
+from boxes.generators._hexmo_access import (
+    ACCESS_BAND, access_pair, check_access_size, openings_with_pilots, recorded_holes,
+)
 from boxes.generators._hexmo_big_holes import HexmoBigHoleMixin
 from boxes.generators._hexmo_lower_ground import HexmoLowerGroundMixin
+from boxes.generators._hexmo_subway import HexmoSubwayMixin
 from boxes.generators._hexmo_step_format import HexmoStepFormatMixin
 from boxes.generators import _hexmo_step
 from boxes.generators._hexmo_track_guide import HexmoTrackGuideMixin
@@ -53,7 +57,7 @@ from boxes.generators._hexmo_track_routes import (
 
 class HexmoHexagon(HexmoStepFormatMixin, HexmoBigHoleMixin, HexmoTrackGuideMixin,
                    HexmoTrackTemplateMixin, HexmoUnderTrackMixin, HexmoLowerGroundMixin,
-                   Boxes):
+                   HexmoSubwayMixin, Boxes):
     """Box with a regular hexagon or half hexagon as the base. """
 
     ui_group = "Box"
@@ -330,6 +334,24 @@ class HexmoHexagon(HexmoStepFormatMixin, HexmoBigHoleMixin, HexmoTrackGuideMixin
         self._addTrackTemplateArgs()
         # --lower_ground and --upper_edge_gap (see _hexmo_lower_ground).
         self._addLowerGroundArgs()
+        # --subway: a level lower track under the deck (see _hexmo_subway).
+        self._addSubwayArgs()
+        self.argparser.add_argument(
+            "--access_openings", action="store", type=boolarg, default=False,
+            help="Hand access, e.g. to re-rail a train under the deck: walls that "
+                 "join no other module get large rounded-rectangle openings in place "
+                 "of their registration and weight holes: two per wall, either side "
+                 "of a middle post as wide as --spoke_width (over the spoke).  On the "
+                 "trapezoid, its long wall; on the full hexagon, the walls on "
+                 "--access_edges.  Each leaves 12 mm of wood above and below and "
+                 "15 mm at each end.")
+        self.argparser.add_argument(
+            "--access_edges", action="store", type=str, default="1,3,5",
+            help="With --access_openings on the full hexagon: the walls that get "
+                 "them, comma-separated (numbered as for --track_routes).  Pick walls "
+                 "that join no other module: they lose their registration holes.  A "
+                 "wall with a track or under-deck opening, or a --lower_ground step, "
+                 "is refused.  Default 1,3,5.")
         # --format step and --step_clearance (see _hexmo_step_format).
         self._addStepFormat()
 
@@ -824,7 +846,7 @@ class HexmoHexagon(HexmoStepFormatMixin, HexmoBigHoleMixin, HexmoTrackGuideMixin
                               + ([(under_rect[2], under_rect[3])] if under_rect else []))
             if under_rect:
                 self._drawUnderTrackOpening(s / 2, under_rect[0], under_rect[1],
-                                            along_x=False)
+                                            along_x=False, floor=0.0)
             for (x0, x1, y0, y1), closed in openings:
                 # Notches are cut by the wall's top edge, not here.
                 if closed:
@@ -1364,13 +1386,15 @@ class HexmoHexagon(HexmoStepFormatMixin, HexmoBigHoleMixin, HexmoTrackGuideMixin
         """Edges whose side walls get the under-deck track opening.
 
         @param isTrapezoid - True for the half-hexagon (edges 3, 4, 5 only).
-        @returns Sorted list of edge numbers (empty when the option is unset).
+        @returns Sorted list of edge numbers: --under_track_edges and any
+                 walls --subway_ports opens (empty when neither is set).
         @throws ValueError - On anything but comma-separated edge numbers 1–6,
                              or an edge the trapezoid does not have.
         """
         text = self.under_track_edges.strip()
         if not text:
-            return []
+            # --subway_ports may still open some walls.
+            return sorted(self._subwayPortEdges(isTrapezoid))
         edges = set()
         for item in text.split(","):
             item = item.strip()
@@ -1382,7 +1406,35 @@ class HexmoHexagon(HexmoStepFormatMixin, HexmoBigHoleMixin, HexmoTrackGuideMixin
             raise ValueError(
                 "--under_track_edges: the trapezoid only has edges 3, 4 and 5 "
                 f"(got {', '.join(str(e) for e in sorted(edges))}).")
-        return sorted(edges)
+        return sorted(edges | self._subwayPortEdges(isTrapezoid))
+
+    def _subwayPortEdges(self, isTrapezoid):
+        """The walls --subway_ports opens up (see _hexmo_under_track).
+
+        Every wall that joins another module (all six on the full hexagon,
+        the short walls 3, 4 and 5 on the trapezoid), less those that can't
+        take an opening in their middle: a track or spur opening (including a
+        --subway's) too close to it, or a --lower_ground step or lowered wall.
+        Walls with --access_openings are left out here too, but get their
+        port in the middle post between their openings instead (see
+        draw_access_with_pilots in render).
+
+        @param isTrapezoid - True for the half-hexagon.
+        @returns Set of edges.
+        """
+        if not self.subway_ports:
+            return set()
+        edges = set(self._TRAPEZOID_EDGES) if isTrapezoid else set(range(1, 7))
+        if self.lower_ground > 0:
+            edges -= {3, 4, 5} if isTrapezoid else {3, 5}
+        if self.access_openings and not isTrapezoid:
+            edges -= {int(e) for e in self.access_edges.split(",") if e.strip().isdigit()}
+        reach = self.under_track_width / 2 + self._UNDER_TRACK_CLEAR
+        for o in parse_track_openings(self._withSubwayOpenings(self.track_openings),
+                                      self.under_track_width):
+            if abs(o.position) < reach + o.width / 2:
+                edges.discard(o.edge)
+        return edges
 
     # Deck side index → edge number, in the order the deck panel draws its
     # sides (anticlockwise from the bottom).  The trapezoid's third side is
@@ -1406,7 +1458,8 @@ class HexmoHexagon(HexmoStepFormatMixin, HexmoBigHoleMixin, HexmoTrackGuideMixin
         """
         t = self.thickness
         plan = {}
-        for opening in parse_track_openings(self.track_openings,
+        # --subway adds its wall openings (see _hexmo_subway).
+        for opening in parse_track_openings(self._withSubwayOpenings(self.track_openings),
                                             self.under_track_width):
             if isTrapezoid and opening.edge not in self._TRAPEZOID_EDGES:
                 raise ValueError(
@@ -1426,6 +1479,48 @@ class HexmoHexagon(HexmoStepFormatMixin, HexmoBigHoleMixin, HexmoTrackGuideMixin
             notch = opening.height + self.train_envelope > l - t
             plan.setdefault(opening.edge, []).append((opening, notch))
         return plan
+
+    def _accessEdges(self, isTrapezoid, under_edges, opening_plan, lower_plan,
+                     side_orig, side, l):
+        """The full hexagon's walls with --access_openings, checked.
+
+        @param isTrapezoid  - True for the half-hexagon (its long wall gets them).
+        @param under_edges  - Edges with the under-deck opening.
+        @param opening_plan - Edges with --track_openings.
+        @param lower_plan   - The --lower_ground plan, or None.
+        @param side_orig    - Wall reference length; ``side`` its body length.
+        @param l            - Wall body height.
+        @returns Set of edges (empty on the trapezoid or when off).
+        @throws ValueError - On a malformed --access_edges, an edge with a track
+                             or under-deck opening or a lower-ground step, or an
+                             opening too small for a hand.
+        """
+        if not self.access_openings:
+            return set()
+        height = l - 2 * ACCESS_BAND
+        if isTrapezoid:
+            side_long = 2 * side_orig - 3 * self.thickness
+            (y0, y1), _ = access_pair(0, side_long, self.spoke_width)
+            check_access_size(y1 - y0, height, "the long wall")
+            return set()
+        try:
+            edges = {int(e) for e in self.access_edges.split(",") if e.strip()}
+        except ValueError:
+            raise ValueError(f"--access_edges: {self.access_edges!r} is not a list of "
+                             "edges 1–6, e.g. '1,3,5'.") from None
+        if not edges <= set(range(1, 7)):
+            raise ValueError(f"--access_edges: {self.access_edges!r} is not a list of "
+                             "edges 1–6, e.g. '1,3,5'.")
+        busy = set(under_edges) | set(opening_plan) | (
+            set(lower_plan.walls) if lower_plan is not None else set())
+        if edges & busy:
+            raise ValueError(
+                f"--access_edges: the wall on edge {min(edges & busy)} has a track or "
+                "under-deck opening (or a --lower_ground step); choose walls that join "
+                "no other module.")
+        (y0, y1), _ = access_pair(0, side, self.spoke_width)
+        check_access_size(y1 - y0, height, "a side wall")
+        return edges
 
     def _deckEdges(self, char, isTrapezoid, deck_length, wall_length, notches):
         """Deck edge types, split where a wall below is notched.
@@ -1715,7 +1810,7 @@ class HexmoHexagon(HexmoStepFormatMixin, HexmoBigHoleMixin, HexmoTrackGuideMixin
                  for sl in parse_deck_slots(self.deck_slots, self.under_track_width)}
         risers = {(rs.start, rs.start_offset, rs.end, rs.end_offset, rs.lo, rs.hi,
                    rs.width or self.track_width)
-                  for rs in parse_risers(self.risers)}
+                  for rs in parse_risers(self._withSubwayRisers(self.risers))}
         # With --lower_ground the spur's slot leaves the deck with the rest of
         # the inner side, so it is no riser's bed; the riser gets its own.
         return (slots & risers) - {self._lower_split_key}
@@ -1809,7 +1904,8 @@ class HexmoHexagon(HexmoStepFormatMixin, HexmoBigHoleMixin, HexmoTrackGuideMixin
                              another riser's track, on a support wall's slot,
                              or against a side wall.
         """
-        specs = parse_risers(self.risers)
+        # --subway adds a level riser along each of its routes.
+        specs = parse_risers(self._withSubwayRisers(self.risers))
         if not specs:
             return []
         t = self.thickness
@@ -2660,10 +2756,15 @@ class HexmoHexagon(HexmoStepFormatMixin, HexmoBigHoleMixin, HexmoTrackGuideMixin
         # with an under-deck or track opening first (labelled with their edge,
         # since they are no longer interchangeable), then plain ones.
         under_edges = self._underTrackEdges(isTrapezoid)
+        # --access_openings: the full hexagon's chosen walls (the trapezoid's
+        # goes in its long wall instead).
+        access_edges = self._accessEdges(isTrapezoid, under_edges, opening_plan,
+                                         lower_plan, side_orig, side, l)
         # With --lower_ground the trapezoid's edge-4 wall is lowered, so it
-        # is no longer interchangeable with the others either.
+        # is no longer interchangeable with the others either; nor is a wall
+        # with access openings.
         feature_edges = sorted(set(under_edges) | set(opening_plan)
-                               | ({4} if lower_trapezoid else set()))
+                               | ({4} if lower_trapezoid else set()) | access_edges)
         n_standard = 3 if isTrapezoid else n
         standard_walls = ([(e, e in under_edges) for e in feature_edges]
                           + [(None, False)] * (n_standard - len(feature_edges)))
@@ -2724,6 +2825,22 @@ class HexmoHexagon(HexmoStepFormatMixin, HexmoBigHoleMixin, HexmoTrackGuideMixin
                                            or (lower_trapezoid and edge == 4)):
                 draw_lowered_wall(edge, under_track)
                 return
+            if edge in access_edges:
+                def access_holes(edge=edge):
+                    self.moveTo(0, -self.thickness)
+                    wall_frame(edge)
+                    # Two openings either side of a spoke-wide middle post (hole
+                    # frame: x up the wall, y along it; the body runs from t to
+                    # side_orig − t, its middle over the floor's spoke), keeping
+                    # Ø6 pilots where the wall normally has them.
+                    draw_access_with_pilots(
+                        lambda: self.drawAlignmentHoles(side_orig, l, "A"),
+                        access_pair(self.thickness, side_orig - self.thickness,
+                                    self.spoke_width), side_orig / 2)
+
+                self.polygonWall(borders0, edge=e0, correct_corners=False, move="right",
+                                 callback=[None, access_holes], label=f"edge {edge}")
+                return
             wall_edges = e0
             if edge in notches:
                 # Segment 6 of borders0 is the top (deck) edge; split it round
@@ -2748,8 +2865,59 @@ class HexmoHexagon(HexmoStepFormatMixin, HexmoBigHoleMixin, HexmoTrackGuideMixin
         # side_long = 2*side_orig - 2t this is -t; for the shortened
         # side_long = 2*side_orig - 3t it is -1.5t.  Deriving m from side_long
         # means the holes never move when the trim changes.
+        def draw_access_opening(y0, y1):
+            """One access opening across the wall body, in the hole frame."""
+            dx, dy = l - 2 * ACCESS_BAND, y1 - y0
+            r = max(0.0, self.big_hole_roundness) * min(dx, dy) / 2
+            self.rectangularHole(l / 2, (y0 + y1) / 2, dx, dy, r=r,
+                                 center_x=True, center_y=True)
+
+        def draw_access_with_pilots(normal_holes, spans, middle):
+            """Access openings that keep the wall's Ø6 pilots beside them.
+
+            The wall's normal holes are worked out (not cut) to find its Ø6
+            pilots; the openings then shrink to keep the pairs nearest their
+            ends (see openings_with_pilots), and those pilots are cut.  With
+            --subway_ports the middle post also gets the subway opening and
+            its cable slot.
+
+            @param normal_holes - Draws the wall's normal holes (hole frame).
+            @param spans        - Full-size openings ``[(start, end)]`` along it.
+            @param middle       - The middle post's centre along the wall.
+            """
+            with self.saved_context():
+                holes = recorded_holes(self, normal_holes)
+            # Hole frame: x up the wall, y along it.
+            pilots = [(y, x, r) for x, y, r in holes if abs(r - self._R3) < 1e-6]
+            openings, kept = openings_with_pilots(spans, pilots, [middle])
+            for y0, y1 in openings:
+                draw_access_opening(y0, y1)
+            for y, x, r in kept:
+                self.hole(x, y, r)
+            if self.subway_ports:
+                # --subway_ports: the subway opening and its cable slot in the
+                # middle post, where the spoke meets the wall.
+                if self.spoke_width < self.under_track_width + 2 * self._UNDER_TRACK_CLEAR:
+                    raise ValueError(
+                        f"--subway_ports: the {self.under_track_width:g} mm subway opening "
+                        f"needs a middle post of at least "
+                        f"{self.under_track_width + 2 * self._UNDER_TRACK_CLEAR:g} mm between "
+                        f"the access openings, but --spoke_width is {self.spoke_width:g}.")
+                bottom, top = self._underTrackSpan(l)
+                self._drawUnderTrackOpening(middle, bottom, top, along_x=False, floor=0.0)
+
         def draw_aligned_holes_long():
             self.moveTo(0, side_long / 2 - side_orig)
+            if self.access_openings:
+                # Two openings either side of a spoke-wide middle post (on the
+                # hexagon's centre line).
+                self._stepFrame("long wall", "wall", (side_orig, 0.0, 0.0), (0, 0, 1),
+                                (-1, 0, 0), (0.0, self.thickness))
+                draw_access_with_pilots(
+                    lambda: self.drawAlignmentHolesLong(2 * side_orig, l, "A"),
+                    access_pair(side_orig - side_long / 2, side_orig + side_long / 2,
+                                self.spoke_width), side_orig)
+                return
             # The long wall's hole frame: x up, y along it from +x towards -x,
             # its centre (side_orig) on the centre line; placed on its outer
             # face (y = 0), it is t thick towards the deck (-y).
