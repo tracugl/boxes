@@ -495,7 +495,7 @@ class HexmoRectangle(HexmoStepFormatMixin, HexmoBigHoleMixin, HexmoTrackGuideMix
                  "--spoke_width that carries the subway opening (--subway_ports).  "
                  "The walls' weight holes go, but the Ø6 registration pilots beside "
                  "the openings stay, so the end walls still line up with the "
-                 "HexmoHexagon they join.  Each leaves 12 mm of wood above and "
+                 "HexmoHexagon they join.  Each leaves 15 mm of wood above and "
                  "below and 15 mm at each end of the cell.  Walls too small for a "
                  "hand (about 70 × 40 mm) keep their normal holes.  Off gives the "
                  "original walls.")
@@ -2232,7 +2232,7 @@ class HexmoRectangle(HexmoStepFormatMixin, HexmoBigHoleMixin, HexmoTrackGuideMix
                     self._fillWeightSpan(g_lo, g_hi, clusters=False, y_centre=sw / 2)
 
         # --access_openings on the floor strip too, where it is wide enough
-        # for a finger-width opening between its 12 mm edge bands.
+        # for a finger-width opening between its 15 mm edge bands.
         # Not under a subway lying on the floor: the strip carries its beds.
         floor_access = (self.access_openings and sw - 2 * self._ACCESS_BAND >= FINGER_MIN
                         and not self._rectSubwayOnFloor(subway))

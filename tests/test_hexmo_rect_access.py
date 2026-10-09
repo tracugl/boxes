@@ -74,12 +74,12 @@ class TestAccessOpenings:
 
     def test_one_opening_per_cell(self) -> None:
         # Each cell's opening shrinks to keep the Ø6 pilot pairs nearest its
-        # ends: about 126 × 50 mm at radius 250.
+        # ends: about 126 × 44 mm at radius 250.
         openings = big(holes(BASE + ["--access_openings=1"], "long wall 1"))
         assert len(openings) == 2
         for x0, x1, y0, y1 in openings:
             assert x1 - x0 == pytest.approx(125.7, abs=0.5)
-            assert y1 - y0 == pytest.approx(50, abs=0.5)
+            assert y1 - y0 == pytest.approx(44, abs=0.5)
 
     def test_keeps_the_end_pilot_pairs_where_they_were(self) -> None:
         # The pairs at each end of each opening stay at their usual places
@@ -131,7 +131,7 @@ class TestEndWalls:
 
     def test_end_wall_openings_and_port(self) -> None:
         wall = holes(self.DEFAULT, "end wall 1")
-        openings = [b for b in big(wall) if b[3] - b[2] > 60]
+        openings = [b for b in big(wall) if b[3] - b[2] > 50]
         # The two outer lanes (the middle lane's room is taken by the post).
         assert len(openings) == 2
         # The subway opening and its cable slot, on the centre line.
@@ -147,8 +147,8 @@ class TestEndWalls:
 
     def test_dividers_take_the_full_lane(self) -> None:
         # Dividers register to nothing, so their openings needn't keep pilots.
-        end = [b for b in big(holes(self.DEFAULT, "end wall 1")) if b[3] - b[2] > 60]
-        div = [b for b in big(holes(self.DEFAULT, "divider 1")) if b[3] - b[2] > 60]
+        end = [b for b in big(holes(self.DEFAULT, "end wall 1")) if b[3] - b[2] > 50]
+        div = [b for b in big(holes(self.DEFAULT, "divider 1")) if b[3] - b[2] > 50]
         assert len(div) == 2
         for e, d in zip(end, div):
             assert d[0] <= e[0] and d[1] >= e[1]
@@ -185,7 +185,7 @@ class TestFloorStrip:
         openings = big(holes(["--access_openings=1"], "spoke"))
         assert len(openings) == 5
         for x0, x1, y0, y1 in openings:
-            assert (y0, y1) == pytest.approx((12, 108), abs=0.05)
+            assert (y0, y1) == pytest.approx((15, 105), abs=0.05)
             assert x1 - x0 == pytest.approx(136, abs=0.5)
 
     def test_between_the_subway_supports(self) -> None:
@@ -235,9 +235,10 @@ def plain(args):
 
 
 def access(holes_):
-    """The access openings alone: full height (50 mm at h=80), not the subway
-    opening or its cable slot."""
-    return [b for b in big(holes_) if b[3] - b[2] == pytest.approx(50, abs=0.5)]
+    """The access openings alone: full height (44 mm at h=80, 15 mm of wood
+    above and below), not the subway opening; wider than a cable slot."""
+    return [b for b in big(holes_) if b[3] - b[2] == pytest.approx(44, abs=0.5)
+            and b[1] - b[0] > 25]
 
 
 class TestHexagonAccess:
@@ -248,7 +249,7 @@ class TestHexagonAccess:
         assert len(openings) == 2
         for y0, y1, x0, x1 in openings:
             assert y1 - y0 == pytest.approx(117.9, abs=0.5)
-            assert x1 - x0 == pytest.approx(50, abs=0.5)
+            assert x1 - x0 == pytest.approx(44, abs=0.5)
         # Either side of the middle, between the pilot pairs kept at each
         # end of each opening (end and centre pairs).
         assert sorted({a for a, _ in pilots(holes_)}) == pytest.approx(
@@ -278,7 +279,7 @@ class TestHexagonAccess:
             for y0, y1, x0, x1 in openings:
                 # The pairs here are too close for the centre ones to stay,
                 # so the end pairs stay and the openings run to the post.
-                assert (y1 - y0, x1 - x0) == pytest.approx((37.3, 50), abs=0.5)
+                assert (y1 - y0, x1 - x0) == pytest.approx((37.3, 44), abs=0.5)
             # The middle post is as wide as the spoke, over its middle.
             assert openings[1][0] - openings[0][1] == pytest.approx(60, abs=0.1)
             assert sorted({a for a, _ in pilots(holes_)}) == pytest.approx([45.0, 201.5], abs=0.1)
@@ -318,10 +319,10 @@ class TestHexagonAccess:
         box = HexmoHexagon()
         box.parseArgs([])
         assert box.access_openings and box.access_edges == "1,2,3,4,5,6"
-        # At the default h the wall body is 88 mm, so the openings are 64 tall.
+        # At the default h the wall body is 88 mm, so the openings are 58 tall.
         for edge in range(1, 7):
             assert len([b for b in big(hex_holes([], f"wall edge {edge}"))
-                        if b[3] - b[2] == pytest.approx(64, abs=0.5)]) == 2
+                        if b[3] - b[2] == pytest.approx(58, abs=0.5) and b[1] - b[0] > 25]) == 2
 
     def test_too_small_for_a_hand_keeps_the_original_walls(self) -> None:
         args = ["--radius=120", "--h=80"]

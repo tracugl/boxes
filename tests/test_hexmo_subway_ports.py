@@ -100,7 +100,7 @@ class TestHexagon:
         slots, _ = ports(HexmoHexagon, HEX)["wall edge 2"]
         assert len(slots) == 2
         for x, y, w, h in slots:
-            assert (w, h) == pytest.approx((l - 24, 20))
+            assert (w, h) == pytest.approx((l - 30, 20))
             assert x == pytest.approx(l / 2)
         assert sorted(y for _, y, _, _ in slots) == pytest.approx([23.25, side - 23.25], abs=0.01)
 
@@ -112,8 +112,9 @@ class TestHexagon:
 
     def test_beside_the_pair_on_a_low_wall_too(self) -> None:
         # Outside the pair a slot needn't fit between its pilots, so a lower
-        # wall (h=70) keeps them, level with the pair's middle.
-        found = ports(HexmoHexagon, HEX + ["--h=70"])
+        # wall keeps them, level with the pair's middle: h=76, the lowest that
+        # still leaves the access openings room for a hand (70 − 30 = 40).
+        found = ports(HexmoHexagon, HEX + ["--h=76"])
         assert pilled(found) == [f"wall edge {e}" for e in range(1, 7)]
 
     def test_between_a_pair_when_the_end_is_too_near(self) -> None:
@@ -196,7 +197,7 @@ class TestHexagon:
         spans = sorted((min(p[1] for seg in loop for p in seg[1:]),
                         max(p[1] for seg in loop for p in seg[1:])) for loop in wall
                        if max(p[0] for seg in loop for p in seg[1:])
-                       - min(p[0] for seg in loop for p in seg[1:]) == pytest.approx(50, abs=0.5))
+                       - min(p[0] for seg in loop for p in seg[1:]) == pytest.approx(44, abs=0.5))
         # The access openings, not the 20 mm cable slots of the same height.
         spans = [sp for sp in spans if sp[1] - sp[0] > 25]
         assert len(spans) == 2

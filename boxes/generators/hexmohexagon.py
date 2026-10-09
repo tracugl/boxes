@@ -348,7 +348,7 @@ class HexmoHexagon(HexmoStepFormatMixin, HexmoBigHoleMixin, HexmoTrackGuideMixin
                  "openings, either side of a middle post as wide as --spoke_width "
                  "(over the spoke), keeping the Ø6 registration pilots beside them "
                  "so joined walls still line up.  With --subway_ports the post "
-                 "carries the subway opening and its cable slot.  Each leaves 12 mm "
+                 "carries the subway opening and its cable slot.  Each leaves 15 mm "
                  "of wood above and below and 15 mm at each end; they shrink to "
                  "keep clear of a track opening.  A module too small for a hand "
                  "(about 70 × 40 mm) keeps its normal walls, as do the stepped "

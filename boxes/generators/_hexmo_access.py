@@ -19,7 +19,7 @@ from __future__ import annotations
 
 # Wood left above and below each opening, and at each end of its stretch of
 # wall (beside a wall end, a divider's slot or the next opening), in mm.
-ACCESS_BAND = 12.0
+ACCESS_BAND = 15.0
 ACCESS_POST = 15.0
 # Smallest opening worth cutting (mm): fingers and a smaller hand, held flat
 # (an adult man's hand is about 90 mm across the knuckles).
