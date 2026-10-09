@@ -137,10 +137,11 @@ def end_pills(pilots, length, width, wood, lo, hi, tall=None):
 
     Wiring crosses a joint near the wall's ends, clear of a subway's bed and
     supports down the middle.  Each slot goes outside the outermost column of
-    the wall's Ø6 pilots (see end_columns), between it and the wall end, as far
-    out as ``lo``/``hi`` allow, level with the middle of the pair; it lines up
-    through every joint as the pilots do, since ``lo``/``hi`` are measured from
-    the shared hole pattern.  There it is ``tall`` long, as tall as the access
+    the wall's Ø6 pilots (see end_columns), between it and the wall end,
+    midway between the pilots and ``lo``/``hi`` (the deepest the wall's end is
+    cut, finger notches and all) so it has the same wood on both sides, level
+    with the middle of the pair; it lines up through every joint as the pilots
+    do, since ``lo``/``hi`` are measured from the shared hole pattern.  There it is ``tall`` long, as tall as the access
     openings, since the pilots don't hem it in.  Where that would leave less
     than ``wood`` between it and the pilots (a column close to the end), it
     stands in a column instead, centred between the column's outermost two
@@ -152,10 +153,10 @@ def end_pills(pilots, length, width, wood, lo, hi, tall=None):
     @param length - The slot's length up the wall (mm).
     @param width  - Its width along the wall (mm).
     @param wood   - Least wood between the slot and a pilot (mm).
-    @param lo, hi - How near the wall's ends a slot's edge may come, in the
-                    pilots' frame.  Callers put them the same distance in from
-                    the shared hole pattern's ends, so joined walls choose the
-                    same column.
+    @param lo, hi - Where the wall's ends are cut deepest, in the pilots'
+                    frame.  Callers put them the same distance in from the
+                    shared hole pattern's ends, so joined walls place their
+                    slots alike.
     @param tall   - A slot's length outside the end column (default ``length``).
     @returns ``[(along, across, length)]`` of each slot: its centre and its
              length up the wall, at most one per end (none where the wall is
@@ -167,17 +168,18 @@ def end_pills(pilots, length, width, wood, lo, hi, tall=None):
     r = max(p[2] for p in pilots)
     columns = sorted({round(p[0], 6) for p in pilots})
     pills = []
-    # Each end: the farthest-out slot centre, and its wood to a column there.
+    # Each end: the slot centred between the wall end and the end column,
+    # and the wood that leaves it on each side.
     for ordered, ok, out, gap in (
-            (columns, lambda c: c - width / 2 >= lo, lo + width / 2,
-             lambda c: (c - r) - (lo + width)),
-            (columns[::-1], lambda c: c + width / 2 <= hi, hi - width / 2,
-             lambda c: (hi - width) - (c + r))):
-        # Outside the end column, as far towards the wall end as allowed.
+            (columns, lambda c: c - width / 2 >= lo, lambda c: (lo + c - r) / 2,
+             lambda c: ((c - r) - lo - width) / 2),
+            (columns[::-1], lambda c: c + width / 2 <= hi, lambda c: (hi + c + r) / 2,
+             lambda c: (hi - (c + r) - width) / 2)):
+        # Outside the end column, with even wood either side.
         end = ordered[0]
         across = sorted(p[1] for p in pilots if abs(p[0] - end) < 1e-6)
         if len(across) >= 2 and gap(end) >= wood - 1e-6:
-            pills.append((out, (across[0] + across[-1]) / 2,
+            pills.append((out(end), (across[0] + across[-1]) / 2,
                           length if tall is None else tall))
             continue
         for c in ordered[:3]:

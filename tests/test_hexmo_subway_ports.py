@@ -89,10 +89,10 @@ class TestHexagon:
     def test_upright_slots_at_the_wall_ends(self) -> None:
         # Hex wall frame: x up from the floor panel, y along the wall.  One
         # slot near each end, 20 wide, outside the end pilot pair (45 mm in,
-        # the g2 corner groups') and as far out as it may go: a thickness and
-        # 5 mm in from the wall body's end (at 3), so 3 + 3 + 5 = 11 to 31,
-        # centred at 21, leaving 11 mm of wood to the Ø6 pilots.  It is as
-        # tall as the access openings: 12 mm of wood above and below.
+        # the g2 corner groups'), centred between the Ø6 pilots' edge (42) and
+        # where the wall's end is cut deepest, 1.5 thicknesses from the hole
+        # pattern's end (4.5): at 23.25, with 8.75 mm of wood each side.  It
+        # is as tall as the access openings: 12 mm of wood above and below.
         box = HexmoHexagon()
         box.parseArgs(HEX)
         box.open()
@@ -102,7 +102,7 @@ class TestHexagon:
         for x, y, w, h in slots:
             assert (w, h) == pytest.approx((l - 24, 20))
             assert x == pytest.approx(l / 2)
-        assert sorted(y for _, y, _, _ in slots) == pytest.approx([21, side - 21], abs=0.01)
+        assert sorted(y for _, y, _, _ in slots) == pytest.approx([23.25, side - 23.25], abs=0.01)
 
     def test_slots_on_every_joining_wall(self) -> None:
         # Wiring crosses any joint, spur or not; the long wall joins nothing.

@@ -954,12 +954,14 @@ Wiring goes through **cable slots** at the wall's ends instead, clear of the
 subway's bed and supports down the middle: every access wall that joins another
 module gets an upright 20 mm wide slot near each end, outside its end pair of
 Ø6 dowel holes (between them and the wall's end), as tall as the access openings
-(12 mm of wood above and below, so 20 × 50 mm at h=80). It goes as far towards
-the wall's end as it can: a thickness and 5 mm in from the end of the wall's body
-(measured from the shared hole pattern, so it lines up through every joint as the
-dowel holes do). On the 250 ring that is 11 to 31 mm in, leaving 11 mm of wood to
-the dowel holes; on the HO ring, with 6 mm stock, 17 to 37 mm, leaving 5. Where
-the end pair is too close to the wall's end for at least 4 mm of wood (15 mm in
+(12 mm of wood above and below, so 20 × 50 mm at h=80). It sits midway between
+the dowel holes and the deepest cut in the wall's end (a rectangle end wall's
+finger notches, 1.5 thicknesses from the shared hole pattern's end), so it has
+the same wood on both sides, and lines up through every joint as the dowel holes
+do. On the 250 ring that is about 9 mm on each side (9 to the rectangle's finger
+notches, 12 to a hexagon wall's end, 9.7 to the dowel holes): three thicknesses of
+3 mm MDF. On the HO ring, with 6 mm stock, about 7.5 mm each side. Where the end
+pair is too close to the wall's end for at least 4 mm of wood each side (15 mm in
 at the default sizes), a 20 × 30 mm slot stands between a pair instead, the next
 one in (30 mm in), whose two dowel holes then need their centres at least 44 mm
 apart. The short dividers have none (their lane openings

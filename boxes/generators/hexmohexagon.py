@@ -3022,10 +3022,12 @@ class HexmoHexagon(HexmoStepFormatMixin, HexmoBigHoleMixin, HexmoTrackGuideMixin
             solid = [(middle - post / 2, middle + post / 2)]
             length, width = self._CABLE_SLOT
             # Hole frame: a slot's rectangle as (x0, x1, y0, y1).
-            # The slots keep a thickness and PILOT_CLEAR in from the body's
-            # ends (the same from the hole pattern's ends as a rectangle end
-            # wall's, so joined walls pick the same pilot column).
-            edge = self.thickness + PILOT_CLEAR
+            # The wall's ends are cut deepest one and a half thicknesses in
+            # from the hole pattern's ends (half a thickness past the body's
+            # end here; on a rectangle end wall, its finger notches), so the
+            # slots are centred between there and the pilots, matching a
+            # rectangle end wall's.
+            edge = self.thickness / 2
             # Outside a pilot pair a slot is as tall as the access openings.
             pills = [(across - tall / 2, across + tall / 2, along - width / 2,
                       along + width / 2)

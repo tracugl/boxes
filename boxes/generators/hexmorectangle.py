@@ -1756,11 +1756,12 @@ class HexmoRectangle(HexmoStepFormatMixin, HexmoBigHoleMixin, HexmoTrackGuideMix
                 # the HexmoHexagon wall this end wall joins (see end_columns).
                 # With --subway_ports an upright cable slot stands between
                 # each pair, lining up with the hexagon's (see end_pills).
-                # The slots keep 2t + PILOT_CLEAR in from the hole pattern's
-                # ends (at −dx and s_hex − dx here), as on the hexagon wall
-                # this joins, so both pick the same pilot column.
+                # The wall's ends are cut deepest one and a half thicknesses
+                # in from the hole pattern's ends (at −dx and s_hex − dx
+                # here; about where its finger notches bottom out), as on the
+                # hexagon wall this joins, so both centre their slots alike.
                 length, width = self._CABLE_SLOT
-                edge = 2 * t + PILOT_CLEAR
+                edge = 1.5 * t
                 # Outside a pilot pair a slot is as tall as the access
                 # openings, as on the hexagon wall.
                 pills = (end_pills(pilots, length, width, self._CABLE_SLOT_WOOD,
