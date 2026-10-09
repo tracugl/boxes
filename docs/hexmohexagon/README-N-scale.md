@@ -1007,7 +1007,10 @@ goes through both walls at every joint.
 The openings stop 15 mm short of a track or spur opening that cuts into the
 wall, so a wall with one keeps the opening on its other side (M1–M5's spur
 walls, M6's edge 3). A track resting on the wall top cuts nothing and changes
-nothing. The stepped `--lower_ground` walls keep their usual holes. A module too
+nothing. A stepped `--lower_ground` wall gets them in its full-height part, a
+15 mm post clear of the step; its lowered part is too low for one, and anything
+that would cut through the lowered top is left out (the trapezoid's edge-4 wall,
+lowered all along, keeps its usual holes). A module too
 small for a hand (openings under about 70 × 40) keeps its original walls rather
 than being refused.
 

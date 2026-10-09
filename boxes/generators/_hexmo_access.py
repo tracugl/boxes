@@ -86,7 +86,8 @@ def recorded_holes(box, draw):
     """The round holes ``draw`` would cut, recorded instead of drawn.
 
     Shadows ``hole`` and ``rectangularHole`` on the instance while ``draw``
-    runs (every wall hole goes through one of them), then restores them.
+    runs (every wall hole goes through one of them), then restores them,
+    including any shadow already there (e.g. a --lower_ground keep-out).
 
     Positions are given in the frame current when this is called, even where
     ``draw`` moves the origin between holes.
@@ -102,12 +103,14 @@ def recorded_holes(box, draw):
         px, py = to_start * (box.ctx._m * (x, y))
         found.append((px, py, r or d / 2))
 
+    saved = {k: box.__dict__[k] for k in ("hole", "rectangularHole") if k in box.__dict__}
     box.hole = record
     box.rectangularHole = lambda *a, **k: None
     try:
         draw()
     finally:
         del box.hole, box.rectangularHole
+        box.__dict__.update(saved)
     return found
 
 

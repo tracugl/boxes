@@ -265,10 +265,10 @@ class TestHexagonAccess:
         assert len(access(holes_)) == 2
         assert len(big(holes_)) == 2 + 1
 
-    def test_lowered_trapezoid_walls_unchanged(self) -> None:
-        for name in ("wall edge 3", "wall edge 4", "wall edge 5"):
-            assert (hex_holes(HELIX_RING_N250_GROUND["M2"], name)
-                    == hex_holes(plain(HELIX_RING_N250_GROUND["M2"]), name))
+    def test_trapezoid_wall_lowered_all_along_unchanged(self) -> None:
+        # The edge-4 wall under the lower plate is too low for an opening.
+        args = HELIX_RING_N250_GROUND["M2"]
+        assert hex_holes(args, "wall edge 4") == hex_holes(plain(args), "wall edge 4")
 
     def test_hexagon_walls(self) -> None:
         args = HELIX_RING_N250["M6"]           # all six walls by default
@@ -301,10 +301,40 @@ class TestHexagonAccess:
         # Edge 5's spur rests on the wall top, cutting nothing: both stay.
         assert len(access(hex_holes(args, "wall edge 5"))) == 2
 
-    def test_stepped_lower_ground_walls_unchanged(self) -> None:
-        args = HELIX_RING_N250_GROUND["M6"]
+    @pytest.mark.parametrize("module", ["M2", "M6"])
+    def test_stepped_walls_are_access_walls(self, module) -> None:
+        # A --lower_ground stepped wall gets access openings in its
+        # full-height part, a post's width clear of the step; nothing cuts
+        # through its lowered top.
+        args = HELIX_RING_N250_GROUND[module]
+        box = HexmoHexagon()
+        box.parseArgs(args)
+        box.open()
+        side, _ = box._wallSize()
+        lower = 23.8 - 3                         # the lowered wall's body
         for name in ("wall edge 3", "wall edge 5"):
-            assert hex_holes(args, name) == hex_holes(plain(args), name)
+            holes_ = hex_holes(args, name)
+            openings = access(holes_)
+            assert len(openings) == 1
+            # The step is past the spur's inner side, 52.5 mm from the centre.
+            y_in = side / 2 + (-52.5 if name.endswith("3") else 52.5)
+            for y0, y1, _, _ in openings:
+                assert y0 >= y_in + 15 - 0.1 or y1 <= y_in - 15 + 0.1
+            low = [h for h in holes_ if (h[1] < y_in if name.endswith("3") else h[0] > y_in)]
+            assert all(x1 <= lower - 5 + 0.1 for _, _, _, x1 in low)
+
+    def test_stepped_walls_mirror_at_the_joint(self) -> None:
+        # M2's edge 5 meets M3's edge 3: their holes mirror along the wall.
+        box = HexmoHexagon()
+        box.parseArgs(HELIX_RING_N250_GROUND["M2"])
+        box.open()
+        side, _ = box._wallSize()
+        a = hex_holes(HELIX_RING_N250_GROUND["M2"], "wall edge 5")
+        b = hex_holes(HELIX_RING_N250_GROUND["M3"], "wall edge 3")
+        mirrored = sorted((round(side - y1, 1), round(side - y0, 1), x0, x1) for y0, y1, x0, x1 in b)
+        assert len(a) == len(mirrored)
+        for p, q in zip(a, mirrored):
+            assert p == pytest.approx(q, abs=0.15)
 
     @pytest.mark.parametrize("edges, match", [("7", "edges 1–6"), ("x", "edges 1–6")])
     def test_bad_edges_refused(self, edges, match) -> None:

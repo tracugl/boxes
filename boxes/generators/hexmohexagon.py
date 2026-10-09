@@ -351,8 +351,9 @@ class HexmoHexagon(HexmoStepFormatMixin, HexmoBigHoleMixin, HexmoTrackGuideMixin
                  "carries the subway opening and its cable slot.  Each leaves 15 mm "
                  "of wood above and below and 15 mm at each end; they shrink to "
                  "keep clear of a track opening.  A module too small for a hand "
-                 "(about 70 × 40 mm) keeps its normal walls, as do the stepped "
-                 "--lower_ground walls.  Off gives the original walls.")
+                 "(about 70 × 40 mm) keeps its normal walls.  A stepped "
+                 "--lower_ground wall gets them in its full-height part only.  Off "
+                 "gives the original walls.")
         self.argparser.add_argument(
             "--access_edges", action="store", type=str, default="1,2,3,4,5,6",
             help="With --access_openings: the walls that get them, comma-separated "
@@ -2947,7 +2948,21 @@ class HexmoHexagon(HexmoStepFormatMixin, HexmoBigHoleMixin, HexmoTrackGuideMixin
 
             def holes():
                 with self._holeKeepOut(drop):
-                    draw_aligned_holes(under_track, openings, edge)
+                    if step is not None and edge in access_edges:
+                        # An access wall: the openings in its full-height part,
+                        # a post clear of the step (anything still crossing the
+                        # lowered top, like a cable slot there, is left out).
+                        y_in = side_orig / 2 + step.pos_in
+                        lowered = ((-math.inf, y_in + ACCESS_POST) if step.inner_first
+                                   else (y_in - ACCESS_POST, math.inf))
+                        self.moveTo(0, -self.thickness)
+                        wall_frame(edge)
+                        draw_access_with_pilots(
+                            lambda: self.drawAlignmentHoles(side_orig, l, "A"),
+                            self.thickness, side_orig - self.thickness, side_orig / 2,
+                            under_track, openings, joins=True, solid=[lowered])
+                    else:
+                        draw_aligned_holes(under_track, openings, edge)
 
             self.polygonWall(borders, edge=wall_edges, correct_corners=False, move="right",
                              callback=[None, holes], label=f"edge {edge}")
@@ -3009,7 +3024,7 @@ class HexmoHexagon(HexmoStepFormatMixin, HexmoBigHoleMixin, HexmoTrackGuideMixin
                                  center_x=True, center_y=True)
 
         def draw_access_with_pilots(normal_holes, lo, hi, middle, port, openings=(),
-                                    joins=False):
+                                    joins=False, solid=()):
             """Access openings that keep the wall's Ø6 pilots beside them.
 
             The wall's normal holes are worked out (not cut) to find its Ø6
@@ -3034,6 +3049,9 @@ class HexmoHexagon(HexmoStepFormatMixin, HexmoBigHoleMixin, HexmoTrackGuideMixin
                                   pair nearest each end too (see end_columns),
                                   so it registers with a HexmoRectangle end
                                   wall as well as another hexagon.
+            @param solid        - More ``(start, end)`` stretches along the
+                                  wall to keep clear of openings (a
+                                  --lower_ground wall's lowered part).
             """
             with self.saved_context():
                 holes = recorded_holes(self, normal_holes)
@@ -3046,7 +3064,7 @@ class HexmoHexagon(HexmoStepFormatMixin, HexmoBigHoleMixin, HexmoTrackGuideMixin
                 bottom, top = self._underTrackSpan(l)
                 half = self.under_track_width / 2
                 rects.append((bottom, top, middle - half, middle + half))
-            solid = [(middle - post / 2, middle + post / 2)]
+            solid = [(middle - post / 2, middle + post / 2)] + list(solid)
             length, width = self._CABLE_SLOT
             # Hole frame: a slot's rectangle as (x0, x1, y0, y1).
             # The wall's ends are cut deepest one and a half thicknesses in
