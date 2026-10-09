@@ -328,6 +328,43 @@ class TestHexagonAccess:
         assert hex_holes(args, "wall edge 1") == hex_holes(plain(args), "wall edge 1")
 
 
+class TestSupports:
+    """Access walls give each hexagon support one subway-shaped opening,
+    centred on it, in place of its round holes."""
+
+    @staticmethod
+    def support_holes(args):
+        box = HexmoHexagon()
+        box.parseArgs(args)
+        frame = next(f for f in _hexmo_step._render_frames(box) if f.name.startswith("support"))
+        loops = sorted(_hexmo_step._frame_loops(frame), key=_area, reverse=True)
+        out = [[p for seg in loop for p in seg[1:]] for loop in loops]
+        return [(min(p[0] for p in q), max(p[0] for p in q), min(p[1] for p in q),
+                 max(p[1] for p in q)) for q in out]
+
+    @pytest.mark.parametrize("args, width, post", [
+        (HELIX_RING_N250["M6"], 35, 10),       # a 55 mm support: subway-wide
+        ([], 114, 18),                          # 150 mm, 6 mm stock: 3t posts
+    ], ids=["n250", "default"])
+    def test_one_centred_opening(self, args, width, post) -> None:
+        outline, *holes = self.support_holes(args)
+        (x0, x1, y0, y1), = holes
+        length = outline[1] - outline[0]
+        assert (x1 - x0, x0, length - x1) == pytest.approx((width, post, post), abs=0.05)
+        # One thickness from the floor and the deck: no up side.
+        box = HexmoHexagon()
+        box.parseArgs(args)
+        t = box.thickness
+        assert y0 == pytest.approx(t) and (outline[3] - t) - y1 == pytest.approx(t)
+
+    def test_off_keeps_the_round_holes(self) -> None:
+        # A 55 mm support's usual hole is one 25 mm medium hole.
+        _, *holes = self.support_holes(plain(HELIX_RING_N250["M6"]))
+        assert holes
+        for x0, x1, y0, y1 in holes:
+            assert x1 - x0 < 30 and x1 - x0 == pytest.approx(y1 - y0, abs=0.5)
+
+
 def test_ring_presets_have_access() -> None:
     assert "--access_openings=1" in HELIX_RING_N250["M3"]
     assert not any(a.startswith("--access_edges") for a in HELIX_RING_N250["M6"])

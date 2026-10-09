@@ -993,6 +993,15 @@ goes through both walls at every joint.
   on the 250 ring's entry). A strip under 59 mm wide keeps its round holes.
 - **Trapezoid:** its long wall gets two, about 118 × 50 mm each, with four
   dowel pairs; its short walls two each, as the full hexagon's.
+- **Support walls** (HexmoHexagon and the trapezoid): one opening each in place of
+  their round holes, the subway opening's shape (one thickness from the floor and
+  the deck, no up side), centred on the support so it lines up with a track
+  running through the middle of a turned support. It is as wide as the support
+  allows while keeping a post at each end to carry the deck (15 mm, or three
+  thicknesses where that is more), but never narrower than `--under_track_width`;
+  then the posts shrink, down to three thicknesses. On the 250 ring's 55 mm
+  supports that is 35 mm with 10 mm posts; on HO's 110 mm supports, 74 mm with
+  18 mm posts. A support too short for that keeps its round holes.
 - **Full hexagon:** the walls listed in `--access_edges` (default all six) get
   two each: about 37 × 50 mm at radius 250, for fingers, with a dowel pair and
   a cable slot outside it at each end.
