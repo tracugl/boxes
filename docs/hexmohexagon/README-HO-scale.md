@@ -500,9 +500,8 @@ has 76 mm under the opening's top.
 
 **Supports.** The helix modules use `support_length=110`. Their floor follows
 the tracks (`--bottom spoke`; see the N README's "Track-following spoke floor"),
-and the generator places the supports across the deck tracks every 150 mm or
-less, sliding them clear of the spur's slot and riser and the lower level, with
-a fill-in under M6's trackless deck.
+and the generator places one support across each deck track, at its middle
+where it fits, clear of the spur's slot and riser and the lower level.
 
 **Settings for each module** (all at h = 100, with access walls and every subway
 opening at the floor level, `under_track_height=6`; every module renders as given,

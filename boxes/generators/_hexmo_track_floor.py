@@ -5,22 +5,25 @@ six straight spokes from the centre, with kite-shaped openings between them.
 Those spokes are only where the floor happens to stay solid: nothing on the
 floor stands on them in particular.
 
-What the floor actually carries is the rim (the walls' finger joints), the
-support walls, and anything under the tracks: riser supports, a subway's
-supports, a bed lying on the floor.  So this floor keeps the rim plus a strip
-``--spoke_width`` wide under every track (every deck route, every riser and
-subway path), and cuts everything else away.  The support walls then stand on
-the strips, turned across the track under each deck route and spaced evenly
-along it (``--support_spacing``), so each one sits wholly on solid floor and
-props the deck right under the trains.  Where one won't fit across its track
-it slides along itself, or stands along the track under the rails; and deck
-with no track over it gets a fill-in support on a half-spoke, as the kite floor
-had, on its own pad of floor.
+This floor keeps the rim (the walls' finger joints) and a strip
+``--spoke_width`` wide along every connection a track can make across the
+module: from each edge to the edge two round from it, so 1–3, 3–5, 5–1 and
+2–4, 4–6, 6–2 on the full hexagon (3–5 on the trapezoid), on the centre line
+as ``--track_routes`` would draw them.  Every module of a size then has the
+same spokes, whatever track it carries.  The module's own tracks (deck routes
+at their offsets), risers and subways get a strip too.  Everything else is cut
+away.
 
-A support is left out where it would stand under a deck slot (no deck above
-to carry), across a riser or a lower-level track, too near a wall or another
-support, or (with ``--lower_ground``) half under the deck and half under the
-lower plate.  A module with no track routes keeps the kite floor.
+The support walls stand on the strips: one across each deck track, at its
+middle, so it props the deck right under the trains.  Where the middle won't
+take one it moves along the track to the nearest place that will; there it
+stands across the track, slid along itself if need be (as far as still keeps
+both rails over it), or failing that along the track under the rails.  A
+module with no deck tracks gets one across the middle of each spoke instead.
+A support is never put under a deck slot (no deck above to carry), across a
+riser or lower-level track, within a thickness and _SUPPORT_END_CLEAR of a wall
+or another support, or (with ``--lower_ground``) half under the deck and half
+under the lower plate.
 
 All geometry is in the true-centre frame (the inner hexagon's centre, y up),
 as the track routes are; the trapezoid's floor callback sits one thickness
@@ -38,17 +41,20 @@ from shapely.geometry import LineString, Polygon
 from shapely.ops import unary_union
 
 from boxes.generators._hexmo_risers import point_at
-from boxes.generators._hexmo_track_routes import EDGE_ANGLES, segments_polyline
+from boxes.generators._hexmo_track_routes import EDGE_ANGLES, route_geometry, segments_polyline
+
+# Every connection a track can make across a module: each edge to the edge
+# two round from it.  The trapezoid has edges 3, 4 and 5 only: 3–5.
+_SPOKE_ROUTES = ((1, 3), (3, 5), (5, 1), (2, 4), (4, 6), (6, 2))
 
 
 @dataclass(frozen=True)
 class TrackSupport:
-    """One support wall standing across a deck route (true-centre frame).
+    """One support wall standing on a track's strip (true-centre frame).
 
     @ivar centre - The middle of the support's slot.
-    @ivar along  - Unit vector along the support (across the track).
-    @ivar route  - Index of the deck route it stands under, or −1 for a
-                   fill-in support on a half-spoke (deck with no track over it).
+    @ivar along  - Unit vector along the support.
+    @ivar route  - Index of the deck route (or spoke) it stands under.
     """
 
     centre: tuple
@@ -69,39 +75,28 @@ class HexmoTrackFloorMixin:
     _FLOOR_MIN_OPENING = 15.0
     # Radius rounding the openings' corners (mm).
     _FLOOR_CORNER = 5.0
-    # A support's first and last positions this far in from each end of its
-    # route (mm), clear of the walls the route starts and ends at.
-    _SUPPORT_ROUTE_INSET = 40.0
+    # How far a support's position may move along its track from the middle,
+    # in steps (mm), to find a place that takes it.
+    _SUPPORT_SEARCH_STEP = 10.0
     # Polyline steps per arc for the floor's strips.
     _FLOOR_ARC_STEPS = 32
-
-    def _addTrackFloorArgs(self):
-        """Register --support_spacing."""
-        self.argparser.add_argument(
-            "--support_spacing", action="store", type=float, default=150.0,
-            help="Track-following spoke floor (--bottom=spoke with track routes): "
-                 "the largest gap (mm) between support walls along each deck "
-                 "track.  Each support stands across its track, on the floor's "
-                 "strip under it.")
 
     # ------------------------------------------------------------- choice
 
     def _trackFloor(self, isTrapezoid):
-        """Whether this module's floor follows its tracks.
+        """Whether this module's floor follows the tracks.
 
         @param isTrapezoid - True for the half-hexagon.
-        @returns True for --bottom=spoke with at least one track route.
+        @returns True for --bottom=spoke when there is floor inside the rim
+                 (else the kite floor, which copes with that itself).
         """
         if self.bottom != "spoke":
             return False
-        if getattr(self, "_track_floor_routes", None) is None:
-            r, _ = self._innerSize()
-            self._track_floor_routes = bool(self._trackRouteGeometries(r, isTrapezoid))
-        return self._track_floor_routes
+        r, _ = self._innerSize()
+        return not self._floorInterior(r, isTrapezoid).is_empty
 
     def _resetTrackFloor(self):
-        """Forget the cached routes and supports (each render works them out)."""
-        self._track_floor_routes = None
+        """Forget the cached supports (each render works them out)."""
         self._track_supports = None
 
     # -------------------------------------------------------------- floor
@@ -126,8 +121,20 @@ class HexmoTrackFloorMixin:
                          (2 * radius, -2 * radius), (-2 * radius, -2 * radius)]))
         return hexagon
 
+    def _spokeRoutes(self, r, isTrapezoid):
+        """The floor's spokes: every connection a track can make, on the centre line.
+
+        @param r           - Inner hexagon circumradius.
+        @param isTrapezoid - True for the half-hexagon (3–5 only).
+        @returns List of solved route geometries.
+        """
+        apothem = r * math.sqrt(3.0) / 2.0
+        edges = self._TRAPEZOID_EDGES if isTrapezoid else set(range(1, 7))
+        return [route_geometry(a, 0.0, b, 0.0, apothem, self.track_lead_in)
+                for a, b in _SPOKE_ROUTES if {a, b} <= edges]
+
     def _floorStrips(self, r, isTrapezoid, riser_plan):
-        """The solid strips: one under every track, plus the supports.
+        """The solid strips: the spokes, every track, and the supports' pads.
 
         @param r           - Inner hexagon circumradius.
         @param isTrapezoid - True for the half-hexagon.
@@ -135,31 +142,24 @@ class HexmoTrackFloorMixin:
         @returns A shapely geometry.
         """
         half = self.spoke_width / 2.0
-        shapes = []
-        for g in self._trackRouteGeometries(r, isTrapezoid):
-            shapes.append(LineString(segments_polyline(g.segments, self._FLOOR_ARC_STEPS))
-                          .buffer(half))
+        line = lambda segments: LineString(segments_polyline(segments, self._FLOOR_ARC_STEPS))
+        shapes = [line(g.segments).buffer(half)
+                  for g in self._spokeRoutes(r, isTrapezoid)
+                  + self._trackRouteGeometries(r, isTrapezoid)]
         for rp in riser_plan:
             width = max(self.spoke_width, rp["width"] + 2 * self._RISER_CLEAR)
-            shapes.append(LineString(segments_polyline(rp["segments"], self._FLOOR_ARC_STEPS))
-                          .buffer(width / 2.0))
+            shapes.append(line(rp["segments"]).buffer(width / 2.0))
         if self.supports:
-            # Each support stands on a pad as wide as a strip: one slid off
-            # its track, or a fill-in on a half-spoke, still has solid floor
-            # all round its slot.
-            apothem = r * math.sqrt(3.0) / 2.0
+            # A support slid off its track's middle, or turned along it,
+            # still stands on a pad of floor as wide as a strip, run on a
+            # little past each end of its slot.
             run_on = self.thickness + self._SUPPORT_END_CLEAR
             for support in self._trackSupports(r, isTrapezoid):
-                # The slot, run on a little past each end for wood beyond it.
                 (cx, cy), (ux, uy) = support.centre, support.along
                 reach = self.support_length / 2.0 + run_on
-                ends = [(cx - ux * reach, cy - uy * reach), (cx + ux * reach, cy + uy * reach)]
-                if support.route < 0:
-                    # A fill-in on a half-spoke: its pad runs on out to the rim,
-                    # a short spoke, so it isn't left floating in an opening.
-                    far = apothem - math.hypot(cx, cy)
-                    ends = [ends[0], (cx + ux * far, cy + uy * far)]
-                shapes.append(LineString(ends).buffer(half, cap_style=2))
+                shapes.append(LineString([(cx - ux * reach, cy - uy * reach),
+                                          (cx + ux * reach, cy + uy * reach)])
+                              .buffer(half, cap_style=2))
         return unary_union(shapes)
 
     def _trackFloorOpenings(self, r, isTrapezoid, riser_plan):
@@ -206,7 +206,7 @@ class HexmoTrackFloorMixin:
     # ----------------------------------------------------------- supports
 
     def _trackSupports(self, r, isTrapezoid):
-        """The support walls across the deck tracks, worked out once per render.
+        """The support walls, one per deck track, worked out once per render.
 
         @returns List of :class:`TrackSupport` in drawing order.
         """
@@ -230,16 +230,17 @@ class HexmoTrackFloorMixin:
                 for k in range(n + 1)]
 
     def _placeTrackSupports(self, r, isTrapezoid, accept=None):
-        """Stand supports across each deck route, evenly spaced along it.
+        """One support per deck track (or per spoke, if there are none).
 
-        Positions run from _SUPPORT_ROUTE_INSET in from each end of the route,
-        at most --support_spacing apart.  At each, the support is centred on
-        the track; where that doesn't fit it slides along its own length,
-        either way, as far as still keeps both rails over it.  A position is
-        left out where no slide fits: the support would reach within a
-        thickness and _SUPPORT_END_CLEAR of a wall, stand under a deck slot or
-        across a riser or lower-level track, come too close to a support
-        already placed, or fail ``accept``.
+        The support goes at the track's middle if it can; otherwise at the
+        nearest place along it that takes one, trying further from the middle
+        in _SUPPORT_SEARCH_STEP steps either way.  At each place it stands
+        across the track, centred or slid along itself as far as still keeps
+        both rails over it, or failing that along the track under the rails.
+        A place doesn't take it where it would reach within a thickness and
+        _SUPPORT_END_CLEAR of a wall, stand under a deck slot or across a
+        riser or lower-level track, come too close to a support already
+        placed, or fail ``accept``.  A track with no such place gets none.
 
         @param r           - Inner hexagon circumradius.
         @param isTrapezoid - True for the half-hexagon.
@@ -281,8 +282,10 @@ class HexmoTrackFloorMixin:
 
         # How far a support may slide along itself and still carry both rails.
         reach_off = max(0.0, sl / 2.0 - self.track_width / 2.0 - clear)
-        steps = int(reach_off // 2.5)
-        offsets = [0.0] + [sign * 2.5 * k for k in range(1, steps + 1) for sign in (1, -1)]
+        slides = [0.0] + [sign * 2.5 * k for k in range(1, int(reach_off // 2.5) + 1)
+                          for sign in (1, -1)]
+
+        placed, placed_points = [], []
 
         def ok(points):
             if not fits(points):
@@ -294,46 +297,22 @@ class HexmoTrackFloorMixin:
             return not any(min(math.dist(p, q) for p in points for q in other) < t + clear
                            for other in placed_points)
 
-        placed, placed_points = [], []
-
-        def place(candidates):
-            """Keep the first candidate that fits; True if one did."""
-            for support in candidates:
-                points = self._trackSupportPoints(support)
-                if ok(points):
-                    placed.append(support)
-                    placed_points.append(points)
-                    return True
-            return False
-
-        for index, g in enumerate(self._trackRouteGeometries(r, isTrapezoid)):
+        tracks = self._trackRouteGeometries(r, isTrapezoid) or self._spokeRoutes(r, isTrapezoid)
+        for index, g in enumerate(tracks):
             length = sum(seg.length for seg in g.segments)
-            inset = min(self._SUPPORT_ROUTE_INSET, length / 2.0)
-            run = length - 2 * inset
-            n = max(1, math.ceil(run / self.support_spacing) + 1) if run > 0 else 1
-            stations = ([inset + run * k / (n - 1) for k in range(n)] if n > 1
-                        else [length / 2.0])
-            for s in stations:
+            step = self._SUPPORT_SEARCH_STEP
+            places = [length / 2.0] + [length / 2.0 + sign * step * k
+                                       for k in range(1, int(length / 2.0 // step) + 1)
+                                       for sign in (1, -1)]
+            for s in places:
                 point, (dx, dy) = point_at(g.segments, s)
                 across = (-dy, dx)
-                # Across the track, centred or slid along itself; failing
-                # that, along the track right under the rails (where the deck
-                # strip is too narrow to stand one across it).
-                place([TrackSupport((point[0] + across[0] * o, point[1] + across[1] * o),
-                                    across, index) for o in offsets]
-                      + [TrackSupport(point, (dx, dy), index)])
-        # Deck with no track over it still needs propping: try a support at
-        # each half-spoke, halfway out (where the kite floor had them),
-        # wherever none of the track supports is already within
-        # --support_spacing of it.
-        slide = [0.0] + [sign * 5.0 * k for k in range(1, int(apothem / 4 // 5) + 1)
-                         for sign in (1, -1)]
-        for edge in edges:
-            th = math.radians(EDGE_ANGLES[edge])
-            u = (math.cos(th), math.sin(th))
-            d = apothem / 2.0
-            if any(math.dist(sp.centre, (u[0] * d, u[1] * d)) < self.support_spacing
-                   for sp in placed):
-                continue
-            place([TrackSupport((u[0] * (d + o), u[1] * (d + o)), u, -1) for o in slide])
+                candidates = ([TrackSupport((point[0] + across[0] * o, point[1] + across[1] * o),
+                                            across, index) for o in slides]
+                              + [TrackSupport(point, (dx, dy), index)])
+                chosen = next((c for c in candidates if ok(self._trackSupportPoints(c))), None)
+                if chosen is not None:
+                    placed.append(chosen)
+                    placed_points.append(self._trackSupportPoints(chosen))
+                    break
         return placed

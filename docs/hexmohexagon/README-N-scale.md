@@ -671,31 +671,26 @@ compensation as other holes.
 ### Track-following spoke floor (`--bottom spoke`, the default)
 
 The spoke floor follows the tracks. It keeps its rim (`--edge_width`, for the
-walls' finger joints) and a strip `--spoke_width` wide under every track: every
-deck route, every riser and every subway. Everything else is cut away in rounded
-openings; gaps narrower than 15 mm stay solid. So whatever stands on the floor
-(riser supports, a subway's supports, a bed lying on the floor) has solid floor
-under it, and the floor's material goes where the trains run instead of along
-six straight spokes.
+walls' finger joints) and a strip `--spoke_width` wide along every connection a
+track can make across the module: from each edge to the edge two round from it,
+so 1–3, 3–5, 5–1 and 2–4, 4–6, 6–2 on the full hexagon (two triangles of curves),
+and 3–5 on the trapezoid, on the centre line as `--track_routes` would draw them.
+Every module of a size has the same spokes, whatever track it carries. The
+module's own tracks (at their offsets), risers and subways get a strip too.
+Everything else is cut away in rounded openings; gaps narrower than 15 mm stay
+solid. So whatever stands on the floor (riser supports, a subway's supports, a
+bed lying on the floor) has solid floor under it.
 
-The support walls stand on those strips, placed by the generator:
-
-- **across each deck track**, spaced evenly along it at most `--support_spacing`
-  apart (default 150 mm), starting 40 mm in from each end;
-- where one won't fit across its track (a riser or lower-level track beside it,
-  a deck slot, a wall, another support), it **slides along itself**, as far as
-  still keeps both rails over it, or failing that **stands along the track**,
-  under the rails;
-- deck with no track over it (M6's bottom third, say) gets a **fill-in** support
-  on a half-spoke, halfway out, where the kite floor had them, on its own short
-  spoke of floor out to the rim;
-- with `--lower_ground` each support is wholly under the deck or wholly under
-  the lower plate, never straddling the deck's cut-back edge.
-
-A support is never put under a deck slot, across a riser or lower-level track,
-or within a thickness and 2 mm of a wall or another support. `--support_edges`
-and `--support_position` don't apply to this floor. A module with no track
-routes (the default full hexagon) gets the kite floor instead.
+The support walls stand on those strips: **one per deck track**, across it at its
+middle. Where the middle won't take one (a deck slot, a riser or lower-level
+track, a wall or another support in the way), it moves along the track to the
+nearest place that will; there it stands across the track, slid along itself
+if need be (as far as still keeps both rails over it), or failing that along the
+track, under the rails. A track with nowhere to take one (the spur in its deck
+slot, say) gets none. A module with no deck tracks gets one across the middle
+of each spoke. With `--lower_ground` each support is wholly under the deck or
+wholly under the lower plate. `--support_edges` and `--support_position` don't
+apply to this floor.
 
 `--bottom kites` is the original spoke floor: the rim plus six straight spokes
 from the centre, with kite-shaped openings between them, and the supports on the

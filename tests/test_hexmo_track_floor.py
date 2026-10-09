@@ -1,11 +1,10 @@
 """Tests for the track-following spoke floor (``--bottom=spoke``, BOX-71).
 
-The floor keeps its rim and a strip ``--spoke_width`` wide under every track
-(deck routes, risers, subways), and the rest is cut away.  The support walls
-stand across the deck tracks, spaced along them (``--support_spacing``),
-slid along themselves or turned along the track where they must be, with
-fill-ins on the half-spokes for deck no track runs over.  The old floor is
-``--bottom=kites``.
+The floor keeps its rim and a strip ``--spoke_width`` wide along every
+connection a track can make (1–3, 3–5, 5–1, 2–4, 4–6, 6–2; 3–5 on the
+trapezoid) and under every track, riser and subway; the rest is cut away.
+One support wall stands on each deck track, at its middle where it fits.
+The old floor is ``--bottom=kites``.
 
 These tests avoid lxml, so they run in the Docker image.
 """
@@ -83,11 +82,25 @@ class TestChoice:
         box.open()
         assert not box._trackFloor(True)
 
-    def test_no_routes_falls_back_to_kites(self) -> None:
-        # The default full hexagon has no track routes switched on.
+    def test_no_tracks_gets_one_support_per_spoke(self) -> None:
+        # The default full hexagon has no track routes: its supports stand on
+        # its six spokes, one each.
         box, r, risers, _ = rendered([])
-        assert not box._trackFloor(False)
-        assert all(not isinstance(sp, TrackSupport) for sp in box._supportLayout(r, False))
+        supports = box._supportLayout(r, False)
+        assert box._trackFloor(False)
+        assert len(supports) == 6 and all(isinstance(sp, TrackSupport) for sp in supports)
+
+    @pytest.mark.parametrize("args, count", [([], 6), (["--trapezoid=1"], 1)],
+                             ids=["hexagon", "trapezoid"])
+    def test_spokes_are_every_track_connection(self, args, count) -> None:
+        box = HexmoHexagon()
+        box.parseArgs(args)
+        box.open()
+        r, _ = box._innerSize()
+        routes = box._spokeRoutes(r, "--trapezoid=1" in args)
+        assert len(routes) == count
+        assert all({g.start, g.end} in ({1, 3}, {3, 5}, {5, 1}, {2, 4}, {4, 6}, {6, 2})
+                   for g in routes)
 
 
 class TestSupports:
@@ -131,11 +144,22 @@ class TestSupports:
                 if box.trapezoid:
                     assert y < -box.thickness
 
-    def test_spacing_sets_how_many(self) -> None:
-        few = rendered(HELIX_RING_N250["M2"] + ["--support_spacing=300"])
-        many = rendered(HELIX_RING_N250["M2"] + ["--support_spacing=80"])
-        count = lambda m: len(m[0]._supportLayout(m[1], True))
-        assert count(few) < count(many)
+    def test_at_most_one_per_track(self, module) -> None:
+        box, r, _, _ = module
+        supports = box._supportLayout(r, box.trapezoid)
+        routes = [sp.route for sp in supports]
+        assert len(routes) == len(set(routes))
+
+    def test_on_the_main_line_at_its_middle(self) -> None:
+        # M2: the main line takes its one support at its middle; the spur,
+        # in its deck slot all the way, takes none.
+        box, r, _, _ = rendered(HELIX_RING_N250["M2"])
+        (support,) = box._supportLayout(r, True)
+        main = box._trackRouteGeometries(r, True)[support.route]
+        length = sum(seg.length for seg in main.segments)
+        from boxes.generators._hexmo_risers import point_at
+        middle, _ = point_at(main.segments, length / 2)
+        assert math.dist(middle, support.centre) < box.support_length / 2
 
     def test_ground_supports_never_straddle_the_deck_edge(self) -> None:
         box, r, _, _ = rendered(HELIX_RING_N250_GROUND["M2"])
@@ -165,11 +189,11 @@ class TestOpenings:
         interior = box._floorInterior(r, box.trapezoid).buffer(0.01)
         assert all(interior.contains(h) for h in openings(box, r, risers))
 
-    def test_tracks_keep_their_strip(self, module) -> None:
-        # Nothing is cut under a deck route's centreline.
+    def test_tracks_and_spokes_keep_their_strip(self, module) -> None:
+        # Nothing is cut under a deck route's or spoke's centreline.
         box, r, risers, _ = module
         holes = openings(box, r, risers)
-        for g in box._trackRouteGeometries(r, box.trapezoid):
+        for g in box._trackRouteGeometries(r, box.trapezoid) + box._spokeRoutes(r, box.trapezoid):
             line = LineString(segments_polyline(g.segments, 32))
             assert not any(line.intersects(h) for h in holes)
 

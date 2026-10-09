@@ -94,13 +94,13 @@ class HexmoHexagon(HexmoStepFormatMixin, HexmoBigHoleMixin, HexmoTrackGuideMixin
             "--bottom", action="store", type=str, default="spoke",
             choices=["spoke", "kites", "closed"],
             help="Style of the bottom.  spoke (default): a rim plus a strip "
-                 "--spoke_width wide under every track route (and riser or "
-                 "subway), the rest cut away; the support walls stand across the "
-                 "tracks on those strips (--support_spacing apart), and "
-                 "--support_edges / --support_position don't apply.  A module "
-                 "with no track routes gets the kite floor.  kites: the rim plus "
-                 "straight spokes from the centre, with kite-shaped openings "
-                 "between them.  closed: a solid floor.")
+                 "--spoke_width wide along every connection a track can make "
+                 "(1-3, 3-5, 5-1, 2-4, 4-6, 6-2; 3-5 on the trapezoid) and under "
+                 "every track, riser and subway, the rest cut away; one support "
+                 "wall stands across each deck track, at its middle where it "
+                 "fits, and --support_edges / --support_position don't apply.  "
+                 "kites: the rim plus straight spokes from the centre, with "
+                 "kite-shaped openings between them.  closed: a solid floor.")
         self.argparser.add_argument(
             "--edge_width", action="store", type=float, default=60.0,
             help="Width of the outer hexagonal frame for spoke bottom.")
@@ -346,8 +346,6 @@ class HexmoHexagon(HexmoStepFormatMixin, HexmoBigHoleMixin, HexmoTrackGuideMixin
         self._addTrackTemplateArgs()
         # --lower_ground and --upper_edge_gap (see _hexmo_lower_ground).
         self._addLowerGroundArgs()
-        # --support_spacing for the track-following spoke floor.
-        self._addTrackFloorArgs()
         # --subway: a level lower track under the deck (see _hexmo_subway).
         self._addSubwayArgs()
         self.argparser.add_argument(
