@@ -161,8 +161,10 @@ class HexmoLowerGroundMixin:
                  "edge this many mm inside the main line's rail edge (half "
                  "--track_width from the deck-level route from edge 3 to edge 5) "
                  "instead of at the spur slot's outer edge, so there is less to "
-                 "sand away.  It never comes inside the spur's slot.  0 "
-                 "(default): at the slot's edge.")
+                 "sand away.  It never comes inside the spur's slot.  On the full "
+                 "hexagon, give the same value as its trapezoid neighbours: its "
+                 "stepped walls then start their deck joints at the same place, so "
+                 "the two walls' fingers match.  0 (default): at the slot's edge.")
 
     # ------------------------------------------------------------- planning
 
@@ -183,14 +185,13 @@ class HexmoLowerGroundMixin:
             if self.upper_edge_gap:
                 raise ValueError("--upper_edge_gap only applies with --lower_ground.")
             return
-        if not isTrapezoid:
-            if self.upper_edge_gap:
-                raise ValueError("--upper_edge_gap only applies to the trapezoid "
-                                 "(--trapezoid 1); the full hexagon's deck is left whole.")
-            return
         if self.upper_edge_gap < 0:
             raise ValueError(f"--upper_edge_gap must not be negative "
                              f"(got {self.upper_edge_gap:g}).")
+        if not isTrapezoid:
+            # The full hexagon keeps its deck; --upper_edge_gap only places
+            # its stepped walls' deck joints (see _hexagonDeckJoints).
+            return
         slots = [s for s in parse_deck_slots(self.deck_slots, self.under_track_width)
                  if {s.start, s.end} == {3, 5} and s.lo is None and s.hi is None]
         if len(slots) != 1:
@@ -259,7 +260,45 @@ class HexmoLowerGroundMixin:
         plan = LowerGroundPlan(height, body, isTrapezoid, walls)
         if isTrapezoid:
             self._planTrapezoidGround(plan, r)
+        elif self.upper_edge_gap > 0:
+            self._hexagonDeckJoints(plan, r)
         return plan
+
+    def _hexagonDeckJoints(self, plan, r):
+        """Start the hexagon's stepped walls' deck joints where a trapezoid's would.
+
+        A trapezoid with --upper_edge_gap stops its deck that far inside the
+        main line's rail edge, so its side wall's deck joint is shorter, and
+        its fingers (spread evenly along the joint) move.  The full hexagon's
+        wall beside it must start its joint at the same place for the two
+        walls' fingers to match, back to back.  At the wall both of the
+        trapezoid's curves (the main line's offset and the spur slot's outer
+        edge) cross square to it, so its deck edge meets the wall at the main
+        line's crossing less ``track_width / 2 + gap``, towards the spur, or at
+        the spur opening's outer side if that is further out.  The hexagon's
+        own track crossing beside the spur opening is the same track, so the
+        same rule here gives the same place.  The deck edge above goes plain
+        to there; the deck is cut back by hand.
+
+        @param plan - The plan (wall steps already set).
+        @param r    - Inner hexagon circumradius (the deck's).
+        """
+        apothem = r * _ROOT3 / 2
+        crossings = {}
+        for g in self._trackRouteGeometries(r, False):
+            for edge, point in ((g.start, g.segments[0].p0), (g.end, g.segments[-1].p1)):
+                crossings.setdefault(edge, set()).add(edge_position(edge, point, apothem))
+        reach = self.track_width / 2 + self.upper_edge_gap
+        for edge, step in list(plan.walls.items()):
+            outward = 1.0 if step.edge == 3 else -1.0       # away from edge 4
+            beyond = [p for p in crossings.get(edge, ())
+                      if outward * (p - step.pos_out) > 1e-6]
+            if not beyond:
+                continue
+            main = min(beyond, key=lambda p: outward * (p - step.pos_out))
+            deck = main - outward * reach
+            if outward * (deck - step.pos_out) > 0:
+                plan.walls[edge] = WallStep(edge, step.pos_in, step.pos_out, deck, step.band)
 
     def _planTrapezoidGround(self, plan, r):
         """The trapezoid's deck and plate edges, and which supports go low.
@@ -549,11 +588,13 @@ class HexmoLowerGroundMixin:
             if step is None:
                 out.append(existing)
                 continue
-            s_out = side / 2 + step.pos_out
+            # Plain to where the wall's deck joint starts (the spur opening's
+            # outer side, or further out with --upper_edge_gap).
+            s_deck = side / 2 + step.pos_deck
             if step.inner_first:
-                pieces = [("plain", t + s_out), ("joint", side - s_out), ("plain", t)]
+                pieces = [("plain", t + s_deck), ("joint", side - s_deck), ("plain", t)]
             else:
-                pieces = [("plain", t), ("joint", s_out), ("plain", side - s_out + t)]
+                pieces = [("plain", t), ("joint", s_deck), ("plain", side - s_deck + t)]
             out.append(SplitJointEdge(self, base, [p for p in pieces if p[1] > 1e-9]))
         return out
 
@@ -788,14 +829,21 @@ def _between_slants(points, apothem):
 def _run_on(points, d):
     """A polyline run straight on by ``d`` at both ends.
 
-    @param points - The polyline (two or more points).
+    Each end runs on along the direction from its nearest distinct point, so
+    a repeated end point (a route with no lead-in starts with a zero-length
+    straight) does not leave it without a direction.
+
+    @param points - The polyline (two or more distinct points).
     @param d      - How far to extend each end along its last segment (mm).
     @returns The extended polyline.
     """
     def ext(a, b):
         length = math.dist(a, b)
         return (b[0] + (b[0] - a[0]) / length * d, b[1] + (b[1] - a[1]) / length * d)
-    return [ext(points[1], points[0])] + list(points) + [ext(points[-2], points[-1])]
+
+    first = next(p for p in points[1:] if math.dist(p, points[0]) > 1e-9)
+    last = next(p for p in reversed(points[:-1]) if math.dist(p, points[-1]) > 1e-9)
+    return [ext(first, points[0])] + list(points) + [ext(last, points[-1])]
 
 
 def _distance(polyline, p):

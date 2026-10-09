@@ -742,6 +742,32 @@ stretch, and a 10 mm web of deck between the two slots. Past the slot the return
 runs under the deck, so it must be down to 31.0 by then (the 74 mm deck underside
 less a 43 mm train). The slots are `1:0-5:17.5@169..` and `3:35-1:0@..186`.
 
+#### The ring at radius 250
+
+At `radius=250`, with a 20 mm lead-in (`--track_lead_in 20`) where each track
+crosses a joint, the curves are bigger: the deck curve is R335, the main line
+R353 and the spur R300, instead of R280, R297 and R245 at 220 (with 26 mm
+lead-ins). The ring is 1.30 m across the flats, instead of 1.14 m. The same
+rules give its numbers (the presets in `_hexmo_helix_ring.py` are built from
+them):
+
+- **Heights:** its longer run lets the spur end lower than at 220, leaving
+  spare headroom at both tight spots. One steady grade, 2.28 %, runs from 74
+  at M6/M1 to 28.0 where the return's slot ends under M6's deck: 46 mm under
+  the 74 mm deck underside, 3 more than a 43 mm train needs. It carries on at
+  the same grade to **23.8** at M6 edge 1, which leaves 47.2 mm under the entry
+  rectangle's deck. The joint heights are 74, 65.6, 57.6, 49.5, 41.4 and 33.3
+  (M5/M6). The lower level leaves the helix at 23.8 (`--under_track_height`
+  on M6 and the entry), and the scenery ring's lower ground is at 23.8 too.
+- **On M6:** the spur leaves the deck at 178 mm, the earliest point where its
+  first riser support is clear of the return below. The return's slot ends at
+  233 mm, leaving a 10 mm web of deck between the two slots.
+- **Trapezoid supports:** `4@140,4@38/90`. As at 220, the radial support stands
+  just past the spur's slot, and the turned one just inside the main line,
+  which runs 34.3 mm out at mid-module.
+
+The 220 ring's numbers above are hand-worked and leave a 15.7 mm web on M6.
+
 ```bash
 # Helix ring M6 at h=80: three deck tracks at edge 1 (loop legs at ±35, spur on
 # the centre line), the spur's slot and riser, the lower-level return under the
@@ -828,28 +854,34 @@ deck's cut-back edge follows the slot. Set **`--upper_edge_gap`** to keep less
 deck instead: the edge then runs that many mm inside the main line's rail edge,
 so there's nothing to sand away. It never comes inside the spur's slot; in M1
 the spur swings to within 9 mm of the main line near edge 3, so a bigger gap
-stays at the slot's edge there.
+stays at the slot's edge there. Give M6 the same `--upper_edge_gap`: its deck stays
+whole, but its stepped walls then start their deck joints where the trapezoids'
+do, so the fingers of the two walls at each joint line up.
 
-Edit links, with the ring's settings: g2 hole groups, rounded-rectangle big
-holes, the track guide and template, no labels or reference rectangle, and the
-trapezoids' decks stopping 15 mm inside the main line (`upper_edge_gap=15`).
-Each opens the form pre-filled:
+Edit links for the ring at **radius 250** (see [The ring at radius 250](#the-ring-at-radius-250)),
+with its settings: g2 hole groups, rounded-rectangle big holes, the track guide
+and template, no labels or reference rectangle, and the trapezoids' decks
+stopping 15 mm inside the main line (`upper_edge_gap=15`). Each opens the form
+pre-filled:
 
 - **M1:**
-  http://localhost:4455/HexmoHexagon?radius=220&thickness=3&h=80&edge_width=22&spoke_width=60&bottom=spoke&support_length=55&track_lead_in=26&track_width=17&under_track_width=35&corner_holes=g2&gap_holes=g2&big_hole_shape=rounded_rect&track_guide=1&track_template=1&labels=0&reference=0&trapezoid=1&support_edges=4@132,4@30/90&track_routes=3:17.5-5:17.5,3:-17.5-5:-35&track_openings=3:-17.5:74:35,5:35:66.1:35&deck_slots=3:-17.5-5:-35/35&risers=3:-17.5-5:-35~74..66.1/35&lower_ground=27.8&upper_edge_gap=15
+  http://localhost:4455/HexmoHexagon?radius=250&thickness=3&h=80&edge_width=22&spoke_width=60&bottom=spoke&support_length=55&track_lead_in=20&track_width=17&under_track_width=35&corner_holes=g2&gap_holes=g2&big_hole_shape=rounded_rect&track_guide=1&track_template=1&labels=0&reference=0&trapezoid=1&support_edges=4@140,4@38/90&track_routes=3:17.5-5:17.5,3:-17.5-5:-35&track_openings=3:-17.5:74:35,5:35:65.6:35&deck_slots=3:-17.5-5:-35/35&risers=3:-17.5-5:-35~74..65.6/35&lower_ground=23.8&upper_edge_gap=15
 - **M2:**
-  http://localhost:4455/HexmoHexagon?radius=220&thickness=3&h=80&edge_width=22&spoke_width=60&bottom=spoke&support_length=55&track_lead_in=26&track_width=17&under_track_width=35&corner_holes=g2&gap_holes=g2&big_hole_shape=rounded_rect&track_guide=1&track_template=1&labels=0&reference=0&trapezoid=1&support_edges=4@132,4@30/90&track_routes=3:17.5-5:17.5,3:-35-5:-35&track_openings=3:-35:66.1:35,5:35:58.5:35&deck_slots=3:-35-5:-35/35&risers=3:-35-5:-35~66.1..58.5/35&lower_ground=27.8&upper_edge_gap=15
+  http://localhost:4455/HexmoHexagon?radius=250&thickness=3&h=80&edge_width=22&spoke_width=60&bottom=spoke&support_length=55&track_lead_in=20&track_width=17&under_track_width=35&corner_holes=g2&gap_holes=g2&big_hole_shape=rounded_rect&track_guide=1&track_template=1&labels=0&reference=0&trapezoid=1&support_edges=4@140,4@38/90&track_routes=3:17.5-5:17.5,3:-35-5:-35&track_openings=3:-35:65.6:35,5:35:57.6:35&deck_slots=3:-35-5:-35/35&risers=3:-35-5:-35~65.6..57.6/35&lower_ground=23.8&upper_edge_gap=15
 - **M3:**
-  http://localhost:4455/HexmoHexagon?radius=220&thickness=3&h=80&edge_width=22&spoke_width=60&bottom=spoke&support_length=55&track_lead_in=26&track_width=17&under_track_width=35&corner_holes=g2&gap_holes=g2&big_hole_shape=rounded_rect&track_guide=1&track_template=1&labels=0&reference=0&trapezoid=1&support_edges=4@132,4@30/90&track_routes=3:17.5-5:17.5,3:-35-5:-35&track_openings=3:-35:58.5:35,5:35:50.8:35&deck_slots=3:-35-5:-35/35&risers=3:-35-5:-35~58.5..50.8/35&lower_ground=27.8&upper_edge_gap=15
+  http://localhost:4455/HexmoHexagon?radius=250&thickness=3&h=80&edge_width=22&spoke_width=60&bottom=spoke&support_length=55&track_lead_in=20&track_width=17&under_track_width=35&corner_holes=g2&gap_holes=g2&big_hole_shape=rounded_rect&track_guide=1&track_template=1&labels=0&reference=0&trapezoid=1&support_edges=4@140,4@38/90&track_routes=3:17.5-5:17.5,3:-35-5:-35&track_openings=3:-35:57.6:35,5:35:49.5:35&deck_slots=3:-35-5:-35/35&risers=3:-35-5:-35~57.6..49.5/35&lower_ground=23.8&upper_edge_gap=15
 - **M4:**
-  http://localhost:4455/HexmoHexagon?radius=220&thickness=3&h=80&edge_width=22&spoke_width=60&bottom=spoke&support_length=55&track_lead_in=26&track_width=17&under_track_width=35&corner_holes=g2&gap_holes=g2&big_hole_shape=rounded_rect&track_guide=1&track_template=1&labels=0&reference=0&trapezoid=1&support_edges=4@132,4@30/90&track_routes=3:17.5-5:17.5,3:-35-5:-35&track_openings=3:-35:50.8:35,5:35:43.2:35&deck_slots=3:-35-5:-35/35&risers=3:-35-5:-35~50.8..43.2/35&lower_ground=27.8&upper_edge_gap=15
+  http://localhost:4455/HexmoHexagon?radius=250&thickness=3&h=80&edge_width=22&spoke_width=60&bottom=spoke&support_length=55&track_lead_in=20&track_width=17&under_track_width=35&corner_holes=g2&gap_holes=g2&big_hole_shape=rounded_rect&track_guide=1&track_template=1&labels=0&reference=0&trapezoid=1&support_edges=4@140,4@38/90&track_routes=3:17.5-5:17.5,3:-35-5:-35&track_openings=3:-35:49.5:35,5:35:41.4:35&deck_slots=3:-35-5:-35/35&risers=3:-35-5:-35~49.5..41.4/35&lower_ground=23.8&upper_edge_gap=15
 - **M5:**
-  http://localhost:4455/HexmoHexagon?radius=220&thickness=3&h=80&edge_width=22&spoke_width=60&bottom=spoke&support_length=55&track_lead_in=26&track_width=17&under_track_width=35&corner_holes=g2&gap_holes=g2&big_hole_shape=rounded_rect&track_guide=1&track_template=1&labels=0&reference=0&trapezoid=1&support_edges=4@132,4@30/90&track_routes=3:17.5-5:17.5,3:-35-5:-35&track_openings=3:-35:43.2:35,5:35:35.6:35&deck_slots=3:-35-5:-35/35&risers=3:-35-5:-35~43.2..35.6/35&lower_ground=27.8&upper_edge_gap=15
+  http://localhost:4455/HexmoHexagon?radius=250&thickness=3&h=80&edge_width=22&spoke_width=60&bottom=spoke&support_length=55&track_lead_in=20&track_width=17&under_track_width=35&corner_holes=g2&gap_holes=g2&big_hole_shape=rounded_rect&track_guide=1&track_template=1&labels=0&reference=0&trapezoid=1&support_edges=4@140,4@38/90&track_routes=3:17.5-5:17.5,3:-35-5:-35&track_openings=3:-35:41.4:35,5:35:33.3:35&deck_slots=3:-35-5:-35/35&risers=3:-35-5:-35~41.4..33.3/35&lower_ground=23.8&upper_edge_gap=15
 - **M6:**
-  http://localhost:4455/HexmoHexagon?radius=220&thickness=3&h=80&edge_width=22&spoke_width=60&bottom=spoke&support_length=55&track_lead_in=26&track_width=17&under_track_width=35&corner_holes=g2&gap_holes=g2&big_hole_shape=rounded_rect&track_guide=1&track_template=1&labels=0&reference=0&support_edges=2,4,6&track_routes=1:-35-5:-17.5,3:-17.5-1:-35,1:0-5:17.5&under_track_edges=1&under_track_height=27.8&track_openings=5:17.5:74:35,3:-35:35.6:35&deck_slots=1:0-5:17.5@169../35,3:35-1:0@..186/35&risers=1:0-5:17.5@169..~77..74/35,3:35-1:0@..186~35.6..31/35,3:35-1:0@186..~31..27.8/35&lower_ground=27.8
+  http://localhost:4455/HexmoHexagon?radius=250&thickness=3&h=80&edge_width=22&spoke_width=60&bottom=spoke&support_length=55&track_lead_in=20&track_width=17&under_track_width=35&corner_holes=g2&gap_holes=g2&big_hole_shape=rounded_rect&track_guide=1&track_template=1&labels=0&reference=0&support_edges=2,4,6&track_routes=1:-35-5:-17.5,3:-17.5-1:-35,1:0-5:17.5&under_track_edges=1&under_track_height=23.8&track_openings=5:17.5:74:35,3:-35:33.3:35&deck_slots=1:0-5:17.5@178../35,3:35-1:0@..233/35&risers=1:0-5:17.5@178..~77..74/35,3:35-1:0@..233~33.3..28/35,3:35-1:0@233..~28..23.8/35&lower_ground=23.8&upper_edge_gap=15
+- **Entry rectangle** (at M6 edge 1):
+  http://localhost:4455/HexmoRectangle?radius=250&thickness=3&h=80&num_rows=3&num_columns=2&track_width=17&track_lead_in=20&under_track=1&under_track_height=23.8&under_track_width=35&turnouts=10:0:-35,133.7:0:35&corner_holes=g2&gap_holes=g2&big_hole_shape=rounded_rect&track_guide=1&track_template=1&labels=0&reference=0
 
-The 3D export shows it all (exact parts only), and `--ring=N-ground` exports
-the whole ring opened up this way, with these settings (see below).
+The 3D export shows it all (exact parts only), and `--ring=N250-ground`
+exports the whole ring opened up this way, with these settings (see below).
+`--ring=N-ground` is the same at radius 220.
 
 ## 3D model for CAD (`--format step`)
 
@@ -903,7 +935,9 @@ python -m boxes.generators._hexmo_step helix-ring.step --ring=N
 python -m boxes.generators._hexmo_step helix-ring.step --ring=N --detail=simple
 # a 3D line drawing of the ring (add --deck for the decks):
 python -m boxes.generators._hexmo_step helix-ring.svg --ring=N
-# the ring opened up for scenery (--lower_ground 27.8; exact parts only):
+# the ring at radius 250 (--ring=N250), opened up for scenery (exact parts only):
+python -m boxes.generators._hexmo_step helix-ring-ground.step --ring=N250-ground
+# the same at radius 220:
 python -m boxes.generators._hexmo_step helix-ring-ground.step --ring=N-ground
 # or a single module, with any generator options:
 python -m boxes.generators._hexmo_step m6.step --radius=220 --h=80 …
