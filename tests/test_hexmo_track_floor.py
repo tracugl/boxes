@@ -153,14 +153,45 @@ class TestSupports:
     def test_halfway_out_from_the_centre(self) -> None:
         # Each support stands where its track is about half the apothem from
         # the centre (where the kite floor's supports stood), not crowding the
-        # middle: the default hexagon's six, one per spoke, and M6's two.
-        for args, n in (([], 6), (HELIX_RING_N250["M6"], 2)):
+        # middle: the default hexagon's six, one per spoke, and M6's three,
+        # one per deck track (lying along the spur's deck stretch fits beside
+        # the lower level).
+        for args, n in (([], 6), (HELIX_RING_N250["M6"], 3)):
             box, r, _, _ = rendered(args)
             apothem = r * math.sqrt(3) / 2
             supports = box._supportLayout(r, False)
             assert len(supports) == n
             for sp in supports:
                 assert math.hypot(*sp.centre) == pytest.approx(apothem / 2, abs=15)
+
+    @pytest.mark.parametrize("args, frac", [(["--trapezoid=1"], 0.5),
+                                            (HELIX_RING_N250["M2"], 0.75)],
+                             ids=["no slot", "M2 inside the spur's slot"])
+    def test_trapezoid_support_in_its_open_middle(self, args, frac) -> None:
+        # One support on the trapezoid's middle line, in the middle of its
+        # longest stretch of deck: halfway across with no slot; on M2 inside
+        # the spur's slot, about three quarters of the way to edge 4.
+        box, r, _, _ = rendered(args)
+        apothem = r * math.sqrt(3) / 2
+        (support,) = box._supportLayout(r, True)
+        assert support.centre[0] == pytest.approx(0, abs=0.01)
+        assert -support.centre[1] == pytest.approx(apothem * frac, rel=0.06)
+
+    @pytest.mark.parametrize("width", [30, 50, 60])
+    def test_trapezoid_middle_spoke_runs_long_edge_to_edge_4(self, width) -> None:
+        # Whatever --spoke_width, a straight spoke down the middle line ties
+        # the floor's outer part to its inner: no opening crosses it.
+        box, r, risers, _ = rendered(["--trapezoid=1", f"--spoke_width={width}"])
+        apothem = r * math.sqrt(3) / 2
+        middle = LineString([(0, 0), (0, -apothem)])
+        assert not any(h.intersects(middle) for h in openings(box, r, risers))
+
+    @pytest.mark.parametrize("args", [[], HELIX_RING_N250["M6"], helix_ring_ho()["M6"]],
+                             ids=["default", "N250 M6", "HO M6"])
+    def test_hexagon_supports_lie_along_their_tracks(self, args) -> None:
+        box, r, _, _ = rendered(args)
+        supports = box._supportLayout(r, False)
+        assert supports and all(sp.lying for sp in supports)
 
     def test_cutout_in_the_middle(self) -> None:
         # The default hexagon opens up its middle: one opening covers the
@@ -169,6 +200,10 @@ class TestSupports:
         apothem = r * math.sqrt(3) / 2
         middle = Point(0, 0).buffer(apothem / 3 - box.spoke_width / 2)
         assert any(h.contains(middle) for h in openings(box, r, risers))
+        # A plain circle, centred.
+        hole = next(h for h in openings(box, r, risers) if h.contains(middle))
+        radius = math.sqrt(hole.area / math.pi)
+        assert hole.hausdorff_distance(Point(0, 0).buffer(radius)) < 1.0
 
     def test_ground_supports_never_straddle_the_deck_edge(self) -> None:
         box, r, _, _ = rendered(HELIX_RING_N250_GROUND["M2"])

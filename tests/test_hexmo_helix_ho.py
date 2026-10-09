@@ -161,7 +161,9 @@ class TestGround:
         r, _ = box._innerSize()
         supports = box._supportLayout(r, True)
         assert supports
-        assert len(plan.lower) < len(supports)      # some under the deck
+        # The trapezoid's one support is in the middle of its inner deck,
+        # which here is the lower plate: it stands shortened under that.
+        assert plan.lower == frozenset(range(len(supports)))
 
     def test_in_the_ring_export(self) -> None:
         assert RINGS["HO-ground"][0] == self.GROUND

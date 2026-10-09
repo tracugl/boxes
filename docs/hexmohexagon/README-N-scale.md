@@ -677,21 +677,31 @@ so 1–3, 3–5, 5–1 and 2–4, 4–6, 6–2 on the full hexagon (two triangle
 and 3–5 on the trapezoid, on the centre line as `--track_routes` would draw them.
 Every module of a size has the same spokes, whatever track it carries. The
 module's own tracks (at their offsets), risers and subways get a strip too.
-The spokes and deck tracks' strips stop short of a cutout in the middle, a third
-of the apothem across (risers, subways and the supports stay solid even there),
-and each spoke still runs out to the rim. Everything else is cut away in rounded
-openings; gaps narrower than 15 mm stay solid. So whatever stands on the floor (riser supports, a subway's supports, a
+Everything else is cut away in rounded openings; gaps narrower than 15 mm stay
+solid. On the full hexagon the middle is a plain circular cutout, up to a third
+of the apothem across, keeping 10 mm of wood to the other openings and to
+anything standing on the floor. So whatever stands on the floor (riser supports, a subway's supports, a
 bed lying on the floor) has solid floor under it.
 
-The support walls stand on those strips: **one per deck track**, across it where
-the track is `--support_position` from the centre (default half the apothem, where
-the kite floor's supports stood), so they don't crowd the middle. Where that
-place won't take one (a deck slot, a riser or lower-level track, a wall or
-another support in the way), it moves along the track to the next best place; there it stands across the track, slid along itself
-if need be (as far as still keeps both rails over it), or failing that along the
-track, under the rails. A track with nowhere to take one (the spur in its deck
-slot, say) gets none. A module with no deck tracks gets one across the middle
-of each spoke. With `--lower_ground` each support is wholly under the deck or
+The support walls are there to stop the deck sagging. On the **full hexagon**,
+**one per deck track**, lying along it down the middle of its strip, where the
+track is `--support_position` from the centre (default half the apothem, where
+the kite floor's supports stood), so they don't crowd the middle. Where that place
+won't take one (a deck slot, a riser or lower-level track, a wall or another
+support in the way), it moves along the track to the next best place; there it
+lies along the track, nudged sideways within its strip if need be, or failing
+that stands across the track (slid along itself as far as still keeps both rails
+over it), on a round boss of floor. A track with nowhere to take one (the spur in
+its deck slot, say) gets none. A hexagon with no deck tracks gets one on each
+spoke.
+
+On the **trapezoid**, one support where its deck sags most: down its middle
+line, from the long wall to edge 4, in the middle of the longest stretch of deck
+(inside the spur's slot on the helix trapezoids; halfway across with no slot),
+pointing at edge 4, on a short spoke of floor out to the rim.
+
+A support lying along a strip needs nothing more; the central cutout keeps 10 mm
+clear of every support's slot. With `--lower_ground` each support is wholly under the deck or
 wholly under the lower plate. `--support_edges` doesn't apply to this floor.
 
 `--bottom kites` is the original spoke floor: the rim plus six straight spokes
