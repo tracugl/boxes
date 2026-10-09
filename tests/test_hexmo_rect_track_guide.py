@@ -23,7 +23,7 @@ except ImportError:
     sys.path.append(Path(__file__).resolve().parent.parent.__str__())
     import boxes
 
-from hexmo_testutil import IGNORE_CORE_MATMUL
+from hexmo_testutil import IGNORE_CORE_MATMUL, PLAIN_WALLS
 
 # Silence only the matmul deprecation raised by upstream's boxes/drawing.py
 # (see hexmo_testutil); every other warning still shows.
@@ -73,7 +73,7 @@ def record_guide(cls, extra):
     @returns Dict with the plate size, pin holes, windows and label texts.
     """
     box = cls()
-    box.parseArgs(N_SCALE + ["--track_guide=1"] + extra)
+    box.parseArgs(N_SCALE + ["--track_guide=1"] + extra + PLAIN_WALLS)
     box.open()
     rec = {"plates": [], "holes": [], "windows": [], "texts": []}
     inside = [False]
@@ -155,7 +155,7 @@ class TestRectGuidePinsHitRectEndWall:
         ``along = y − s/2`` from the centre and ``from_deck = l − x``.
         """
         box = HexmoRectangle()
-        box.parseArgs(N_SCALE + [f"--outside={outside}", "--track_guide=1"])
+        box.parseArgs(N_SCALE + [f"--outside={outside}", "--track_guide=1"] + PLAIN_WALLS)
         s, l = box._hexWallLength(), box._hexWallHeight()
         pins = {(round(y - s / 2, 2), round(l - x, 2), r)
                 for x, y, r in box._trackGuidePins(s, l)}

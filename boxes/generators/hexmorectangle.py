@@ -30,8 +30,10 @@ from types import SimpleNamespace
 from boxes import Boxes, edges, boolarg
 from boxes.Color import Color
 from boxes.generators._hexmo_access import (
-    ACCESS_BAND, ACCESS_MIN, ACCESS_POST, openings_with_pilots, recorded_holes,
+    ACCESS_BAND, ACCESS_MIN, ACCESS_POST, FINGER_MIN, PILOT_CLEAR, access_fits,
+    access_spans, end_columns, end_pills, openings_with_pilots, recorded_holes,
 )
+from boxes.generators._hexmo_track_openings import rect_circle_gap
 from boxes.generators._hexmo_big_holes import HexmoBigHoleMixin
 from boxes.generators._hexmo_risers import support_stations
 from boxes.generators._hexmo_step_format import HexmoStepFormatMixin
@@ -264,6 +266,10 @@ class HexmoRectangle(HexmoStepFormatMixin, HexmoBigHoleMixin, HexmoTrackGuideMix
     _ACCESS_BAND = ACCESS_BAND
     _ACCESS_POST = ACCESS_POST
     _ACCESS_MIN = ACCESS_MIN
+    # Wood beside a subway support's slot in the floor strip, between the
+    # strip's access openings: less than _ACCESS_POST, so openings still fit
+    # between supports at most --riser_spacing (80) apart.
+    _FLOOR_SLOT_WOOD = 10.0
 
     def __init__(self) -> None:
         """Initialise argument parser with FingerJoint settings and the ``--radius`` parameter."""
@@ -480,14 +486,19 @@ class HexmoRectangle(HexmoStepFormatMixin, HexmoBigHoleMixin, HexmoTrackGuideMix
             "--riser_spacing", action="store", type=float, default=80.0,
             help="With --subway: largest gap (mm) between neighbouring bed supports.")
         self.argparser.add_argument(
-            "--access_openings", action="store", type=boolarg, default=False,
-            help="Hand access, e.g. to re-rail a train under the deck: each long "
-                 "wall and long support gets one large rounded-rectangle opening "
-                 "per cell, all lined up so you can reach through to the middle "
-                 "lane, in place of their weight and registration holes (nothing "
-                 "joins the long walls, so they need no registration holes).  "
-                 "Each leaves 12 mm of wood above and below and 15 mm at each "
-                 "end of the cell.")
+            "--access_openings", action="store", type=boolarg, default=True,
+            help="Access walls (default on): hand access, e.g. to re-rail a train "
+                 "under the deck.  Each long wall and long support gets one large "
+                 "rounded-rectangle opening per cell, all lined up so you can reach "
+                 "through to the middle lane; the end walls and short dividers get "
+                 "one per lane, the middle lane's split round a post as wide as "
+                 "--spoke_width that carries the subway opening (--subway_ports).  "
+                 "The walls' weight holes go, but the Ø6 registration pilots beside "
+                 "the openings stay, so the end walls still line up with the "
+                 "HexmoHexagon they join.  Each leaves 15 mm of wood above and "
+                 "below and 15 mm at each end of the cell.  Walls too small for a "
+                 "hand (about 70 × 40 mm) keep their normal holes.  Off gives the "
+                 "original walls.")
         # --format step and --step_clearance (see _hexmo_step_format).
         self._addStepFormat()
 
@@ -510,6 +521,32 @@ class HexmoRectangle(HexmoStepFormatMixin, HexmoBigHoleMixin, HexmoTrackGuideMix
             r -= self.thickness / math.cos(math.radians(30))
         _, _, side = self.regularPolygon(6, radius=r)
         return side
+
+    def _checkRectUnderTrack(self, s_hex, l_eff, under_x, lane_pos, n_div_v, n_rows):
+        """Check the under-deck opening fits the end walls and short dividers.
+
+        @param s_hex   - The matching hex wall's hole-pattern length.
+        @param l_eff   - The matching hex wall's body height.
+        @param under_x - The opening's centre along the end wall.
+        @param lane_pos - Callable: long support i's position along the end wall.
+        @param n_div_v - Number of long supports.
+        @param n_rows  - Number of lanes (for the message).
+        @returns ``(top, bottom)`` of the opening, measured down from the deck.
+        @throws ValueError - If it runs into the corner hole groups, leaves no
+                             room under the deck, or a long support crosses it.
+        """
+        t = self.thickness
+        self._checkUnderTrackClearsCorners(s_hex)
+        bottom, top = self._underTrackSpan(l_eff)
+        half = self.under_track_width / 2
+        for i in range(n_div_v):
+            if abs(under_x - lane_pos(i)) < half + t / 2 + self._MIN_CLEAR:
+                raise ValueError(
+                    "--under_track: a long support (--num_rows "
+                    f"{n_rows}) crosses the end walls within the "
+                    f"{self.under_track_width:g} mm opening; use an odd "
+                    "--num_rows or a narrower --under_track_width.")
+        return l_eff - top, l_eff - bottom
 
     def _hexWallHeight(self):
         """Wall-body height of the matching HexmoHexagon side wall.
@@ -1143,51 +1180,85 @@ class HexmoRectangle(HexmoStepFormatMixin, HexmoBigHoleMixin, HexmoTrackGuideMix
                             label="track guide turnout leg end",
                             arrow="turnout leg side ->")
 
-    def _drawRectSubway(self, subway, cells, H, step_frame):
-        """Cut the subway's level bed and supports for each cell (see --subway).
+    def _rectSubwayOnFloor(self, subway):
+        """Whether a --subway runs on the floor: its track height one thickness.
 
-        Each cell between the end walls and short dividers gets a bed the
-        cell's length, its top at the track height, and supports standing in
-        the floor strip (the spoke) 15 mm in from each end and evenly between,
-        at most --riser_spacing apart.  Each support is the bed's width wide and
-        as tall as the bed's underside, finger-jointed into the strip below and
-        the bed above, as a HexmoHexagon riser support is.  The track crosses
-        each wall on its under-deck opening's bottom edge, at the same height.
+        The bed then lies flat on the floor strip, needing no supports.
+
+        @param subway - ``(height, width)`` from _rectSubway, or None.
+        @returns True for a subway on the floor.
+        """
+        return subway is not None and subway[0] <= self.thickness + 1e-6
+
+    def _drawRectSubway(self, subway, cells, H, step_frame):
+        """Cut the subway's level bed and its supports (see --subway).
+
+        Raised (track height at least 2t): one bed runs the module's whole
+        length, from the outer face of one end wall to the other's, through
+        the under-deck openings in the end walls and short dividers, its top
+        at the track height; it meets the next module's bed at the joint with
+        no gap.  It is _SUBWAY_BED_CLEAR narrower than the openings, so it
+        slides through them.  Each cell between the end walls and short
+        dividers gets supports standing in the floor strip (the spoke) 15 mm
+        in from each end and evenly between, at most --riser_spacing apart.
+        Each support is the bed's width wide and as tall as the bed's
+        underside, finger-jointed into the strip below and the bed above, as a
+        HexmoHexagon riser support is.
+
+        On the floor (track height one thickness): each cell gets a bed lying
+        flat on the floor strip, wall face to wall face, and no supports.  The
+        track crosses each wall on its strip above the floor joint, level with
+        the beds.
 
         @param subway     - ``(height, width)`` from _rectSubway.
         @param cells      - ``(start, end)`` along H of each cell (wall faces).
         @param H          - Inner length (the module frame is centred on it).
         @param step_frame - render's 3D-export frame recorder.
+        @throws ValueError - On a track height between the floor and the
+                             lowest a support fits under.
         """
         t = self.thickness
-        height, width = subway
+        height = subway[0]
+        width = self._subwayBedWidth(subway[1])
+        if self._rectSubwayOnFloor(subway):
+            for x0, x1 in cells:
+                def floor_bed_cb(x0=x0):
+                    # Flat on the floor strip: its top one thickness up.
+                    step_frame("subway bed", "riser", (-H / 2 + x0, -width / 2, 0.0),
+                               (1, 0, 0), (0, 1, 0))
+
+                self.rectangularWall(x1 - x0, width, "eeee", callback=[floor_bed_cb],
+                                     move="right", label=f"subway bed {x1 - x0:.0f}")
+            return
         body = height - t
-        if body < 2 * t:
+        if body < t:
             raise ValueError(f"--subway {height:g} leaves no room for supports under "
-                             "the bed; raise it.")
-        for x0, x1 in cells:
-            length = x1 - x0
-            stations = support_stations(length, self.riser_spacing)
+                             f"the bed; use {2 * t:g} or more, or {t:g} to lay it on "
+                             "the floor.")
+        # Support positions along H, from the inner face of end wall 1.
+        stations = [x0 + x for x0, x1 in cells
+                    for x in support_stations(x1 - x0, self.riser_spacing)]
 
-            def bed_cb(x0=x0, stations=stations):
-                # The bed lies level, its top at the track height.
-                step_frame("subway bed", "riser", (-H / 2 + x0, -width / 2, body),
-                           (1, 0, 0), (0, 1, 0))
-                for x in stations:
-                    self.fingerHolesAt(x, 0, width, 90)
-
-            self.rectangularWall(length, width, "eeee", callback=[bed_cb], move="right",
-                                 label=f"subway bed {length:.0f}")
+        def bed_cb():
+            # The bed lies level, its top at the track height, from the outer
+            # face of end wall 1 (−t along H).
+            step_frame("subway bed", "riser", (-H / 2 - t, -width / 2, body),
+                       (1, 0, 0), (0, 1, 0))
             for x in stations:
-                def support_cb(x=x0 + x):
-                    step_frame("subway support", "riser", (-H / 2 + x - t / 2, -width / 2, 0.0),
-                               (0, 1, 0), (0, 0, 1))
-                    if self.part_text:
-                        self.text(f"{height:g}", width / 2, body / 2, align="middle center",
-                                  fontsize=min(4.0, body / 3), color=Color.ETCHING)
+                self.fingerHolesAt(x + t, 0, width, 90)
 
-                self.rectangularWall(width, body, "fefe", callback=[support_cb],
-                                     move="right", label=f"subway {height:g}")
+        self.rectangularWall(H + 2 * t, width, "eeee", callback=[bed_cb], move="right",
+                             label=f"subway bed {H + 2 * t:.0f}")
+        for x in stations:
+            def support_cb(x=x):
+                step_frame("subway support", "riser", (-H / 2 + x - t / 2, -width / 2, 0.0),
+                           (0, 1, 0), (0, 0, 1))
+                if self.part_text:
+                    self.text(f"{height:g}", width / 2, body / 2, align="middle center",
+                              fontsize=min(4.0, body / 3), color=Color.ETCHING)
+
+            self.rectangularWall(width, body, "fefe", callback=[support_cb],
+                                 move="right", label=f"subway {height:g}")
 
     def _etchTurnoutLeg(self, segments):
         """Etch one turnout's diverging leg, styled like the straight track lines.
@@ -1413,7 +1484,10 @@ class HexmoRectangle(HexmoStepFormatMixin, HexmoBigHoleMixin, HexmoTrackGuideMix
             self.under_track = True
             self.under_track_height, self.under_track_width = subway
         # --subway_ports: the end walls and short dividers get the under-deck
-        # opening (with its cable slot).
+        # opening (with its cable slot).  It is on by default, so when it is
+        # the only reason for the opening and the opening doesn't fit, the
+        # walls go without it (see the under-deck checks below).
+        port_only = self.subway_ports and not self.under_track
         if self.subway_ports:
             self.under_track = True
         r, h, apothem, W, H = lay.r, lay.h, lay.apothem, lay.W, lay.H
@@ -1421,16 +1495,11 @@ class HexmoRectangle(HexmoStepFormatMixin, HexmoBigHoleMixin, HexmoTrackGuideMix
         col_w, row_h, sw = lay.col_w, lay.row_h, lay.sw
         lane_pos = lambda i: lay.lane_pos[i]
 
-        # --access_openings must still fit a hand.
-        if self.access_openings:
-            open_w = row_h - 2 * self._ACCESS_POST
-            open_h = (h - t) - 2 * self._ACCESS_BAND
-            if open_w < self._ACCESS_MIN[0] or open_h < self._ACCESS_MIN[1]:
-                raise ValueError(
-                    f"--access_openings: each cell leaves only a {open_w:.0f} × "
-                    f"{open_h:.0f} mm opening (a hand needs about "
-                    f"{self._ACCESS_MIN[0]:g} × {self._ACCESS_MIN[1]:g}); use fewer "
-                    "--num_columns or a taller --h.")
+        # --access_openings (on by default) on the long walls and supports
+        # only where each cell's opening still fits a hand; otherwise they
+        # keep their normal holes.
+        long_access = self.access_openings and access_fits(
+            row_h - 2 * self._ACCESS_POST, (h - t) - 2 * self._ACCESS_BAND)
 
         # Turnout legs (--turnouts), solved and checked before anything is
         # drawn; etched on the deck by base_cb.
@@ -1506,20 +1575,27 @@ class HexmoRectangle(HexmoStepFormatMixin, HexmoBigHoleMixin, HexmoTrackGuideMix
         # opening's span above the floor maps to ``l_eff − height``.
         under_x = s_hex / 2 - dx
         under_y = None
+        l_eff = self._hexWallHeight()
         if self.under_track:
             # Validate everything before any panel is drawn.
-            self._checkUnderTrackClearsCorners(s_hex)
-            l_eff = self._hexWallHeight()
-            bottom, top = self._underTrackSpan(l_eff)
-            under_y = (l_eff - top, l_eff - bottom)
+            try:
+                under_y = self._checkRectUnderTrack(s_hex, l_eff, under_x, lane_pos,
+                                                    n_div_v, n_rows)
+            except ValueError:
+                if not port_only:
+                    raise
+                # Only the default --subway_ports asked for it: go without.
+                self.under_track = False
+        if (under_y is not None and subway is not None and not self.subway_ports
+                and not self._rectSubwayOnFloor(subway)):
+            # The subway's bed runs on through the opening, so it reaches a
+            # corner radius below the bed's underside, its rounded corners
+            # clear of the bed's (with --subway_ports it already runs nearly
+            # to the floor).  y runs down from the deck.
+            corner = max(0.0, self.big_hole_roundness) * self.under_track_width / 2
+            under_y = (under_y[0], min(l_eff - t, under_y[1] + t + corner))
+        if under_y is not None:
             half = self.under_track_width / 2
-            for i in range(n_div_v):
-                if abs(under_x - lane_pos(i)) < half + t / 2 + self._MIN_CLEAR:
-                    raise ValueError(
-                        "--under_track: a long support (--num_rows "
-                        f"{n_rows}) crosses the end walls within the "
-                        f"{self.under_track_width:g} mm opening; use an odd "
-                        "--num_rows or a narrower --under_track_width.")
             big_half = self._bigHoleHalfExtent(self._bigHoleRadius())[0]
             end_big_xs = [x for x in end_big_xs
                           if abs(x - under_x) >= half + big_half + self._MIN_CLEAR]
@@ -1609,6 +1685,18 @@ class HexmoRectangle(HexmoStepFormatMixin, HexmoBigHoleMixin, HexmoTrackGuideMix
             # FingerJointEdgeCounterPart on the top edge of this panel (edge[2] in
             # rectangularWall).  The edge notches are drawn as part of the panel
             # outline — no rectangularHole callback needed here.
+            if end_access:
+                draw_end_access(l_eff, pilots=True)
+                return
+            end_wall_holes()
+            if under_y is not None:
+                self._drawUnderTrackOpening(under_x + dx, *under_y, along_x=True)
+
+        def end_wall_holes():
+            """The end wall's normal registration and weight holes.
+
+            Leaves the origin shifted by −dx, into the hex wall-pattern frame.
+            """
             self.moveTo(-dx, 0)
             # gap_features=False: the gap-fill medium holes at x_mid of the two
             # inter-big-hole gaps land directly on the vertical-divider finger
@@ -1622,9 +1710,102 @@ class HexmoRectangle(HexmoStepFormatMixin, HexmoBigHoleMixin, HexmoTrackGuideMix
             # keeps its default registration x_floor.
             self.drawAlignmentHolesRect(s_hex, gap_features=False,
                                         big_xs=[x + dx for x in end_big_xs])
+
+        # The end walls' and short dividers' access openings at full size: one
+        # per lane, _ACCESS_POST mm clear of the long supports' slots and the
+        # wall ends; the middle lane's split round a post as wide as the spoke
+        # (wider if the subway opening needs it), over the spoke, which
+        # carries the subway opening.  Openings narrower than a few fingers
+        # are left out (see access_spans).
+        end_post = sw
+        end_rects = []
+        if under_y is not None:
+            end_post = max(end_post, self.under_track_width + 2 * self._UNDER_TRACK_CLEAR)
+            half = self.under_track_width / 2
+            end_rects.append((under_x - half, under_x + half, *under_y))
+        end_solid = ([(under_x - end_post / 2, under_x + end_post / 2)] if end_post > 0 else []) + [
+            (lane_pos(i) - t / 2 - self._ACCESS_POST, lane_pos(i) + t / 2 + self._ACCESS_POST)
+            for i in range(n_div_v)]
+        end_spans = access_spans(0, W - 2 * t, end_solid)
+        # Only where they leave room for a hand's height and one opening.
+        end_access = (self.access_openings and bool(end_spans)
+                      and l_eff - 2 * self._ACCESS_BAND >= self._ACCESS_MIN[1])
+        end_layout = {}
+
+        def end_access_layout():
+            """The end walls' and short dividers' access openings, and the end
+            walls' Ø6 pilots kept beside them.
+
+            The full-size openings (``end_spans``) also keep clear of the
+            pilot pair nearest each end of the wall, which registers it with
+            the HexmoHexagon it joins (see end_columns), then shrink to keep
+            the pilot pairs nearest their own ends (see openings_with_pilots);
+            pilots too near the subway opening go.
+            Worked out once, during the first end wall's callback (the pilots
+            are found by recording its normal holes there).
+
+            @returns ``(openings, pilots, pills)``: ``[(start, end)]`` across
+                     the wall (0 … W − 2t), the pilots ``[(x, y, r)]`` to cut,
+                     and the cable slots ``[(x, y, length)]``.
+            """
+            if not end_layout:
+                with self.saved_context():
+                    holes = recorded_holes(self, end_wall_holes)
+                pilots = [(x, y, r) for x, y, r in holes if abs(r - self._R3) < 1e-6]
+                # The pilot pair nearest each end stays: it registers with
+                # the HexmoHexagon wall this end wall joins (see end_columns).
+                # With --subway_ports an upright cable slot stands between
+                # each pair, lining up with the hexagon's (see end_pills).
+                # The wall's ends are cut deepest one and a half thicknesses
+                # in from the hole pattern's ends (at −dx and s_hex − dx
+                # here; about where its finger notches bottom out), as on the
+                # hexagon wall this joins, so both centre their slots alike.
+                length, width = self._CABLE_SLOT
+                edge = 1.5 * t
+                # Outside a pilot pair a slot is as tall as the access
+                # openings, as on the hexagon wall.
+                pills = (end_pills(pilots, length, width, self._CABLE_SLOT_WOOD,
+                                   -dx + edge, s_hex - dx - edge,
+                                   tall=l_eff - 2 * self._ACCESS_BAND)
+                         if self.subway_ports else [])
+                ends = end_columns(pilots) + [
+                    (x - width / 2 - PILOT_CLEAR, x + width / 2 + PILOT_CLEAR) for x, _, _ in pills]
+                spans = access_spans(0, W - 2 * t, end_solid + ends)
+                openings, kept = openings_with_pilots(
+                    spans, pilots, [under_x] + [lane_pos(i) for i in range(n_div_v)])
+                pill_rects = [(x - width / 2, x + width / 2, y - tall / 2, y + tall / 2)
+                              for x, y, tall in pills]
+                kept = [p for p in kept
+                        if all(rect_circle_gap(rect, p) >= self._MIN_CLEAR for rect in end_rects)
+                        and all(rect_circle_gap(rect, p) >= self._CABLE_SLOT_WOOD - 1e-6
+                                for rect in pill_rects)]
+                end_layout["v"] = (openings, kept, pills)
+            return end_layout["v"]
+
+        def draw_end_access(body, pilots=False):
+            """The end walls' and short dividers' access openings.
+
+            @param body   - The panel's body height down from the deck: the
+                            openings leave _ACCESS_BAND of it above and below.
+            @param pilots - The end walls: keep their Ø6 pilots, the openings
+                            shrinking round them (see end_access_layout).  The
+                            dividers register to nothing, so theirs are the
+                            full-size ``end_spans``.
+            """
+            openings, kept, pills = end_access_layout() if pilots else (end_spans, [], [])
+            dy = body - 2 * self._ACCESS_BAND
+            for x0, x1 in openings:
+                dx_ = x1 - x0
+                r = max(0.0, self.big_hole_roundness) * min(dx_, dy) / 2
+                self.rectangularHole((x0 + x1) / 2, body / 2, dx_, dy, r=r,
+                                     center_x=True, center_y=True)
+            if pilots:
+                for x, y, r in kept:
+                    self.hole(x, y, r)
+            for x, y, tall in pills:
+                self._drawCablePill(x, y, along_x=True, length=tall)
             if under_y is not None:
-                self._drawUnderTrackOpening(under_x + dx, *under_y, along_x=True,
-                                            floor=l_eff)
+                self._drawUnderTrackOpening(under_x, *under_y, along_x=True)
 
         # Long outer walls (H × h): four horizontal dividers pass through.
         # Divider i is centred at (i+1)·row_h + (2i+1)·t/2 along H (i = 0..3).
@@ -1684,7 +1865,7 @@ class HexmoRectangle(HexmoStepFormatMixin, HexmoBigHoleMixin, HexmoTrackGuideMix
                 # part of the end tab that slots into this wall, so fingerHoles
                 # span only the body height h−t.
                 self.fingerHolesAt(div_pos(i), 0, h - t, 90)
-            if self.access_openings:
+            if long_access:
                 draw_access_openings(pilots=True)
                 return
             long_wall_holes()
@@ -1798,7 +1979,7 @@ class HexmoRectangle(HexmoStepFormatMixin, HexmoBigHoleMixin, HexmoTrackGuideMix
         # Vertical dividers (H × h): n_cols row segments, step = row_h; or,
         # with --access_openings, the same openings as the long walls.
         vert_div_cb = lambda: (frame_long_support(),
-                               draw_access_openings() if self.access_openings
+                               draw_access_openings() if long_access
                                else _seg_hole_cb(n_cols, row_h))
         # Horizontal dividers (W−2t × h): n_rows lane segments, step = col_w.
         # NOTE: the spoke-to-divider connection is handled by the 'f' sections on
@@ -1817,6 +1998,11 @@ class HexmoRectangle(HexmoStepFormatMixin, HexmoBigHoleMixin, HexmoTrackGuideMix
             Captures from enclosing scope: ``n_rows``, ``col_w``, ``t``,
             ``end_big_xs``.
             """
+            if end_access:
+                # The end walls' openings, within the divider's own body (it
+                # is h − t tall, the spoke's tabs above it).
+                draw_end_access(min(l_eff, h - t))
+                return
             r4, mc = self._bigHoleRadius(), self._MIN_CLEAR
             y_big = self._hexWallHeight() / 2.0
             for j in range(n_rows):
@@ -1829,8 +2015,7 @@ class HexmoRectangle(HexmoStepFormatMixin, HexmoBigHoleMixin, HexmoTrackGuideMix
                 # in its lane, the under-deck track opening.
                 spans = [(x - r4 - mc, x + r4 + mc) for x in bigs]
                 if under_y is not None and x_lo <= under_x <= x_hi:
-                    self._drawUnderTrackOpening(under_x, *under_y, along_x=True,
-                                                floor=l_eff)
+                    self._drawUnderTrackOpening(under_x, *under_y, along_x=True)
                     half = self.under_track_width / 2
                     spans = sorted(spans + [(under_x - half - mc, under_x + half + mc)])
                 los = [x_lo] + [hi for _, hi in spans]
@@ -2028,15 +2213,52 @@ class HexmoRectangle(HexmoStepFormatMixin, HexmoBigHoleMixin, HexmoTrackGuideMix
             # registers to nothing, so it needs no medium/small holes — centred
             # across the spoke's sw width and packed clear of the finger slots and
             # the finger-tabbed ends (_fillWeightSpan keeps _BIG_EDGE clearance).
-            if subway is not None:
+            stations = []
+            if subway is not None and not self._rectSubwayOnFloor(subway):
                 # The subway's supports slot in here instead of weight holes.
+                bed = self._subwayBedWidth(subway[1])
                 for x0, x1 in subway_cells:
                     for x in support_stations(x1 - x0, self.riser_spacing):
-                        self.fingerHolesAt(x0 + x, sw / 2 - subway[1] / 2, subway[1], 90)
+                        self.fingerHolesAt(x0 + x, sw / 2 - bed / 2, bed, 90)
+                        stations.append(x0 + x)
+            if floor_access:
+                draw_floor_access(stations)
+            elif subway is not None:
+                # Solid: a subway on the floor lies on this strip.
+                pass
             elif sw >= 2 * self._bigHoleRadius() + 2 * self._MIN_CLEAR:
                 bounds = [0.0] + [div_pos(i) for i in range(n_div_h)] + [H]
                 for g_lo, g_hi in zip(bounds[:-1], bounds[1:]):
                     self._fillWeightSpan(g_lo, g_hi, clusters=False, y_centre=sw / 2)
+
+        # --access_openings on the floor strip too, where it is wide enough
+        # for a finger-width opening between its 15 mm edge bands.
+        # Not under a subway lying on the floor: the strip carries its beds.
+        floor_access = (self.access_openings and sw - 2 * self._ACCESS_BAND >= FINGER_MIN
+                        and not self._rectSubwayOnFloor(subway))
+
+        def draw_floor_access(stations):
+            """The floor strip's access openings, in place of its weight holes.
+
+            One rounded rectangle per cell, as on the long walls: _ACCESS_POST
+            clear of the short dividers' finger slots and the strip's ends,
+            _ACCESS_BAND of wood along each long edge.  With --subway, also one
+            between each pair of support slots, _FLOOR_SLOT_WOOD clear of
+            them.  Gaps too short for fingers are left solid.
+
+            @param stations - Positions along H of the subway supports' slots
+                              (none without --subway).
+            """
+            # access_spans keeps _ACCESS_POST at the strip's ends itself.
+            post = t / 2 + self._ACCESS_POST
+            slot = t / 2 + self._FLOOR_SLOT_WOOD
+            solid = ([(x - post, x + post) for x in (div_pos(i) for i in range(n_div_h))]
+                     + [(x - slot, x + slot) for x in stations])
+            dy = sw - 2 * self._ACCESS_BAND
+            for x0, x1 in access_spans(0, H, solid):
+                r = max(0.0, self.big_hole_roundness) * min(x1 - x0, dy) / 2
+                self.rectangularHole((x0 + x1) / 2, sw / 2, x1 - x0, dy, r=r,
+                                     center_x=True, center_y=True)
 
         if sw > 0:
             self.rectangularWall(H, sw, "efef",

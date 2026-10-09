@@ -30,7 +30,7 @@ except ImportError:
     sys.path.append(Path(__file__).resolve().parent.parent.__str__())
     import boxes
 
-from hexmo_testutil import IGNORE_CORE_MATMUL, apply
+from hexmo_testutil import IGNORE_CORE_MATMUL, apply, PLAIN_WALLS
 
 # Silence only the matmul deprecation raised by upstream's boxes/drawing.py
 # (see hexmo_testutil); every other warning still shows.
@@ -54,7 +54,7 @@ def hex_wall_big_holes(args):
     @returns Sorted ``(along, from_deck, width, height)`` tuples.
     """
     box = HexmoHexagon()
-    box.parseArgs(args)
+    box.parseArgs(args + PLAIN_WALLS)
     box.open()
     frames, found, inside = [], [], [False]
     o_rhole, o_align = box.rectangularHole, box.drawAlignmentHoles
@@ -86,7 +86,7 @@ def rect_big_holes(args):
              width, height)`` tuples, ``along`` measured from the wall centre.
     """
     box = HexmoRectangle()
-    box.parseArgs(args)
+    box.parseArgs(args + PLAIN_WALLS)
     box.open()
     found = {"end": [], "div": []}
     cur = {"kind": None, "origin": None, "half": 0.0}
@@ -162,9 +162,10 @@ class TestShrinkAroundCentre:
         assert rect["div"] == rect["end"]
 
     def test_hex_support_holes_use_the_size_too(self) -> None:
-        # Hex internal supports draw big holes with x along the support.
+        # Hex internal supports draw big holes with x along the support (on
+        # the original walls; access walls give them one subway-shaped opening).
         box = HexmoHexagon()
-        box.parseArgs(HO + ["--big_hole_width=50", "--big_hole_height=40"])
+        box.parseArgs(HO + ["--big_hole_width=50", "--big_hole_height=40"] + PLAIN_WALLS)
         box.open()
         seen, inside = [], [False]
         o_rhole, o_sup = box.rectangularHole, box.drawSupports

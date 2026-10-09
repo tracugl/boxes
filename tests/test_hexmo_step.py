@@ -26,7 +26,7 @@ except ImportError:
 
 pytest.importorskip("build123d")
 
-from hexmo_testutil import IGNORE_CORE_MATMUL
+from hexmo_testutil import IGNORE_CORE_MATMUL, PLAIN_WALLS
 
 pytestmark = IGNORE_CORE_MATMUL
 
@@ -47,14 +47,14 @@ M6 = ["--radius=220", "--thickness=3", "--h=80", "--edge_width=22", "--spoke_wid
       "--track_openings=5:17.5:74:35,3:-35:35.6:35",
       "--deck_slots=1:0-5:17.5@169../35,3:35-1:0@..186/35",
       "--risers=1:0-5:17.5@169..~77..74/35,3:35-1:0@..186~35.6..31/35,"
-      "3:35-1:0@186..~31..27.8/35"]
+      "3:35-1:0@186..~31..27.8/35"] + PLAIN_WALLS
 # The helix ring's M1 (a trapezoid).
 M1 = ["--radius=220", "--thickness=3", "--h=80", "--trapezoid=1", "--bottom=spoke",
       "--edge_width=22", "--spoke_width=60", "--support_length=55",
       "--support_edges=4@132,4@30/90", "--track_lead_in=26", "--track_width=17",
       "--track_routes=3:17.5-5:17.5,3:-17.5-5:-35",
       "--track_openings=3:-17.5:74:35,5:35:66.1:35", "--deck_slots=3:-17.5-5:-35/35",
-      "--risers=3:-17.5-5:-35~74..66.1/35"]
+      "--risers=3:-17.5-5:-35~74..66.1/35"] + PLAIN_WALLS
 
 
 def parts(args):

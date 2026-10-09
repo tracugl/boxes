@@ -10,12 +10,18 @@ supports (a riser at one height) and an opening in every wall it crosses.  One
   panel) and the bed width (default ``--under_track_width``).  It adds the wall
   openings at both ends of the route (``--track_openings``) and a level riser
   along it (``--risers``); every check, the floor slots and the 3D export then
-  see them as if they had been given by hand.  Several subways may be given,
-  comma-separated.
+  see them as if they had been given by hand.  The bed runs on through the
+  wall openings at both ends to the walls' outer faces.  Several subways may
+  be given, comma-separated.
 * **HexmoRectangle**: ``HEIGHT[/WIDTH]``.  The track runs down the centre line
   from end wall to end wall, through the under-deck openings (``--under_track``,
-  turned on at this height and width), on one level bed per cell whose
-  supports slot into the floor strip down the middle lane (the spoke).
+  turned on at this height and width), on one level bed from the outer face of
+  one end wall to the other's, through the short dividers, whose supports slot
+  into the floor strip down the middle lane (the spoke) in each cell.
+
+Either way the bed reaches the module's outside, so the beds of two joined
+modules meet at the joint with no gap.  It is _SUBWAY_BED_CLEAR narrower than
+the wall openings it passes through, so it slides through them.
 
 The module name starts with an underscore, so generator discovery skips it.
 """
@@ -57,6 +63,18 @@ class Subway:
 class HexmoSubwayMixin:
     """``--subway`` for HexmoHexagon and HexmoRectangle."""
 
+    # How much narrower the bed is than the wall openings it passes through
+    # (mm, in all: half each side), so it slides through them.
+    _SUBWAY_BED_CLEAR = 1.0
+
+    def _subwayBedWidth(self, width):
+        """The bed's width for a subway ``width`` wide (its wall openings').
+
+        @param width - The subway's width.
+        @returns The bed (and its supports') width.
+        """
+        return width - self._SUBWAY_BED_CLEAR
+
     def _addSubwayArgs(self, rectangle=False):
         """Register --subway (help worded for the generator).
 
@@ -66,8 +84,10 @@ class HexmoSubwayMixin:
             text = ("A subway: a level lower track under the deck, down the centre "
                     "line from end wall to end wall.  'HEIGHT[/WIDTH]': the track "
                     "height (its base, mm above the floor strip) and the bed width "
-                    "(default --under_track_width), e.g. '23.8'.  Each cell gets a "
-                    "level bed whose supports slot into the floor strip (the spoke), "
+                    "(default --under_track_width), e.g. '23.8'.  One level bed runs "
+                    "from the outer face of one end wall to the other's, through the "
+                    "short dividers, so it meets the next module's bed at the joint; "
+                    "its supports slot into the floor strip (the spoke) in each cell, "
                     "and the end walls and short dividers get the under-deck opening "
                     "(--under_track) at this height and width.  Empty (default): none.")
         else:
@@ -77,8 +97,9 @@ class HexmoSubwayMixin:
                     "panel) and the bed width (default --under_track_width), e.g. "
                     "'4:0-1:0~23.8'.  Adds the wall openings at both ends "
                     "(--track_openings) and a level riser along the route "
-                    "(--risers).  Several may be given, comma-separated.  Empty "
-                    "(default): none.")
+                    "(--risers), whose bed runs on through the openings to the walls' "
+                    "outer faces, so it meets the next module's bed at the joint.  "
+                    "Several may be given, comma-separated.  Empty (default): none.")
         self.argparser.add_argument("--subway", action="store", type=str, default="",
                                     help=text)
 
@@ -115,14 +136,24 @@ class HexmoSubwayMixin:
         @param text - The --track_openings setting.
         @returns The combined setting.
         """
-        extra = []
+        extra = [f"{edge}:{pos:g}:{s.height:g}:{s.width:g}"
+                 for s, edge, pos in self._subwayWallCrossings()]
+        return ",".join(filter(None, [text.strip()] + extra))
+
+    def _subwayWallCrossings(self):
+        """Where each subway crosses a wall: both ends of its route.
+
+        @returns ``[(subway, edge, position)]``, the position along the edge
+                 as for --track_openings.
+        """
+        out = []
         for s in self._subways():
             g = route_geometry(s.start, s.start_offset, s.end, s.end_offset,
                                _NOMINAL_APOTHEM, 0.0)
             for edge, point in ((s.start, g.segments[0].p0), (s.end, g.segments[-1].p1)):
                 pos = round(edge_position(edge, point, _NOMINAL_APOTHEM), 6) + 0.0
-                extra.append(f"{edge}:{pos:g}:{s.height:g}:{s.width:g}")
-        return ",".join(filter(None, [text.strip()] + extra))
+                out.append((s, edge, pos))
+        return out
 
     def _withSubwayRisers(self, text):
         """--risers with a level riser along each subway's route added.
@@ -131,7 +162,8 @@ class HexmoSubwayMixin:
         @returns The combined setting.
         """
         extra = [f"{s.start}:{s.start_offset:g}-{s.end}:{s.end_offset:g}"
-                 f"~{s.height:g}..{s.height:g}/{s.width:g}" for s in self._subways()]
+                 f"~{s.height:g}..{s.height:g}/{self._subwayBedWidth(s.width):g}"
+                 for s in self._subways()]
         return ",".join(filter(None, [text.strip()] + extra))
 
     # ----------------------------------------------------------- rectangle

@@ -27,7 +27,7 @@ except ImportError:
     sys.path.append(Path(__file__).resolve().parent.parent.__str__())
     import boxes
 
-from hexmo_testutil import IGNORE_CORE_MATMUL
+from hexmo_testutil import IGNORE_CORE_MATMUL, PLAIN_WALLS
 
 pytestmark = IGNORE_CORE_MATMUL
 
@@ -207,7 +207,7 @@ class TestMediumHolesGiveWay:
         # medium hole's room on its wall, and nothing else gives way.
         box = HexmoHexagon()
         box.parseArgs(["--radius=220", "--thickness=3", "--h=80", "--trapezoid=1",
-                       "--track_openings=3:-35:43.9:35,5:35:36.5:35"])
+                       "--track_openings=3:-35:43.9:35,5:35:36.5:35"] + PLAIN_WALLS)
         box.metadata["reproducible"] = True
         dropped = []
         orig = box._checkTrackOpenings

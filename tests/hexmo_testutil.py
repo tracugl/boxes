@@ -35,3 +35,9 @@ def apply(matrix: Affine, point):
     @returns The transformed ``(x, y)``.
     """
     return matrix @ point if _HAS_MATMUL else matrix * point
+
+
+# The original hole-pattern walls.  Access walls (--access_openings) with
+# subway ports (--subway_ports) are the default; tests of the original walls'
+# hole layout switch both off.
+PLAIN_WALLS = ["--access_openings=0", "--subway_ports=0"]

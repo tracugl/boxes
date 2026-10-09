@@ -1046,7 +1046,7 @@ def main(argv=None):
     if not argv or argv[0].startswith("-"):
         print(__doc__.split("\n\n")[0])
         print("usage: python -m boxes.generators._hexmo_step OUT.step|OUT.svg "
-              "[--ring=N|N-ground|N250|N250-ground] [--clearance=under|all|none] [--detail=exact|simple] "
+              "[--ring=N|N-ground|N250|N250-ground|HO|HO-ground] [--clearance=under|all|none] [--detail=exact|simple] "
               "[--deck] [--option=value …]")
         return 2
     clearance, ring, detail, deck = "under", None, "exact", False

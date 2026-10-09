@@ -524,6 +524,12 @@ curl "http://localhost:4455/HexmoRectangle?render=1&radius=220&thickness=3&h=80\
 
 ## Reducing laser cut time
 
+> The walls are **access walls** by default: hand-access openings round a middle
+> post that carries the subway opening (see [Access walls](#access-walls-the-default)).
+> Everything in this section is about the original hole-pattern walls
+> (`--access_openings=0 --subway_ports=0`); on an access wall these options
+> still shape the deck, floor and support panels.
+
 Most of the cut *time* on these panels is pierces, and the small Ø6 registration
 pilot holes dominate the count. The biggest lever is the corner cluster at each
 end of every side panel:
@@ -586,9 +592,13 @@ For a lower track that runs just *under the deck* (the helix ring's descending
 spur), chosen walls get a rectangular opening instead, on the wall's centre line:
 
 - its **top** is one material thickness under the deck underside;
-- its **bottom** is the track height, `--under_track_height` mm above the floor
-  panel. `0` (default) puts it as high as still leaves 43 mm for the track and a
-  40 mm train, i.e. 46 mm under the deck;
+- its **bottom** is one material thickness above the floor panel, the same as
+  the top, so the wall has no up side (with `--subway_ports`, the default; see
+  [Access walls](#access-walls-the-default)). Without `--subway_ports` it is the
+  track height, `--under_track_height` mm above the floor panel, and the wall
+  carries the track at the joint. `0` (default) puts the track as high as still
+  leaves 43 mm for it and a 40 mm train, i.e. 46 mm under the deck; the height is
+  checked either way;
 - its **width** along the wall is `--under_track_width` (default `30`).
 
 On HexmoHexagon, `--under_track_edges` lists the edges whose side walls get it
@@ -865,19 +875,19 @@ stopping 15 mm inside the main line (`upper_edge_gap=15`). Each opens the form
 pre-filled:
 
 - **M1:**
-  http://localhost:4455/HexmoHexagon?radius=250&thickness=3&h=80&edge_width=22&spoke_width=60&bottom=spoke&support_length=55&track_lead_in=20&track_width=17&under_track_width=35&corner_holes=g2&gap_holes=g2&big_hole_shape=rounded_rect&track_guide=1&track_template=1&labels=0&reference=0&trapezoid=1&support_edges=4@140,4@38/90&access_openings=1&track_routes=3:17.5-5:17.5,3:-17.5-5:-35&track_openings=3:-17.5:74:35,5:35:65.6:35&deck_slots=3:-17.5-5:-35/35&risers=3:-17.5-5:-35~74..65.6/35&lower_ground=23.8&upper_edge_gap=15
+  http://localhost:4455/HexmoHexagon?radius=250&thickness=3&h=80&edge_width=22&spoke_width=60&bottom=spoke&support_length=55&track_lead_in=20&track_width=17&under_track_width=35&under_track_height=23.8&corner_holes=g2&gap_holes=g2&big_hole_shape=rounded_rect&track_guide=1&track_template=1&labels=0&reference=0&access_openings=1&subway_ports=1&trapezoid=1&support_edges=4@140,4@38/90&track_routes=3:17.5-5:17.5,3:-17.5-5:-35&track_openings=3:-17.5:74:35,5:35:65.6:35&deck_slots=3:-17.5-5:-35/35&risers=3:-17.5-5:-35~74..65.6/35&lower_ground=23.8&upper_edge_gap=15
 - **M2:**
-  http://localhost:4455/HexmoHexagon?radius=250&thickness=3&h=80&edge_width=22&spoke_width=60&bottom=spoke&support_length=55&track_lead_in=20&track_width=17&under_track_width=35&corner_holes=g2&gap_holes=g2&big_hole_shape=rounded_rect&track_guide=1&track_template=1&labels=0&reference=0&trapezoid=1&support_edges=4@140,4@38/90&access_openings=1&track_routes=3:17.5-5:17.5,3:-35-5:-35&track_openings=3:-35:65.6:35,5:35:57.6:35&deck_slots=3:-35-5:-35/35&risers=3:-35-5:-35~65.6..57.6/35&lower_ground=23.8&upper_edge_gap=15
+  http://localhost:4455/HexmoHexagon?radius=250&thickness=3&h=80&edge_width=22&spoke_width=60&bottom=spoke&support_length=55&track_lead_in=20&track_width=17&under_track_width=35&under_track_height=23.8&corner_holes=g2&gap_holes=g2&big_hole_shape=rounded_rect&track_guide=1&track_template=1&labels=0&reference=0&access_openings=1&subway_ports=1&trapezoid=1&support_edges=4@140,4@38/90&track_routes=3:17.5-5:17.5,3:-35-5:-35&track_openings=3:-35:65.6:35,5:35:57.6:35&deck_slots=3:-35-5:-35/35&risers=3:-35-5:-35~65.6..57.6/35&lower_ground=23.8&upper_edge_gap=15
 - **M3:**
-  http://localhost:4455/HexmoHexagon?radius=250&thickness=3&h=80&edge_width=22&spoke_width=60&bottom=spoke&support_length=55&track_lead_in=20&track_width=17&under_track_width=35&corner_holes=g2&gap_holes=g2&big_hole_shape=rounded_rect&track_guide=1&track_template=1&labels=0&reference=0&trapezoid=1&support_edges=4@140,4@38/90&access_openings=1&track_routes=3:17.5-5:17.5,3:-35-5:-35&track_openings=3:-35:57.6:35,5:35:49.5:35&deck_slots=3:-35-5:-35/35&risers=3:-35-5:-35~57.6..49.5/35&lower_ground=23.8&upper_edge_gap=15
+  http://localhost:4455/HexmoHexagon?radius=250&thickness=3&h=80&edge_width=22&spoke_width=60&bottom=spoke&support_length=55&track_lead_in=20&track_width=17&under_track_width=35&under_track_height=23.8&corner_holes=g2&gap_holes=g2&big_hole_shape=rounded_rect&track_guide=1&track_template=1&labels=0&reference=0&access_openings=1&subway_ports=1&trapezoid=1&support_edges=4@140,4@38/90&track_routes=3:17.5-5:17.5,3:-35-5:-35&track_openings=3:-35:57.6:35,5:35:49.5:35&deck_slots=3:-35-5:-35/35&risers=3:-35-5:-35~57.6..49.5/35&lower_ground=23.8&upper_edge_gap=15
 - **M4:**
-  http://localhost:4455/HexmoHexagon?radius=250&thickness=3&h=80&edge_width=22&spoke_width=60&bottom=spoke&support_length=55&track_lead_in=20&track_width=17&under_track_width=35&corner_holes=g2&gap_holes=g2&big_hole_shape=rounded_rect&track_guide=1&track_template=1&labels=0&reference=0&trapezoid=1&support_edges=4@140,4@38/90&access_openings=1&track_routes=3:17.5-5:17.5,3:-35-5:-35&track_openings=3:-35:49.5:35,5:35:41.4:35&deck_slots=3:-35-5:-35/35&risers=3:-35-5:-35~49.5..41.4/35&lower_ground=23.8&upper_edge_gap=15
+  http://localhost:4455/HexmoHexagon?radius=250&thickness=3&h=80&edge_width=22&spoke_width=60&bottom=spoke&support_length=55&track_lead_in=20&track_width=17&under_track_width=35&under_track_height=23.8&corner_holes=g2&gap_holes=g2&big_hole_shape=rounded_rect&track_guide=1&track_template=1&labels=0&reference=0&access_openings=1&subway_ports=1&trapezoid=1&support_edges=4@140,4@38/90&track_routes=3:17.5-5:17.5,3:-35-5:-35&track_openings=3:-35:49.5:35,5:35:41.4:35&deck_slots=3:-35-5:-35/35&risers=3:-35-5:-35~49.5..41.4/35&lower_ground=23.8&upper_edge_gap=15
 - **M5:**
-  http://localhost:4455/HexmoHexagon?radius=250&thickness=3&h=80&edge_width=22&spoke_width=60&bottom=spoke&support_length=55&track_lead_in=20&track_width=17&under_track_width=35&corner_holes=g2&gap_holes=g2&big_hole_shape=rounded_rect&track_guide=1&track_template=1&labels=0&reference=0&trapezoid=1&support_edges=4@140,4@38/90&access_openings=1&track_routes=3:17.5-5:17.5,3:-35-5:-35&track_openings=3:-35:41.4:35,5:35:33.3:35&deck_slots=3:-35-5:-35/35&risers=3:-35-5:-35~41.4..33.3/35&lower_ground=23.8&upper_edge_gap=15
+  http://localhost:4455/HexmoHexagon?radius=250&thickness=3&h=80&edge_width=22&spoke_width=60&bottom=spoke&support_length=55&track_lead_in=20&track_width=17&under_track_width=35&under_track_height=23.8&corner_holes=g2&gap_holes=g2&big_hole_shape=rounded_rect&track_guide=1&track_template=1&labels=0&reference=0&access_openings=1&subway_ports=1&trapezoid=1&support_edges=4@140,4@38/90&track_routes=3:17.5-5:17.5,3:-35-5:-35&track_openings=3:-35:41.4:35,5:35:33.3:35&deck_slots=3:-35-5:-35/35&risers=3:-35-5:-35~41.4..33.3/35&lower_ground=23.8&upper_edge_gap=15
 - **M6:**
-  http://localhost:4455/HexmoHexagon?radius=250&thickness=3&h=80&edge_width=22&spoke_width=60&bottom=spoke&support_length=55&track_lead_in=20&track_width=17&under_track_width=35&corner_holes=g2&gap_holes=g2&big_hole_shape=rounded_rect&track_guide=1&track_template=1&labels=0&reference=0&access_openings=1&access_edges=2,4,6&support_edges=2,4,6&track_routes=1:-35-5:-17.5,3:-17.5-1:-35,1:0-5:17.5&under_track_edges=1&under_track_height=23.8&track_openings=5:17.5:74:35,3:-35:33.3:35&deck_slots=1:0-5:17.5@178../35,3:35-1:0@..233/35&risers=1:0-5:17.5@178..~77..74/35,3:35-1:0@..233~33.3..28/35,3:35-1:0@233..~28..23.8/35&lower_ground=23.8&upper_edge_gap=15
+  http://localhost:4455/HexmoHexagon?radius=250&thickness=3&h=80&edge_width=22&spoke_width=60&bottom=spoke&support_length=55&track_lead_in=20&track_width=17&under_track_width=35&under_track_height=23.8&corner_holes=g2&gap_holes=g2&big_hole_shape=rounded_rect&track_guide=1&track_template=1&labels=0&reference=0&access_openings=1&subway_ports=1&support_edges=2,4,6&track_routes=1:-35-5:-17.5,3:-17.5-1:-35,1:0-5:17.5&under_track_edges=1&track_openings=5:17.5:74:35,3:-35:33.3:35&deck_slots=1:0-5:17.5@178../35,3:35-1:0@..233/35&risers=1:0-5:17.5@178..~77..74/35,3:35-1:0@..233~33.3..28/35,3:35-1:0@233..~28..23.8/35&lower_ground=23.8&upper_edge_gap=15
 - **Entry rectangle** (at M6 edge 1, with the lower level on a subway):
-  http://localhost:4455/HexmoRectangle?radius=250&thickness=3&h=80&num_rows=3&num_columns=2&track_width=17&track_lead_in=20&under_track=1&under_track_height=23.8&under_track_width=35&turnouts=10:0:-35,133.7:0:35&corner_holes=g2&gap_holes=g2&big_hole_shape=rounded_rect&track_guide=1&track_template=1&labels=0&reference=0&subway=23.8&access_openings=1
+  http://localhost:4455/HexmoRectangle?radius=250&thickness=3&h=80&num_rows=3&num_columns=2&track_width=17&track_lead_in=20&under_track=1&under_track_height=23.8&under_track_width=35&turnouts=10:0:-35,133.7:0:35&corner_holes=g2&gap_holes=g2&big_hole_shape=rounded_rect&track_guide=1&track_template=1&labels=0&reference=0&subway=23.8&access_openings=1&subway_ports=1
 
 The 3D export shows it all (exact parts only), and `--ring=N250-ground`
 exports the whole ring opened up this way, with these settings (see below).
@@ -895,62 +905,117 @@ gives all of that, on every Hexmo module:
   panel) and the bed width (default `--under_track_width`), e.g.
   `--subway 4:0-1:0~23.8`. It adds the wall openings at both ends of the route
   (as `--track_openings` would) and a level riser along it (as `--risers` would):
-  a bed, and supports slotted into the floor. Straight or curved; several may be
-  given, comma-separated.
+  a bed, and supports slotted into the floor. The bed runs on through the wall
+  openings at both ends to the walls' outer faces. Straight or curved; several
+  may be given, comma-separated.
 - **HexmoRectangle:** `HEIGHT[/WIDTH]`, e.g. `--subway 23.8`. The track runs down
   the centre line from end wall to end wall, through the under-deck openings
-  (`--under_track`, turned on at the subway's height and width). Each cell
-  between the end walls and short dividers gets a level bed, its top at the
-  track height, whose supports slot into the floor strip down the middle lane
-  (the spoke). The strip's weight-saving holes give way to the slots. The track
-  crosses each wall on its opening's bottom edge, as the helix spur does at its
-  joints. Supports stand 15 mm in from each end of a bed and at most
-  `--riser_spacing` (default 80) apart.
+  (`--under_track`, turned on at the subway's height and width). One level bed,
+  its top at the track height, runs the module's whole length, from the outer
+  face of one end wall to the other's, through the short dividers. In each cell
+  between the end walls and short dividers its supports slot into the floor
+  strip down the middle lane (the spoke), 15 mm in from each end of the cell and
+  at most `--riser_spacing` (default 80) apart. The strip's weight-saving holes
+  give way to the slots.
+
+Either way the bed reaches the module's outside, so when two modules are lined
+up their beds meet at the joint with no gap. It is 1 mm narrower than the wall
+openings (0.5 mm each side), so it slides through them. With `--subway_ports`
+(the default) the openings already run nearly to the floor; with
+`--subway_ports=0` a subway's openings reach a corner radius below the bed, so
+their rounded corners clear it.
+
+#### Access walls (the default)
+
+Every Hexmo wall is now an *access wall*: large
+rounded-rectangle openings, for a hand to reach a derailed train under the deck,
+either side of a middle post as wide as `--spoke_width` (over the floor's spoke),
+with the subway opening in the post and an upright cable slot at each end. Two
+options make it up,
+both on by default; switch both off (`--access_openings=0 --subway_ports=0`) for
+the original walls with their round hole pattern.
 
 **Subway-ready walls (`--subway_ports`):** every wall that joins another module
-gets the under-deck opening in its middle (where the spoke meets it), at
-`--under_track_height` and `--under_track_width`, with a 30 × 14 mm cable slot
-under it, centred between the opening and the floor. A subway can then carry on
-through any joint, and wiring can follow it. HexmoRectangle: the end walls and
-short dividers. Trapezoid: its short walls (3, 4 and 5). Full hexagon: all six.
-Walls with `--access_openings` (the trapezoid's long wall, the hexagon's
-`--access_edges`) get theirs in the spoke-wide middle post between their two
-openings, with 12.5 mm of wood either side at the usual 60 mm spoke and 35 mm
-opening. A wall whose middle already has a track or spur opening too close, or
-a lowered `--lower_ground` wall, is left as it is. The slot needs about 22 mm under the opening; set
-`--under_track_height` to the subway's height (23.8 on the 250 ring).
+gets the under-deck opening in its middle (where the spoke meets it),
+`--under_track_width` wide, so a subway can carry on through any joint. It runs
+from one material thickness under the deck to one above the floor (35 × 68 mm at
+h=80), the same top and bottom, so with the rest of an access wall's holes it
+has no up side: the panel goes in either way up. HexmoRectangle: the end walls and
+short dividers. Trapezoid: its short walls (3, 4 and 5), and its long wall's
+middle post. Full hexagon: all six. On an access wall it sits in the middle
+post, which widens if the opening needs it (35 mm opening plus 5 mm of wood each
+side). A wall whose middle already has a track or spur opening too close, or a
+lowered `--lower_ground` wall, is left as it is, as is any wall too low for the
+opening (`--under_track_height`, or the automatic height, must leave the train
+room under the deck). Set `--under_track_height` to the subway's height (23.8 on
+the 250 ring).
 
-**Access for re-railing (`--access_openings`):** a wall that joins no other
-module needs no medium registration holes, so it can carry large rounded-
-rectangle openings instead, for a hand to reach a derailed train under the
-deck. Each leaves 12 mm of wood above and below and 15 mm at each end. The
-wall keeps some of its Ø6 dowel holes, at their usual places: in each opening,
-the pairs nearest its two ends stay (5 mm clear of it) and the opening shrinks
-between them; any pairs in between go. Where the pairs are too close together
-for that, the pair beside the middle post goes instead and the opening runs to
-the post.
+Wiring goes through **cable slots** at the wall's ends instead, clear of the
+subway's bed and supports down the middle: every access wall that joins another
+module gets an upright 20 mm wide slot near each end, outside its end pair of
+Ø6 dowel holes (between them and the wall's end), as tall as the access openings
+(15 mm of wood above and below, so 20 × 44 mm at h=80). It sits midway between
+the dowel holes and the deepest cut in the wall's end (a rectangle end wall's
+finger notches, 1.5 thicknesses from the shared hole pattern's end), so it has
+the same wood on both sides, and lines up through every joint as the dowel holes
+do. On the 250 ring that is about 9 mm on each side (9 to the rectangle's finger
+notches, 12 to a hexagon wall's end, 9.7 to the dowel holes): three thicknesses of
+3 mm MDF. On the HO ring, with 6 mm stock, about 7.5 mm each side. Where the end
+pair is too close to the wall's end for at least 4 mm of wood each side (15 mm in
+at the default sizes), a 20 × 30 mm slot stands between a pair instead, the next
+one in (30 mm in), whose two dowel holes then need their centres at least 44 mm
+apart. The short dividers have none (their lane openings
+pass a cable), nor has the trapezoid's long wall (no wiring crosses the ring's
+outside).
+
+**Access openings (`--access_openings`):** each opening leaves 15 mm of wood
+above and below and 15 mm at each end. The wall keeps some of its Ø6 dowel
+holes, at their usual places: in each opening, the pairs nearest its two ends
+stay (8 mm of wood between them and it) and the opening shrinks between them; any pairs in
+between go. Where the pairs are too close together for that, the pair beside
+the middle post goes instead and the opening runs to the post. A wall that
+joins another module always keeps the pair nearest each of its ends: those sit
+in the same place on every hexagon side wall and rectangle end wall, so a dowel
+goes through both walls at every joint.
 
 - **HexmoRectangle:** each long wall gets one opening per cell, about
-  132 × 50 mm at radius 250 and h=80, with four dowel pairs. The long supports
+  126 × 44 mm at radius 250 and h=80, with four dowel pairs. The long supports
   get the same openings, lined up, so you can reach through the outer lanes into
-  the subway in the middle lane.
-- **Trapezoid:** its long wall gets two, either side of a middle post as wide as
-  `--spoke_width` (over the floor's spoke): about 124 × 50 mm each, with four
-  dowel pairs.
-- **Full hexagon:** the walls listed in `--access_edges` (default `1,3,5`) get
-  two each, either side of the spoke-wide post: about 40 × 50 mm, for fingers,
-  with a dowel pair at each end. Pick walls that join no other module; a wall
-  with a track or under-deck opening, or a `--lower_ground` step, is refused.
+  the subway in the middle lane. The end walls get one per lane, clear of the
+  long supports' slots, the middle lane's split round the post; the short
+  dividers get the same, at full size (they register to nothing, so keep no
+  dowels). On the 250 ring's three-lane entry the outer lanes are too narrow
+  for an opening beside the end dowels, so its end walls keep just the dowels
+  and the subway opening; reach in through the long walls. The floor strip down
+  the middle lane (the spoke) swaps its round weight holes for the same rounded
+  rectangles: one per cell, 15 mm of wood along each edge, or, with `--subway`,
+  one between each pair of support slots (10 mm clear of them; about 38 × 47 mm
+  on the 250 ring's entry). A strip under 65 mm wide keeps its round holes.
+- **Trapezoid:** its long wall gets two, about 118 × 44 mm each, with four
+  dowel pairs; its short walls two each, as the full hexagon's.
+- **Support walls** (HexmoHexagon and the trapezoid): one large rounded-rectangle
+  opening each in place of their round holes, centred on the support (so it lines
+  up with a track running through the middle of a turned support), with the same
+  wood all round it to keep the support stiff: 15 mm, or three thicknesses where
+  that is more. On the 250 ring's 55 × 74 mm supports that is a 25 × 44 mm
+  opening; on HO's 110 × 88 mm supports, 74 × 52 mm with 18 mm all round. A
+  support too small for an opening at least 20 mm across keeps its round holes.
+- **Full hexagon:** the walls listed in `--access_edges` (default all six) get
+  two each: about 37 × 44 mm at radius 250, for fingers, with a dowel pair and
+  a cable slot outside it at each end.
 
-An opening too small (under about 70 × 40 before the dowels are kept) is
-refused.
-
-The 250 ring's presets use them on every wall that joins nothing: the
-trapezoids' long walls (the ring's outside), M6's edges 2, 4 and 6, and the
-entry rectangle's long walls and supports.
+The openings stop 15 mm short of a track or spur opening that cuts into the
+wall, so a wall with one keeps the opening on its other side (M1–M5's spur
+walls, M6's edge 3). A track resting on the wall top cuts nothing and changes
+nothing. A stepped `--lower_ground` wall gets them in its full-height part, a
+15 mm post clear of the step; its lowered part is too low for one, and anything
+that would cut through the lowered top is left out (the trapezoid's edge-4 wall,
+lowered all along, keeps its usual holes). A module too
+small for a hand (openings under about 70 × 40) keeps its original walls rather
+than being refused.
 
 The ring at radius 250's entry rectangle carries the lower level this way, at
-23.8, with the access openings (the link above). A hexagon or trapezoid that continues it gives its own
+23.8, with access walls (the link above). A hexagon or trapezoid that continues it gives its own
 `--subway` at the same height, starting where the rectangle's track leaves
 (the centre of the end wall it joins).
 

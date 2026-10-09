@@ -30,7 +30,7 @@ except ImportError:
     sys.path.append(Path(__file__).resolve().parent.parent.__str__())
     import boxes
 
-from hexmo_testutil import IGNORE_CORE_MATMUL
+from hexmo_testutil import IGNORE_CORE_MATMUL, PLAIN_WALLS
 
 pytestmark = IGNORE_CORE_MATMUL
 
@@ -51,10 +51,11 @@ def rendered(cls, args):
     ``openings`` are the rectangularHole calls of opening size, as
     ``(x, y, dx, dy)`` in the calling wall's frame.  Big holes are circles by
     default, so every rectangularHole of at least the opening width (and not
-    the track guide's) is an opening.
+    the track guide's) is an opening.  On the original walls (PLAIN_WALLS):
+    the access walls with subway ports, the default, have their own tests.
     """
     box = cls()
-    box.parseArgs(args)
+    box.parseArgs(args + PLAIN_WALLS)
     box.metadata["reproducible"] = True
     calls, circles = [], [0]
     orig_rect, orig_hole = box.rectangularHole, box.hole
