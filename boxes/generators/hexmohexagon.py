@@ -96,9 +96,10 @@ class HexmoHexagon(HexmoStepFormatMixin, HexmoBigHoleMixin, HexmoTrackGuideMixin
             help="Style of the bottom.  spoke (default): a rim plus a strip "
                  "--spoke_width wide along every connection a track can make "
                  "(1-3, 3-5, 5-1, 2-4, 4-6, 6-2; 3-5 on the trapezoid) and under "
-                 "every track, riser and subway, the rest cut away; one support "
-                 "wall stands across each deck track, at its middle where it "
-                 "fits, and --support_edges / --support_position don't apply.  "
+                 "every track, riser and subway, with a cutout in the middle, the "
+                 "rest cut away; one support wall stands across each deck track, "
+                 "where it is --support_position from the centre (default half the "
+                 "apothem), and --support_edges doesn't apply.  "
                  "kites: the rim plus straight spokes from the centre, with "
                  "kite-shaped openings between them.  closed: a solid floor.")
         self.argparser.add_argument(

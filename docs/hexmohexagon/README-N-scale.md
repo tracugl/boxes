@@ -677,20 +677,22 @@ so 1–3, 3–5, 5–1 and 2–4, 4–6, 6–2 on the full hexagon (two triangle
 and 3–5 on the trapezoid, on the centre line as `--track_routes` would draw them.
 Every module of a size has the same spokes, whatever track it carries. The
 module's own tracks (at their offsets), risers and subways get a strip too.
-Everything else is cut away in rounded openings; gaps narrower than 15 mm stay
-solid. So whatever stands on the floor (riser supports, a subway's supports, a
+The spokes and deck tracks' strips stop short of a cutout in the middle, a third
+of the apothem across (risers, subways and the supports stay solid even there),
+and each spoke still runs out to the rim. Everything else is cut away in rounded
+openings; gaps narrower than 15 mm stay solid. So whatever stands on the floor (riser supports, a subway's supports, a
 bed lying on the floor) has solid floor under it.
 
-The support walls stand on those strips: **one per deck track**, across it at its
-middle. Where the middle won't take one (a deck slot, a riser or lower-level
-track, a wall or another support in the way), it moves along the track to the
-nearest place that will; there it stands across the track, slid along itself
+The support walls stand on those strips: **one per deck track**, across it where
+the track is `--support_position` from the centre (default half the apothem, where
+the kite floor's supports stood), so they don't crowd the middle. Where that
+place won't take one (a deck slot, a riser or lower-level track, a wall or
+another support in the way), it moves along the track to the next best place; there it stands across the track, slid along itself
 if need be (as far as still keeps both rails over it), or failing that along the
 track, under the rails. A track with nowhere to take one (the spur in its deck
 slot, say) gets none. A module with no deck tracks gets one across the middle
 of each spoke. With `--lower_ground` each support is wholly under the deck or
-wholly under the lower plate. `--support_edges` and `--support_position` don't
-apply to this floor.
+wholly under the lower plate. `--support_edges` doesn't apply to this floor.
 
 `--bottom kites` is the original spoke floor: the rim plus six straight spokes
 from the centre, with kite-shaped openings between them, and the supports on the

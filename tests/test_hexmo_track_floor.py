@@ -150,16 +150,25 @@ class TestSupports:
         routes = [sp.route for sp in supports]
         assert len(routes) == len(set(routes))
 
-    def test_on_the_main_line_at_its_middle(self) -> None:
-        # M2: the main line takes its one support at its middle; the spur,
-        # in its deck slot all the way, takes none.
-        box, r, _, _ = rendered(HELIX_RING_N250["M2"])
-        (support,) = box._supportLayout(r, True)
-        main = box._trackRouteGeometries(r, True)[support.route]
-        length = sum(seg.length for seg in main.segments)
-        from boxes.generators._hexmo_risers import point_at
-        middle, _ = point_at(main.segments, length / 2)
-        assert math.dist(middle, support.centre) < box.support_length / 2
+    def test_halfway_out_from_the_centre(self) -> None:
+        # Each support stands where its track is about half the apothem from
+        # the centre (where the kite floor's supports stood), not crowding the
+        # middle: the default hexagon's six, one per spoke, and M6's two.
+        for args, n in (([], 6), (HELIX_RING_N250["M6"], 2)):
+            box, r, _, _ = rendered(args)
+            apothem = r * math.sqrt(3) / 2
+            supports = box._supportLayout(r, False)
+            assert len(supports) == n
+            for sp in supports:
+                assert math.hypot(*sp.centre) == pytest.approx(apothem / 2, abs=15)
+
+    def test_cutout_in_the_middle(self) -> None:
+        # The default hexagon opens up its middle: one opening covers the
+        # centre, a third of the apothem across.
+        box, r, risers, _ = rendered([])
+        apothem = r * math.sqrt(3) / 2
+        middle = Point(0, 0).buffer(apothem / 3 - box.spoke_width / 2)
+        assert any(h.contains(middle) for h in openings(box, r, risers))
 
     def test_ground_supports_never_straddle_the_deck_edge(self) -> None:
         box, r, _, _ = rendered(HELIX_RING_N250_GROUND["M2"])
@@ -190,11 +199,13 @@ class TestOpenings:
         assert all(interior.contains(h) for h in openings(box, r, risers))
 
     def test_tracks_and_spokes_keep_their_strip(self, module) -> None:
-        # Nothing is cut under a deck route's or spoke's centreline.
+        # Nothing is cut under a deck route's or spoke's centreline, outside
+        # the cutout in the middle.
         box, r, risers, _ = module
         holes = openings(box, r, risers)
+        hub = Point(0, 0).buffer(r * math.sqrt(3) / 2 * box._FLOOR_HUB + box._FLOOR_CORNER)
         for g in box._trackRouteGeometries(r, box.trapezoid) + box._spokeRoutes(r, box.trapezoid):
-            line = LineString(segments_polyline(g.segments, 32))
+            line = LineString(segments_polyline(g.segments, 32)).difference(hub)
             assert not any(line.intersects(h) for h in holes)
 
 

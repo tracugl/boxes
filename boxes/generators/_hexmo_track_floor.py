@@ -37,7 +37,7 @@ from __future__ import annotations
 import math
 from dataclasses import dataclass
 
-from shapely.geometry import LineString, Polygon
+from shapely.geometry import LineString, Point, Polygon
 from shapely.ops import unary_union
 
 from boxes.generators._hexmo_risers import point_at
@@ -80,6 +80,9 @@ class HexmoTrackFloorMixin:
     _SUPPORT_SEARCH_STEP = 10.0
     # Polyline steps per arc for the floor's strips.
     _FLOOR_ARC_STEPS = 32
+    # The central cutout's radius, as a fraction of the apothem: the spokes
+    # and deck tracks' strips stop short of it, opening up the middle.
+    _FLOOR_HUB = 1.0 / 3.0
 
     # ------------------------------------------------------------- choice
 
@@ -143,9 +146,13 @@ class HexmoTrackFloorMixin:
         """
         half = self.spoke_width / 2.0
         line = lambda segments: LineString(segments_polyline(segments, self._FLOOR_ARC_STEPS))
-        shapes = [line(g.segments).buffer(half)
-                  for g in self._spokeRoutes(r, isTrapezoid)
-                  + self._trackRouteGeometries(r, isTrapezoid)]
+        # The spokes and the deck tracks' strips, less a cutout in the middle
+        # (each still runs out to the rim, so nothing is left floating).
+        hub = Point(0.0, 0.0).buffer(r * math.sqrt(3.0) / 2.0 * self._FLOOR_HUB)
+        shapes = [unary_union([line(g.segments).buffer(half)
+                               for g in self._spokeRoutes(r, isTrapezoid)
+                               + self._trackRouteGeometries(r, isTrapezoid)]).difference(hub)]
+        # Risers, subways and the supports' pads stay solid even there.
         for rp in riser_plan:
             width = max(self.spoke_width, rp["width"] + 2 * self._RISER_CLEAR)
             shapes.append(line(rp["segments"]).buffer(width / 2.0))
@@ -232,9 +239,12 @@ class HexmoTrackFloorMixin:
     def _placeTrackSupports(self, r, isTrapezoid, accept=None):
         """One support per deck track (or per spoke, if there are none).
 
-        The support goes at the track's middle if it can; otherwise at the
-        nearest place along it that takes one, trying further from the middle
-        in _SUPPORT_SEARCH_STEP steps either way.  At each place it stands
+        The support goes where the track is --support_position from the
+        centre (default half the apothem, where the kite floor's supports
+        stood), clear of the central cutout; failing that at the next best
+        place along it, trying places _SUPPORT_SEARCH_STEP apart in order of
+        how near they are to that distance (then to the track's middle).  At
+        each place it stands
         across the track, centred or slid along itself as far as still keeps
         both rails over it, or failing that along the track under the rails.
         A place doesn't take it where it would reach within a thickness and
@@ -297,13 +307,14 @@ class HexmoTrackFloorMixin:
             return not any(min(math.dist(p, q) for p in points for q in other) < t + clear
                            for other in placed_points)
 
+        target = self.support_position or apothem / 2.0
         tracks = self._trackRouteGeometries(r, isTrapezoid) or self._spokeRoutes(r, isTrapezoid)
         for index, g in enumerate(tracks):
             length = sum(seg.length for seg in g.segments)
             step = self._SUPPORT_SEARCH_STEP
-            places = [length / 2.0] + [length / 2.0 + sign * step * k
-                                       for k in range(1, int(length / 2.0 // step) + 1)
-                                       for sign in (1, -1)]
+            places = [step * k for k in range(int(length // step) + 1)]
+            places.sort(key=lambda s: (abs(math.hypot(*point_at(g.segments, s)[0]) - target),
+                                       abs(s - length / 2.0)))
             for s in places:
                 point, (dx, dy) = point_at(g.segments, s)
                 across = (-dy, dx)
