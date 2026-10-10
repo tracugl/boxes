@@ -180,12 +180,13 @@ class TestFloorStrip:
     supports."""
 
     def test_one_per_cell(self) -> None:
-        # The default module: five cells, 12 mm of wood along each long edge
-        # of the 120 mm strip, 15 mm clear of the dividers' slots.
+        # The default module: five cells, 15 mm of wood along each long edge
+        # of the 100 mm strip (the HO default --spoke_width), 15 mm clear of
+        # the dividers' slots.
         openings = big(holes(["--access_openings=1"], "spoke"))
         assert len(openings) == 5
         for x0, x1, y0, y1 in openings:
-            assert (y0, y1) == pytest.approx((15, 105), abs=0.05)
+            assert (y0, y1) == pytest.approx((15, 85), abs=0.05)
             assert x1 - x0 == pytest.approx(136, abs=0.5)
 
     def test_between_the_subway_supports(self) -> None:

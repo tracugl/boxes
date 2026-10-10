@@ -298,7 +298,7 @@ class HexmoRectangle(HexmoStepFormatMixin, HexmoBigHoleMixin, HexmoTrackGuideMix
                  "long wall H = radius × √3.",
         )
         self.argparser.add_argument(
-            "--spoke_width", action="store", type=float, default=120.0,
+            "--spoke_width", action="store", type=float, default=100.0,
             help="Pass any non-zero value to include the centre support spoke; pass 0 "
                  "to omit it.  The spoke is a flat panel spanning the full inner short "
                  "axis (W − 2×thickness) and the full long axis (H = radius × √3).  "

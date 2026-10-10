@@ -206,12 +206,12 @@ _HO_UNDER_DECK = 12.5         # the return's height where its deck slot ends
 _HO_FLOOR = 6                 # the lower level: one thickness, on the floor
 
 # The HO README's cut settings, with every subway opening at the floor level.
-_HO_COMMON = ["--radius=500", "--h=100", "--thickness=6", "--edge_width=60",
-              "--spoke_width=120", "--bottom=spoke", "--top=closed",
+_HO_COMMON = ["--radius=500", "--h=100", "--thickness=6", "--edge_width=50",
+              "--spoke_width=100", "--bottom=spoke", "--top=closed",
               "--corner_holes=g2", "--gap_holes=g2", "--big_hole_shape=rounded_rect",
               "--FingerJoint_play=0.1", "--FingerJoint_extra_length=0.05",
               "--track_lines=1", "--draw_track=1", "--track_width=30",
-              "--track_lead_in=23", "--support_length=110", "--train_envelope=70",
+              "--track_lead_in=23", "--support_length=100", "--train_envelope=70",
               "--under_track_width=60", f"--under_track_height={_HO_FLOOR}",
               "--access_openings=1", "--subway_ports=1", "--labels=0", "--reference=0"]
 
