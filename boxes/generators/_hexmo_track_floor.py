@@ -5,22 +5,29 @@ six straight spokes from the centre, with kite-shaped openings between them.
 Those spokes are only where the floor happens to stay solid: nothing on the
 floor stands on them in particular.
 
-This floor keeps the rim (the walls' finger joints) and a strip
-``--spoke_width`` wide along every connection a track can make across the
-module: from each edge to the edge two round from it, so 1–3, 3–5, 5–1 and
-2–4, 4–6, 6–2 on the full hexagon (3–5 on the trapezoid), on the centre line
-as ``--track_routes`` would draw them.  Every module of a size then has the
-same spokes, whatever track it carries.  The module's own tracks (deck routes
-at their offsets), risers and subways get a strip too.  Everything else is cut
-away.
+The floor carries only what stands on it; the deck's own tracks are on the
+deck and leave no mark on it.  It keeps the rim (the walls' finger joints) and
+strips under the risers and subways.  On the full hexagon it also keeps a
+strip ``--spoke_width`` wide along every connection a track can make across
+the module, from each edge to the edge two round from it (1–3, 3–5, 5–1 and
+2–4, 4–6, 6–2), on the centre line as ``--track_routes`` would draw them:
+these carry the support walls, so every module of a size has the same
+spokes.  A strip is widened, if need be, to hold a support beside its spoke
+with _supportLand of board round the slot.  The trapezoid keeps only a
+straight spoke down its middle, from the long edge to edge 4.  Everything else
+is cut away, with a round cutout in the middle of the hexagon unless
+``--center_cutout`` is off.
 
-The support walls stand on the strips: one across each deck track, at its
-middle, so it props the deck right under the trains.  Where the middle won't
-take one it moves along the track to the nearest place that will; there it
-stands across the track, slid along itself if need be (as far as still keeps
-both rails over it), or failing that along the track under the rails.  A
-module with no deck tracks gets one across the middle of each spoke instead.
-A support is never put under a deck slot (no deck above to carry), across a
+The support walls stand on the strips.  On the full hexagon there are six,
+one beside each spoke near its start, just outside its train corridor
+(``--under_track_width`` and _UNDER_TRACK_CLEAR either side) and every other
+spoke's, where a subway can run: each in its own corner, the six alike round
+the hexagon, about ``--support_position`` from the centre.  The deck's own
+tracks don't move them (a support may stand under one).  A riser, subway or
+deck slot in the way moves one to the nearest free place beside its spoke,
+within _SUPPORT_HOME_REACH, or leaves it out.  The trapezoid has one down its
+middle, where its deck sags most.  A
+support is never put under a deck slot (no deck above to carry), across a
 riser or lower-level track, within a thickness and _SUPPORT_END_CLEAR of a wall
 or another support, or (with ``--lower_ground``) half under the deck and half
 under the lower plate.
@@ -50,21 +57,17 @@ _SPOKE_ROUTES = ((1, 3), (3, 5), (5, 1), (2, 4), (4, 6), (6, 2))
 
 @dataclass(frozen=True)
 class TrackSupport:
-    """One support wall standing on a track's strip (true-centre frame).
+    """One support wall standing on the floor's strips (true-centre frame).
 
     @ivar centre - The middle of the support's slot.
     @ivar along  - Unit vector along the support.
-    @ivar route  - Index of the deck route (or spoke) it stands under, or −1
+    @ivar route  - Index of the spoke (_spokeRoutes) it stands beside, or −1
                    for the trapezoid's, in the middle of its open deck.
-    @ivar lying  - True when it lies along its strip, which then holds the
-                   whole slot; False for one standing across a track, which
-                   needs a boss of floor round it.
     """
 
     centre: tuple
     along: tuple
     route: int
-    lying: bool = True
 
     @property
     def angle(self):
@@ -83,6 +86,13 @@ class HexmoTrackFloorMixin:
     # How far a support's position may move along its track from the middle,
     # in steps (mm), to find a place that takes it.
     _SUPPORT_SEARCH_STEP = 10.0
+    # How far a hexagon's support may move from its home (the place it has
+    # on a module with no tracks of its own), as a fraction of the apothem,
+    # to get clear of the module's tracks; further than that it is left out.
+    _SUPPORT_HOME_REACH = 1.0 / 3.0
+    # Steps (mm) a hexagon's support is tried at, sideways from its spoke;
+    # its strip is widened to leave at least one.
+    _SUPPORT_SIDE_STEP = 2.5
     # Polyline steps per arc for the floor's strips.
     _FLOOR_ARC_STEPS = 32
     # The largest central cutout's radius, as a fraction of the apothem.
@@ -143,7 +153,14 @@ class HexmoTrackFloorMixin:
                 for a, b in _SPOKE_ROUTES if {a, b} <= edges]
 
     def _floorStrips(self, r, isTrapezoid, riser_plan):
-        """The solid strips: the spokes, every track, and the supports' pads.
+        """The solid strips: the spokes, the risers and subways, and the
+        supports' pads.
+
+        The deck's own tracks leave no strip: they are on the deck, and the
+        floor carries only what stands on it.  On the full hexagon the six
+        spokes carry the support walls; on the trapezoid only its straight
+        middle spoke stays (it ties the floor's outer part to its inner and
+        carries the support), the rest open but for the risers and subways.
 
         @param r           - Inner hexagon circumradius.
         @param isTrapezoid - True for the half-hexagon.
@@ -153,40 +170,47 @@ class HexmoTrackFloorMixin:
                  subways, the supports' pads), which the central cutout keeps
                  clear of.
         """
-        half = self.spoke_width / 2.0
+        half = self._stripHalf(r, isTrapezoid)
         line = lambda segments: LineString(segments_polyline(segments, self._FLOOR_ARC_STEPS))
-        shapes = [line(g.segments).buffer(half)
-                  for g in self._spokeRoutes(r, isTrapezoid)
-                  + self._trackRouteGeometries(r, isTrapezoid)]
+        shapes = ([] if isTrapezoid else
+                  [line(g.segments).buffer(half) for g in self._spokeRoutes(r, False)])
         if isTrapezoid:
             # The trapezoid's straight spoke down its middle line, from the
             # long edge to edge 4, always: it ties the outer part of the floor
             # to the inner, and carries the support (see _placeTrackSupports).
             apothem = r * math.sqrt(3.0) / 2.0
-            shapes.append(LineString([(0.0, 0.0), (0.0, -apothem)]).buffer(half, cap_style=2))
+            shapes.append(LineString([(0.0, 0.0), (0.0, -apothem)])
+                          .buffer(self.spoke_width / 2.0, cap_style=2))
         standing = []
         for rp in riser_plan:
-            width = max(self.spoke_width, rp["width"] + 2 * self._RISER_CLEAR)
-            standing.append(line(rp["segments"]).buffer(width / 2.0))
+            glued = max(rp["heights"]) <= self.thickness + 1e-6
+            # A raised bed's supports stand across it, their feet slotted
+            # into the floor with _supportLand() of board round them; a bed
+            # glued to the floor needs only its own width and _RISER_CLEAR.
+            margin = self._RISER_CLEAR if glued else self._supportLand()
+            strip = line(rp["segments"]).buffer(rp["width"] / 2.0 + margin)
+            if glued:
+                # A bed lying wholly on the floor (HO's subway at one
+                # thickness) is glued down along its length: it keeps its
+                # strip, but the central cutout may run on under it, the bed
+                # spanning the hole glued down either side.
+                shapes.append(strip)
+            else:
+                # A raised bed's supports stand on its strip, so the cutout
+                # keeps clear of it.
+                standing.append(strip)
         if self.supports:
-            # Each support stands on a round boss: a circle about its middle
-            # holding the whole slot with a thickness and _SUPPORT_END_CLEAR
-            # of wood past each end, so a support longer than its strip is
-            # wide (or slid along it) bulges the strip smoothly rather than
-            # notching the openings.
-            reach = self.support_length / 2.0 + self.thickness + self._SUPPORT_END_CLEAR
+            reach = self.support_length / 2.0
             for support in self._trackSupports(r, isTrapezoid):
-                # One lying along its strip (the trapezoid's on its middle
-                # spoke, a hexagon's along its track) is held by the strip;
-                # one standing across a track gets a round boss.
-                if not support.lying:
-                    standing.append(Point(*support.centre).buffer(reach, quad_segs=32))
-                # Its slot, with a thickness and clearance of wood past each
-                # end, is always solid floor (the central cutout keeps clear).
+                # Every support's slot stands in solid floor with
+                # _supportLand() of board all round it (beside it and past its
+                # ends): where its strip is too narrow for that (N's 60 mm
+                # strip beside a 45 mm train corridor), the strip widens there
+                # with straight sides along the support.
                 (cx, cy), (ux, uy) = support.centre, support.along
                 standing.append(LineString([(cx - ux * reach, cy - uy * reach),
                                             (cx + ux * reach, cy + uy * reach)])
-                                .buffer(self.thickness / 2.0 + self._SUPPORT_END_CLEAR))
+                                .buffer(self.thickness / 2.0 + self._supportLand()))
         standing = unary_union(standing) if standing else None
         strips = unary_union(shapes + ([standing] if standing is not None else []))
         return strips, standing
@@ -218,7 +242,11 @@ class HexmoTrackFloorMixin:
             pieces += [part for part in getattr(rounded, "geoms", [rounded])
                        if not part.is_empty and part.geom_type == "Polygon"
                        and not part.interiors]
-        if not isTrapezoid:
+        if not isTrapezoid and not self.center_cutout:
+            # No cutout: the middle stays solid, gaps between strips there too.
+            hub = Point(0.0, 0.0).buffer(r * math.sqrt(3.0) / 2.0 * self._FLOOR_HUB)
+            pieces = [p for p in pieces if not hub.contains(p)]
+        if not isTrapezoid and self.center_cutout:
             centre = Point(0.0, 0.0)
             radius = r * math.sqrt(3.0) / 2.0 * self._FLOOR_HUB
             # Openings wholly inside the circle make way for it; the rest,
@@ -248,6 +276,56 @@ class HexmoTrackFloorMixin:
 
     # ----------------------------------------------------------- supports
 
+    def _supportBow(self, r):
+        """How far a straight support beside a curved spoke bows away from
+        the curve over its length (mm): the sagitta of a --support_length
+        chord on the tightest spoke, taken on the curve's inside, where it is
+        largest.
+
+        @param r - Inner hexagon circumradius.
+        @returns The bow (0 with only straight spokes).
+        """
+        corridor = self.under_track_width / 2.0 + self._UNDER_TRACK_CLEAR
+        half = self.support_length / 2.0
+        bows = [0.0]
+        for g in self._spokeRoutes(r, False):
+            if g.radius:
+                inner = g.radius - corridor - self.thickness
+                bows.append(inner - math.sqrt(max(0.0, inner * inner - half * half))
+                            if inner > half else half)
+        return max(bows)
+
+    def _stripHalf(self, r, isTrapezoid):
+        """Half the width of the strip under a spoke or deck route (mm).
+
+        Half --spoke_width; on the full hexagon, with supports, at least
+        enough for a support beside the track: the train corridor
+        (--under_track_width and _UNDER_TRACK_CLEAR either side), the slot,
+        its land (_supportLand) beyond it, and its bow (_supportBow).  So the
+        strip stays straight-sided rather than bulging round each support
+        (N's 60 mm strips come out 78 mm).
+
+        @param r           - Inner hexagon circumradius.
+        @param isTrapezoid - True for the half-hexagon (its support stands
+                             down its middle spoke, which --spoke_width holds).
+        @returns The half width.
+        """
+        half = self.spoke_width / 2.0
+        if isTrapezoid or not self.supports:
+            return half
+        corridor = self.under_track_width / 2.0 + self._UNDER_TRACK_CLEAR
+        return max(half, corridor + self.thickness + self._supportLand()
+                   + self._supportBow(r) + self._SUPPORT_SIDE_STEP)
+
+    def _supportLand(self):
+        """Board kept round a support's slot in the floor (mm): _FLOOR_WEB, or
+        three thicknesses on thicker board, so the slot never leaves a sliver
+        of board at an opening's edge.
+
+        @returns The land width beside the slot and past its ends.
+        """
+        return max(self._FLOOR_WEB, 3.0 * self.thickness)
+
     def _trackSupports(self, r, isTrapezoid):
         """The support walls, one per deck track, worked out once per render.
 
@@ -275,24 +353,22 @@ class HexmoTrackFloorMixin:
     def _placeTrackSupports(self, r, isTrapezoid, accept=None):
         """The support walls that keep the deck from sagging.
 
-        On the full hexagon, one per deck track (or per spoke if it has
-        none), lying along it down the middle of its strip, where the track
-        is --support_position from the centre (default half the apothem,
-        where the kite floor's supports stood), so they don't crowd the
-        middle.  On the trapezoid, one on its spoke (the 3–5
-        connection on the centre line), at the place nearest the middle of
-        its floor: the deck's open middle, away from every wall (its tracks
-        hug the long wall).  Failing the best place, the next best along it,
-        trying places _SUPPORT_SEARCH_STEP apart in order of nearness (then
-        of nearness to the track's middle).  At each place a hexagon's lies
-        along the track, nudged sideways within its strip if need be, or else
-        stands
-        across the track, centred or slid along itself as far as still keeps
-        both rails over it, or failing that along the track under the rails.
-        A place doesn't take it where it would reach within a thickness and
+        On the full hexagon, one beside each spoke, parallel to it, on the
+        half nearest its start (its corner) and on its strip, but outside
+        every spoke's train corridor (where a subway can run; the deck's own
+        tracks don't count).  Its home is the place nearest
+        --support_position from the centre (default half the apothem, where
+        the kite floor's supports stood), so every module of a size has the
+        same six, alike round the hexagon.  The module's risers, subways and
+        deck slots may move one to the free place nearest home beside its
+        spoke, no further than _SUPPORT_HOME_REACH of the apothem; failing
+        that it is left out.  On
+        the trapezoid, one down its middle line, in the middle of the longest
+        stretch of deck there (searched _SUPPORT_SEARCH_STEP at a time).  A
+        place doesn't take one where it would reach within a thickness and
         _SUPPORT_END_CLEAR of a wall, stand under a deck slot or across a
         riser or lower-level track, come too close to a support already
-        placed, or fail ``accept``.  A track with no such place gets none.
+        placed, or fail ``accept``.
 
         @param r           - Inner hexagon circumradius.
         @param isTrapezoid - True for the half-hexagon.
@@ -303,7 +379,7 @@ class HexmoTrackFloorMixin:
         """
         if not self.supports:
             return []
-        t, sl = self.thickness, self.support_length
+        t = self.thickness
         clear = self._SUPPORT_END_CLEAR
         apothem = r * math.sqrt(3.0) / 2.0
         _, l = self._innerSize()
@@ -333,16 +409,6 @@ class HexmoTrackFloorMixin:
                 if min(apothem - (x * nx + y * ny) for x, y in points) < t + clear:
                     return False
             return not (isTrapezoid and max(y for _, y in points) > -(t + clear))
-
-        # How far a support may slide along itself and still carry both rails.
-        reach_off = max(0.0, sl / 2.0 - self.track_width / 2.0 - clear)
-        slides = [0.0] + [sign * 2.5 * k for k in range(1, int(reach_off // 2.5) + 1)
-                          for sign in (1, -1)]
-        # How far one lying along its track may move sideways and stay within
-        # the strip, with its slot's half a thickness and clearance inside.
-        nudge_off = max(0.0, self.spoke_width / 2.0 - t / 2.0 - clear)
-        nudges = [0.0] + [sign * 2.5 * k for k in range(1, int(nudge_off // 2.5) + 1)
-                          for sign in (1, -1)]
 
         placed, placed_points = [], []
 
@@ -379,31 +445,65 @@ class HexmoTrackFloorMixin:
                         placed_points.append(self._trackSupportPoints(support))
                         break
             return placed
-        else:
-            # The full hexagon: one per deck track (or per spoke if it has
-            # none), where the track is --support_position from the centre.
-            target = self.support_position or apothem / 2.0
-            tracks = self._trackRouteGeometries(r, False) or self._spokeRoutes(r, False)
-            nearness = lambda p: abs(math.hypot(*p) - target)
-        for index, g in enumerate(tracks):
+        # The full hexagon: one beside each spoke (every connection a track
+        # can make), clear of every track path, so all six stand the same
+        # way round the hexagon whatever tracks the module carries.
+        target = self.support_position or apothem / 2.0
+        spokes = self._spokeRoutes(r, False)
+        line = lambda g: LineString(segments_polyline(g.segments, self._FLOOR_ARC_STEPS))
+        # A lower track's path: the train corridor (--under_track_width and
+        # _UNDER_TRACK_CLEAR either side) along every spoke, where a subway
+        # can run, widened by half the slot so the support's board stays out
+        # of it.  The deck's own tracks don't count: a support may stand
+        # under one (nothing hangs under the deck there).
+        corridor = self.under_track_width / 2.0 + self._UNDER_TRACK_CLEAR
+        paths = unary_union([line(g).buffer(corridor + t / 2.0) for g in spokes])
+        # The floor the slot must stand on: the strips under the spokes and
+        # deck routes (a support beside its track stays on its strip; its
+        # land, _supportLand, may widen the strip there).
+        strip = self._stripHalf(r, False)
+        floor = unary_union([line(g).buffer(strip - t / 2.0 - self._supportLand())
+                             for g in spokes])
+        # Offsets beside the track's centre line, nearest the track first,
+        # out to its strip's edge, on either side.
+        # (Starting just clear of the corridor, not touching it.)
+        near = corridor + t / 2.0 + 0.5
+        far = strip - t / 2.0 - self._supportLand()
+        side = self._SUPPORT_SIDE_STEP
+        offsets = [near + side * k for k in range(int(max(0.0, far - near) // side) + 1)]
+        offsets = [o * sign for o in offsets for sign in (1, -1)]
+        step = self._SUPPORT_SEARCH_STEP
+        for index, g in enumerate(spokes):
+            # Places beside the half of the spoke nearest its start: that is
+            # its corner (each spoke's start a turn round from the last's),
+            # so no two supports share one.
             length = sum(seg.length for seg in g.segments)
-            step = self._SUPPORT_SEARCH_STEP
-            places = [step * k for k in range(int(length // step) + 1)]
-            places.sort(key=lambda s: (nearness(point_at(g.segments, s)[0]),
-                                       abs(s - length / 2.0)))
-            for s in places:
-                point, (dx, dy) = point_at(g.segments, s)
-                across = (-dy, dx)
-                # Along the track, down the middle of its strip, nudged
-                # sideways within it if need be; failing that, across the
-                # track, centred or slid along itself.
-                candidates = ([TrackSupport((point[0] + across[0] * o, point[1] + across[1] * o),
-                                            (dx, dy), index) for o in nudges]
-                              + [TrackSupport((point[0] + across[0] * o, point[1] + across[1] * o),
-                                              across, index, lying=False) for o in slides])
-                chosen = next((c for c in candidates if ok(self._trackSupportPoints(c))), None)
-                if chosen is not None:
-                    placed.append(chosen)
-                    placed_points.append(self._trackSupportPoints(chosen))
-                    break
+            candidates = []
+            for k in range(int(length / 2.0 // step) + 1):
+                point, (dx, dy) = point_at(g.segments, step * k)
+                for o in offsets:
+                    candidates.append(TrackSupport((point[0] - dy * o, point[1] + dx * o),
+                                                   (dx, dy), index))
+            # Its home: the place nearest --support_position from the centre
+            # clear of the spokes alone, the same on every module of a size.
+            home = min((c for c in candidates
+                        if fits(self._trackSupportPoints(c))
+                        and not LineString(self._trackSupportPoints(c)).intersects(paths)),
+                       key=lambda c: abs(math.hypot(*c.centre) - target), default=None)
+            if home is None:
+                continue
+            # This module's risers, subways and deck slots may be in the way:
+            # the free place nearest home beside the spoke, no further than
+            # _SUPPORT_HOME_REACH of the apothem from home.
+            reach_home = apothem * self._SUPPORT_HOME_REACH
+            candidates = [c for c in candidates if math.dist(c.centre, home.centre) <= reach_home]
+            candidates.sort(key=lambda c: math.dist(c.centre, home.centre))
+            for support in candidates:
+                points = self._trackSupportPoints(support)
+                slot = LineString(points)
+                if slot.intersects(paths) or not floor.contains(slot) or not ok(points):
+                    continue
+                placed.append(support)
+                placed_points.append(points)
+                break
         return placed

@@ -670,38 +670,52 @@ compensation as other holes.
 
 ### Track-following spoke floor (`--bottom spoke`, the default)
 
-The spoke floor follows the tracks. It keeps its rim (`--edge_width`, for the
-walls' finger joints) and a strip `--spoke_width` wide along every connection a
-track can make across the module: from each edge to the edge two round from it,
-so 1–3, 3–5, 5–1 and 2–4, 4–6, 6–2 on the full hexagon (two triangles of curves),
-and 3–5 on the trapezoid, on the centre line as `--track_routes` would draw them.
-Every module of a size has the same spokes, whatever track it carries. The
-module's own tracks (at their offsets), risers and subways get a strip too.
-Everything else is cut away in rounded openings; gaps narrower than 15 mm stay
-solid. On the full hexagon the middle is a plain circular cutout, up to a third
+The spoke floor carries only what stands on it: the deck's own tracks are up on
+the deck and leave no mark on the floor. It keeps its rim (`--edge_width`, for
+the walls' finger joints) and a strip under each riser and subway (the bed's
+width plus room for its supports' feet; a bed glued to the floor, just its
+width). On the **full hexagon** it also keeps a strip `--spoke_width` wide along
+every connection a track can make across the module: from each edge to the edge
+two round from it, so 1–3, 3–5, 5–1 and 2–4, 4–6, 6–2 (two triangles of curves),
+on the centre line as `--track_routes` would draw them. These carry the support
+walls, so every module of a size has the same spokes, whatever track it carries.
+The **trapezoid** keeps only a straight spoke down its middle, from the long edge
+to edge 4. Everything else is cut away in rounded openings; gaps narrower than
+15 mm stay solid. On the full hexagon the middle is a plain circular cutout, up to a third
 of the apothem across, keeping 10 mm of wood to the other openings and to
-anything standing on the floor. So whatever stands on the floor (riser supports, a subway's supports, a
+anything standing on the floor. `--center_cutout=0` leaves the middle solid
+instead; the N ring does, since at N's size the cutout saves next to nothing. A
+subway bed lying on the floor (at one thickness, as HO's lower level does) is
+glued down along its length, so the cutout runs on under it, the bed spanning the
+hole; a raised bed's supports stand on its strip, which the cutout keeps clear of. So whatever stands on the floor (riser supports, a subway's supports, a
 bed lying on the floor) has solid floor under it.
 
-The support walls are there to stop the deck sagging. On the **full hexagon**,
-**one per deck track**, lying along it down the middle of its strip, where the
-track is `--support_position` from the centre (default half the apothem, where
-the kite floor's supports stood), so they don't crowd the middle. Where that place
-won't take one (a deck slot, a riser or lower-level track, a wall or another
-support in the way), it moves along the track to the next best place; there it
-lies along the track, nudged sideways within its strip if need be, or failing
-that stands across the track (slid along itself as far as still keeps both rails
-over it), on a round boss of floor. A track with nowhere to take one (the spur in
-its deck slot, say) gets none. A hexagon with no deck tracks gets one on each
-spoke.
+The support walls are there to stop the deck sagging, and they keep out of the way
+of any subway. On the **full hexagon** there are **six**, one beside each spoke,
+parallel to it near its start: on its strip, but just outside its train corridor
+(`--under_track_width` plus 5 mm either side) and every other spoke's, where a
+subway can run. So each has a corner of its own, about `--support_position` from
+the centre (default half the apothem, where the kite floor's supports stood), and
+the six stand alike round the hexagon, the same on every module of a size. The
+deck's own tracks don't move them: a support may stand under a deck track's
+curve (nothing, such as a turnout motor, is expected to hang there). Where a
+riser, subway, deck slot or wall is in the way, the support moves to the nearest
+free place beside its spoke, no further than a third of the apothem from its
+usual place, or is left out (on the helix M6, the one by edges 3 and 4, where the
+spur's riser climbs the floor).
 
 On the **trapezoid**, one support where its deck sags most: down its middle
 line, from the long wall to edge 4, in the middle of the longest stretch of deck
 (inside the spur's slot on the helix trapezoids; halfway across with no slot),
-pointing at edge 4, on a short spoke of floor out to the rim.
+pointing at edge 4, on the straight spoke that always runs down that line
+(whatever `--spoke_width`, it ties the floor's outer part to its inner).
 
-A support lying along a strip needs nothing more; the central cutout keeps 10 mm
-clear of every support's slot. With `--lower_ground` each support is wholly under the deck or
+Every support lies along a strip, with `max(10 mm, 3 × thickness)` of board all
+round its slot (10 mm in 3 mm ply), so no slot leaves a sliver at an opening's
+edge. On the full hexagon the strips are widened to make room for that beside the
+train corridor: at least the corridor, the slot and its board each side of the
+centre line (N's 60 mm strips come out 78 mm, HO's 120 mm 128 mm), with straight
+sides. The central cutout keeps 10 mm clear of every support's slot. With `--lower_ground` each support is wholly under the deck or
 wholly under the lower plate. `--support_edges` doesn't apply to this floor.
 
 `--bottom kites` is the original spoke floor: the rim plus six straight spokes
@@ -896,6 +910,8 @@ The walls follow:
   is the same on both sides of a joint, so the pins still line up.
 - **Supports:** any support under the lower plate is shortened to fit; the ones
   under the deck stay as they are.
+- **Lower plate:** solid, the ground's top: only its supports' slots are cut. The
+  floor panels are the only ones with openings.
 
 On the **full hexagon (M6)** only the walls on edges 3 and 5 step down, to meet
 M5 and M1. M6's deck edge goes plain over the lowered part; you cut the deck
@@ -918,17 +934,17 @@ stopping 15 mm inside the main line (`upper_edge_gap=15`). Each opens the form
 pre-filled:
 
 - **M1:**
-  http://localhost:4455/HexmoHexagon?radius=250&thickness=3&h=80&edge_width=22&spoke_width=60&bottom=spoke&support_length=55&track_lead_in=20&track_width=17&under_track_width=35&under_track_height=23.8&corner_holes=g2&gap_holes=g2&big_hole_shape=rounded_rect&track_guide=1&track_template=1&labels=0&reference=0&access_openings=1&subway_ports=1&trapezoid=1&track_routes=3:17.5-5:17.5,3:-17.5-5:-35&track_openings=3:-17.5:74:35,5:35:65.6:35&deck_slots=3:-17.5-5:-35/35&risers=3:-17.5-5:-35~74..65.6/35&lower_ground=23.8&upper_edge_gap=15
+  http://localhost:4455/HexmoHexagon?radius=250&thickness=3&h=80&edge_width=22&spoke_width=60&bottom=spoke&support_length=55&track_lead_in=20&track_width=17&under_track_width=35&under_track_height=23.8&center_cutout=0&corner_holes=g2&gap_holes=g2&big_hole_shape=rounded_rect&track_guide=1&track_template=1&labels=0&reference=0&access_openings=1&subway_ports=1&trapezoid=1&track_routes=3:17.5-5:17.5,3:-17.5-5:-35&track_openings=3:-17.5:74:35,5:35:65.6:35&deck_slots=3:-17.5-5:-35/35&risers=3:-17.5-5:-35~74..65.6/35&lower_ground=23.8&upper_edge_gap=15
 - **M2:**
-  http://localhost:4455/HexmoHexagon?radius=250&thickness=3&h=80&edge_width=22&spoke_width=60&bottom=spoke&support_length=55&track_lead_in=20&track_width=17&under_track_width=35&under_track_height=23.8&corner_holes=g2&gap_holes=g2&big_hole_shape=rounded_rect&track_guide=1&track_template=1&labels=0&reference=0&access_openings=1&subway_ports=1&trapezoid=1&track_routes=3:17.5-5:17.5,3:-35-5:-35&track_openings=3:-35:65.6:35,5:35:57.6:35&deck_slots=3:-35-5:-35/35&risers=3:-35-5:-35~65.6..57.6/35&lower_ground=23.8&upper_edge_gap=15
+  http://localhost:4455/HexmoHexagon?radius=250&thickness=3&h=80&edge_width=22&spoke_width=60&bottom=spoke&support_length=55&track_lead_in=20&track_width=17&under_track_width=35&under_track_height=23.8&center_cutout=0&corner_holes=g2&gap_holes=g2&big_hole_shape=rounded_rect&track_guide=1&track_template=1&labels=0&reference=0&access_openings=1&subway_ports=1&trapezoid=1&track_routes=3:17.5-5:17.5,3:-35-5:-35&track_openings=3:-35:65.6:35,5:35:57.6:35&deck_slots=3:-35-5:-35/35&risers=3:-35-5:-35~65.6..57.6/35&lower_ground=23.8&upper_edge_gap=15
 - **M3:**
-  http://localhost:4455/HexmoHexagon?radius=250&thickness=3&h=80&edge_width=22&spoke_width=60&bottom=spoke&support_length=55&track_lead_in=20&track_width=17&under_track_width=35&under_track_height=23.8&corner_holes=g2&gap_holes=g2&big_hole_shape=rounded_rect&track_guide=1&track_template=1&labels=0&reference=0&access_openings=1&subway_ports=1&trapezoid=1&track_routes=3:17.5-5:17.5,3:-35-5:-35&track_openings=3:-35:57.6:35,5:35:49.5:35&deck_slots=3:-35-5:-35/35&risers=3:-35-5:-35~57.6..49.5/35&lower_ground=23.8&upper_edge_gap=15
+  http://localhost:4455/HexmoHexagon?radius=250&thickness=3&h=80&edge_width=22&spoke_width=60&bottom=spoke&support_length=55&track_lead_in=20&track_width=17&under_track_width=35&under_track_height=23.8&center_cutout=0&corner_holes=g2&gap_holes=g2&big_hole_shape=rounded_rect&track_guide=1&track_template=1&labels=0&reference=0&access_openings=1&subway_ports=1&trapezoid=1&track_routes=3:17.5-5:17.5,3:-35-5:-35&track_openings=3:-35:57.6:35,5:35:49.5:35&deck_slots=3:-35-5:-35/35&risers=3:-35-5:-35~57.6..49.5/35&lower_ground=23.8&upper_edge_gap=15
 - **M4:**
-  http://localhost:4455/HexmoHexagon?radius=250&thickness=3&h=80&edge_width=22&spoke_width=60&bottom=spoke&support_length=55&track_lead_in=20&track_width=17&under_track_width=35&under_track_height=23.8&corner_holes=g2&gap_holes=g2&big_hole_shape=rounded_rect&track_guide=1&track_template=1&labels=0&reference=0&access_openings=1&subway_ports=1&trapezoid=1&track_routes=3:17.5-5:17.5,3:-35-5:-35&track_openings=3:-35:49.5:35,5:35:41.4:35&deck_slots=3:-35-5:-35/35&risers=3:-35-5:-35~49.5..41.4/35&lower_ground=23.8&upper_edge_gap=15
+  http://localhost:4455/HexmoHexagon?radius=250&thickness=3&h=80&edge_width=22&spoke_width=60&bottom=spoke&support_length=55&track_lead_in=20&track_width=17&under_track_width=35&under_track_height=23.8&center_cutout=0&corner_holes=g2&gap_holes=g2&big_hole_shape=rounded_rect&track_guide=1&track_template=1&labels=0&reference=0&access_openings=1&subway_ports=1&trapezoid=1&track_routes=3:17.5-5:17.5,3:-35-5:-35&track_openings=3:-35:49.5:35,5:35:41.4:35&deck_slots=3:-35-5:-35/35&risers=3:-35-5:-35~49.5..41.4/35&lower_ground=23.8&upper_edge_gap=15
 - **M5:**
-  http://localhost:4455/HexmoHexagon?radius=250&thickness=3&h=80&edge_width=22&spoke_width=60&bottom=spoke&support_length=55&track_lead_in=20&track_width=17&under_track_width=35&under_track_height=23.8&corner_holes=g2&gap_holes=g2&big_hole_shape=rounded_rect&track_guide=1&track_template=1&labels=0&reference=0&access_openings=1&subway_ports=1&trapezoid=1&track_routes=3:17.5-5:17.5,3:-35-5:-35&track_openings=3:-35:41.4:35,5:35:33.3:35&deck_slots=3:-35-5:-35/35&risers=3:-35-5:-35~41.4..33.3/35&lower_ground=23.8&upper_edge_gap=15
+  http://localhost:4455/HexmoHexagon?radius=250&thickness=3&h=80&edge_width=22&spoke_width=60&bottom=spoke&support_length=55&track_lead_in=20&track_width=17&under_track_width=35&under_track_height=23.8&center_cutout=0&corner_holes=g2&gap_holes=g2&big_hole_shape=rounded_rect&track_guide=1&track_template=1&labels=0&reference=0&access_openings=1&subway_ports=1&trapezoid=1&track_routes=3:17.5-5:17.5,3:-35-5:-35&track_openings=3:-35:41.4:35,5:35:33.3:35&deck_slots=3:-35-5:-35/35&risers=3:-35-5:-35~41.4..33.3/35&lower_ground=23.8&upper_edge_gap=15
 - **M6:**
-  http://localhost:4455/HexmoHexagon?radius=250&thickness=3&h=80&edge_width=22&spoke_width=60&bottom=spoke&support_length=55&track_lead_in=20&track_width=17&under_track_width=35&under_track_height=23.8&corner_holes=g2&gap_holes=g2&big_hole_shape=rounded_rect&track_guide=1&track_template=1&labels=0&reference=0&access_openings=1&subway_ports=1&track_routes=1:-35-5:-17.5,3:-17.5-1:-35,1:0-5:17.5&under_track_edges=1&track_openings=5:17.5:74:35,3:-35:33.3:35&deck_slots=1:0-5:17.5@178../35,3:35-1:0@..233/35&risers=1:0-5:17.5@178..~77..74/35,3:35-1:0@..233~33.3..28/35,3:35-1:0@233..~28..23.8/35&lower_ground=23.8&upper_edge_gap=15
+  http://localhost:4455/HexmoHexagon?radius=250&thickness=3&h=80&edge_width=22&spoke_width=60&bottom=spoke&support_length=55&track_lead_in=20&track_width=17&under_track_width=35&under_track_height=23.8&center_cutout=0&corner_holes=g2&gap_holes=g2&big_hole_shape=rounded_rect&track_guide=1&track_template=1&labels=0&reference=0&access_openings=1&subway_ports=1&track_routes=1:-35-5:-17.5,3:-17.5-1:-35,1:0-5:17.5&under_track_edges=1&track_openings=5:17.5:74:35,3:-35:33.3:35&deck_slots=1:0-5:17.5@178../35,3:35-1:0@..233/35&risers=1:0-5:17.5@178..~77..74/35,3:35-1:0@..233~33.3..28/35,3:35-1:0@233..~28..23.8/35&lower_ground=23.8&upper_edge_gap=15
 - **Entry rectangle** (at M6 edge 1, with the lower level on a subway):
   http://localhost:4455/HexmoRectangle?radius=250&thickness=3&h=80&num_rows=3&num_columns=2&track_width=17&track_lead_in=20&under_track=1&under_track_height=23.8&under_track_width=35&turnouts=10:0:-35,133.7:0:35&corner_holes=g2&gap_holes=g2&big_hole_shape=rounded_rect&track_guide=1&track_template=1&labels=0&reference=0&subway=23.8&access_openings=1&subway_ports=1
 

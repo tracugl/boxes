@@ -500,8 +500,11 @@ has 76 mm under the opening's top.
 
 **Supports.** The helix modules use `support_length=110`. Their floor follows
 the tracks (`--bottom spoke`; see the N README's "Track-following spoke floor"),
-and the generator places one support across each deck track, at its middle
-where it fits, clear of the spur's slot and riser and the lower level.
+and the generator places the supports round the hexagon, each beside a spoke and
+out of every spoke's train corridor (where a subway can run), clear of the spur's
+slot and riser; a support may stand under a deck track. M6 has five: the sixth's
+place, by edges 3 and 4, is on the spur's riser. The trapezoids' floors keep only
+their rim, the middle spoke and the risers' strips.
 
 **Settings for each module** (all at h = 100, with access walls and every subway
 opening at the floor level, `under_track_height=6`; every module renders as given,

@@ -122,7 +122,10 @@ def helix_ring(size):
               "--track_width=17", "--under_track_width=35",
               # Every subway opening at the lower level's exit height, so they
               # line up all round (M6's edge 1 is the lower level's own).
-              f"--under_track_height={size.exit:g}"] + _CUT + _walls(size)
+              f"--under_track_height={size.exit:g}",
+              # A cutout in the middle of the hexagon saves next to nothing
+              # at N's size.
+              "--center_cutout=0"] + _CUT + _walls(size)
     trapezoid = common + ["--trapezoid=1"] + (
         [] if size.access else [f"--support_edges={size.supports}"])
     j = size.joints

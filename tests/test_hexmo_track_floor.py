@@ -3,7 +3,8 @@
 The floor keeps its rim and a strip ``--spoke_width`` wide along every
 connection a track can make (1–3, 3–5, 5–1, 2–4, 4–6, 6–2; 3–5 on the
 trapezoid) and under every track, riser and subway; the rest is cut away.
-One support wall stands on each deck track, at its middle where it fits.
+Six support walls stand round the hexagon, one beside each connection and
+clear of every track path; the trapezoid has one down its open middle.
 The old floor is ``--bottom=kites``.
 
 These tests avoid lxml, so they run in the Docker image.
@@ -151,18 +152,44 @@ class TestSupports:
         assert len(routes) == len(set(routes))
 
     def test_halfway_out_from_the_centre(self) -> None:
-        # Each support stands where its track is about half the apothem from
-        # the centre (where the kite floor's supports stood), not crowding the
-        # middle: the default hexagon's six, one per spoke, and M6's three,
-        # one per deck track (lying along the spur's deck stretch fits beside
-        # the lower level).
-        for args, n in (([], 6), (HELIX_RING_N250["M6"], 3)):
-            box, r, _, _ = rendered(args)
-            apothem = r * math.sqrt(3) / 2
-            supports = box._supportLayout(r, False)
-            assert len(supports) == n
-            for sp in supports:
-                assert math.hypot(*sp.centre) == pytest.approx(apothem / 2, abs=15)
+        # The default hexagon's six stand about half the apothem from the
+        # centre (where the kite floor's supports stood), not crowding the
+        # middle.
+        box, r, _, _ = rendered([])
+        apothem = r * math.sqrt(3) / 2
+        supports = box._supportLayout(r, False)
+        assert len(supports) == 6
+        for sp in supports:
+            assert math.hypot(*sp.centre) == pytest.approx(apothem / 2, abs=15)
+
+    def test_six_alike_round_the_hexagon(self) -> None:
+        # With no tracks of its own, each support is the last turned 60°
+        # (or 120°: the spokes run 1–3, 3–5, 5–1, then 2–4, 4–6, 6–2).
+        box, r, _, _ = rendered([])
+        angles = sorted(math.degrees(math.atan2(sp.centre[1], sp.centre[0])) % 360
+                        for sp in box._supportLayout(r, False))
+        steps = [(b - a) for a, b in zip(angles, angles[1:] + [angles[0] + 360])]
+        assert steps == pytest.approx([60] * 6, abs=0.5)
+        radii = [math.hypot(*sp.centre) for sp in box._supportLayout(r, False)]
+        assert max(radii) - min(radii) < 0.5
+
+    @pytest.mark.parametrize("args, n", [(HELIX_RING_N250["M6"], 5), (helix_ring_ho()["M6"], 5)],
+                             ids=["N250 M6", "HO M6"])
+    def test_modules_keep_their_supports_near_home(self, args, n) -> None:
+        # A module's risers, subways and deck slots push a support off its
+        # home (its place on the default layout) by at most
+        # _SUPPORT_HOME_REACH of the apothem, or leave it out where there is
+        # no room (M6: by edge 3, where the spur's riser climbs the floor).
+        box, r, _, _ = rendered(args)
+        apothem = r * math.sqrt(3) / 2
+        trackless = [a for a in args if not a.startswith(
+            ("--track_routes", "--risers", "--deck_slots", "--track_openings"))]
+        plain, _, _, _ = rendered(trackless)
+        homes = {sp.route: sp.centre for sp in plain._supportLayout(r, False)}
+        supports = box._supportLayout(r, False)
+        assert len(supports) == n
+        for sp in supports:
+            assert math.dist(sp.centre, homes[sp.route]) <= apothem * box._SUPPORT_HOME_REACH + 0.01
 
     @pytest.mark.parametrize("args, frac", [(["--trapezoid=1"], 0.5),
                                             (HELIX_RING_N250["M2"], 0.75)],
@@ -188,10 +215,19 @@ class TestSupports:
 
     @pytest.mark.parametrize("args", [[], HELIX_RING_N250["M6"], helix_ring_ho()["M6"]],
                              ids=["default", "N250 M6", "HO M6"])
-    def test_hexagon_supports_lie_along_their_tracks(self, args) -> None:
+    def test_hexagon_supports_keep_out_of_every_subway_path(self, args) -> None:
+        # No support stands in a train corridor (--under_track_width and its
+        # clearance) along any connection, where a subway can run.  The
+        # deck's own tracks don't count: a support may stand under one.
         box, r, _, _ = rendered(args)
+        half = box.under_track_width / 2 + box._UNDER_TRACK_CLEAR
         supports = box._supportLayout(r, False)
-        assert supports and all(sp.lying for sp in supports)
+        assert supports
+        for g in box._spokeRoutes(r, False):
+            path = LineString(segments_polyline(g.segments, 32))
+            for sp in supports:
+                slot = LineString(box._supportPoints(sp, 1))
+                assert slot.distance(path) >= half + box.thickness / 2 - 0.5
 
     def test_cutout_in_the_middle(self) -> None:
         # The default hexagon opens up its middle: one opening covers the
@@ -204,6 +240,36 @@ class TestSupports:
         hole = next(h for h in openings(box, r, risers) if h.contains(middle))
         radius = math.sqrt(hole.area / math.pi)
         assert hole.hausdorff_distance(Point(0, 0).buffer(radius)) < 1.0
+
+    def test_every_support_slot_has_its_land(self, module) -> None:
+        # max(10 mm, 3 thicknesses) of board between a support's slot and any
+        # opening, so 3 mm ply never leaves a sliver at an opening's edge.
+        box, r, risers, _ = module
+        land = max(10.0, 3 * box.thickness)
+        holes = openings(box, r, risers)
+        for sp in box._supportLayout(r, box.trapezoid):
+            slot = LineString(box._supportPoints(sp, 1)).buffer(box.thickness / 2, cap_style="flat")
+            assert all(slot.distance(h) >= land - 0.5 for h in holes)
+
+    @pytest.mark.parametrize("args", [HELIX_RING_N250["M6"], ["--center_cutout=0"]],
+                             ids=["N250 M6", "default, cutout off"])
+    def test_no_cutout_leaves_the_middle_solid(self, args) -> None:
+        box, r, risers, _ = rendered(args)
+        middle = Point(0, 0).buffer(r * math.sqrt(3) / 2 / 3 - 1)
+        assert not any(h.intersects(middle) for h in openings(box, r, risers))
+
+    @pytest.mark.parametrize("height, hole", [(6, True), (23.8, False)],
+                             ids=["glued to the floor", "on supports"])
+    def test_cutout_runs_under_a_bed_glued_to_the_floor(self, height, hole) -> None:
+        # A subway bed lying on the floor is glued down either side of the
+        # middle cutout, which runs on under it; a raised bed's supports
+        # stand on its strip, so the middle stays solid round it.
+        from boxes.generators._hexmo_helix_ring import _HO_COMMON
+        args = [a for a in _HO_COMMON if not a.startswith("--under_track_height")]
+        box, r, risers, _ = rendered(args + [f"--under_track_height={height}",
+                                             f"--subway=1:0-4:0~{height}"])
+        centre = Point(0, 0).buffer(5)
+        assert any(h.contains(centre) for h in openings(box, r, risers)) == hole
 
     def test_ground_supports_never_straddle_the_deck_edge(self) -> None:
         box, r, _, _ = rendered(HELIX_RING_N250_GROUND["M2"])
@@ -233,14 +299,21 @@ class TestOpenings:
         interior = box._floorInterior(r, box.trapezoid).buffer(0.01)
         assert all(interior.contains(h) for h in openings(box, r, risers))
 
-    def test_tracks_and_spokes_keep_their_strip(self, module) -> None:
-        # Nothing is cut under a deck route's or spoke's centreline, outside
-        # the cutout in the middle.
+    def test_spokes_and_risers_keep_their_strip(self, module) -> None:
+        # Nothing is cut under a hexagon spoke's centreline (outside the
+        # cutout in the middle), the trapezoid's middle spoke, or a riser or
+        # subway.  The deck's own tracks leave no strip: they are on the deck.
         box, r, risers, _ = module
         holes = openings(box, r, risers)
         hub = Point(0, 0).buffer(r * math.sqrt(3) / 2 * box._FLOOR_HUB + box._FLOOR_CORNER)
-        for g in box._trackRouteGeometries(r, box.trapezoid) + box._spokeRoutes(r, box.trapezoid):
-            line = LineString(segments_polyline(g.segments, 32)).difference(hub)
+        apothem = r * math.sqrt(3) / 2
+        lines = [LineString(segments_polyline(rp["segments"], 32)) for rp in risers]
+        if box.trapezoid:
+            lines.append(LineString([(0, -box.thickness), (0, -apothem)]))
+        else:
+            lines += [LineString(segments_polyline(g.segments, 32)).difference(hub)
+                      for g in box._spokeRoutes(r, False)]
+        for line in lines:
             assert not any(line.intersects(h) for h in holes)
 
 

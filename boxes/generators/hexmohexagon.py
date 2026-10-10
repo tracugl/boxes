@@ -93,16 +93,25 @@ class HexmoHexagon(HexmoStepFormatMixin, HexmoBigHoleMixin, HexmoTrackGuideMixin
         self.argparser.add_argument(
             "--bottom", action="store", type=str, default="spoke",
             choices=["spoke", "kites", "closed"],
-            help="Style of the bottom.  spoke (default): a rim plus a strip "
-                 "--spoke_width wide along every connection a track can make "
-                 "(1-3, 3-5, 5-1, 2-4, 4-6, 6-2; 3-5 on the trapezoid) and under "
-                 "every track, riser and subway, with a cutout in the middle, the "
-                 "rest cut away; one support wall lies along each deck track (on "
-                 "the trapezoid, one down its middle where the deck sags most), "
-                 "where it is --support_position from the centre (default half the "
-                 "apothem), and --support_edges doesn't apply.  "
+            help="Style of the bottom.  spoke (default): a rim, strips under "
+                 "every riser and subway, and a strip --spoke_width wide along "
+                 "every connection a track can make (1-3, 3-5, 5-1, 2-4, 4-6, "
+                 "6-2; on the trapezoid, a straight spoke down its middle "
+                 "instead), with a cutout in the middle (--center_cutout), the "
+                 "rest cut away (deck tracks leave no strip); six support "
+                 "walls, one beside each spoke and clear of every spoke's train "
+                 "corridor (--under_track_width), "
+                 "about --support_position from the centre (default half the "
+                 "apothem); on the trapezoid, one down its middle where the deck "
+                 "sags most; --support_edges doesn't apply.  "
                  "kites: the rim plus straight spokes from the centre, with "
                  "kite-shaped openings between them.  closed: a solid floor.")
+        self.argparser.add_argument(
+            "--center_cutout", action="store", type=boolarg, default=True,
+            help="Cut a round opening in the middle of a full hexagon's spoke "
+                 "floor (as big as it can be, up to a third of the apothem, "
+                 "keeping clear of anything standing on the floor).  Off: the "
+                 "middle stays solid (the N ring: too small to be worth it).")
         self.argparser.add_argument(
             "--edge_width", action="store", type=float, default=60.0,
             help="Width of the outer hexagonal frame for spoke bottom.")
@@ -2844,12 +2853,15 @@ class HexmoHexagon(HexmoStepFormatMixin, HexmoBigHoleMixin, HexmoTrackGuideMixin
                                             move="right", callback=framed(support_cb))
 
         def lower_plate_callbacks(r):
-            """The lower plate's frame (3D export), kites and supports' slots."""
+            """The lower plate's frame (3D export) and supports' slots.
+
+            The plate is the ground's top, so it stays solid: only the floor
+            panels get openings.
+            """
             def cb0():
                 self._stepFrame("lower ground", "panel",
                                 (0.0, -self.thickness, lower_plan.body), (1, 0, 0), (0, 1, 0),
                                 (0.0, self.thickness))
-                self._cutKites(self._lowerPlateKites(r), ())
             cbs = [cb0]
             if self.supports and lower_plan.lower:
                 cbs.append(lambda: self.drawSupportHoles(r=r, isTrapezoid=True,
