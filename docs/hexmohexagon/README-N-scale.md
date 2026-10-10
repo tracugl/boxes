@@ -1165,6 +1165,30 @@ the laser formats are unaffected.
 
 ---
 
+## Servo turnout drive
+
+A cheap DIY drive for turnouts on the deck, built around a hobby servo (SG90 or
+MG90S) that sits beside the subway, not under the turnout. A music-wire rod runs
+in a tube tight under the deck, crosses the subway's train envelope with 3.2 mm
+to spare, and turns up through a slot into the turnout's tiebar. An omega loop
+bent into the wire holds the blades closed. For live frogs, a kink in the wire
+glides along a lever microswitch beside it, so the frog changes over with the
+blades. An Arduino Nano and a PCA9685 board drive up to 16 turnouts from toggle
+switches. It costs about $5–6 a turnout.
+
+Two pages in this folder have the details. Open them in a browser from a local
+copy of the repo; GitHub shows HTML files as source.
+
+- [servo-turnout-drive.html](servo-turnout-drive.html): the drawings. A
+  section through the deck and a plan from below (N, to scale), dimensioned
+  laser-cut parts, a throw calculator, wiring, N/HO differences, a parts list,
+  fitting steps and the Arduino sketch.
+- [servo-turnout-3d.html](servo-turnout-3d.html): an interactive 3D model of
+  the same setup, with the throw animated. It loads Three.js from a CDN, so it
+  needs an internet connection.
+
+---
+
 ## Gotchas
 
 - **`--outside`**: it is **on** by default in both HexmoHexagon and
