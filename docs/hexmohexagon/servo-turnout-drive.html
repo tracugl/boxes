@@ -1,0 +1,760 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Servo Turnout Drive</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Semi+Condensed:wght@500;600;700&family=JetBrains+Mono:wght@400;500&family=Source+Sans+3:wght@400;600&display=swap">
+<style>
+/* Layout: a stack of drawing sheets, each with a drafting title strip; prose kept to a readable column between them. */
+:root {
+  --bg: #e7ebe9; --sheet: #fbfcfb; --ink: #1b282c; --soft: #5b696d; --rule: #c6cecd;
+  --dim: #b4432a; --move: #0b766c; --corridor: #d3e3ee; --corline: #57819f;
+  --wood: #e6d3ab; --part: #d2b685; --servo: #3b4853; --servo-ink: #e9eff1; --tube: #93a9b6;
+  --wire-pwr: #c2372a; --wire-i2c: #6f4aa8;
+  --f-disp: "Barlow Semi Condensed", "Arial Narrow", Arial, sans-serif;
+  --f-body: "Source Sans 3", "Segoe UI", Helvetica, Arial, sans-serif;
+  --f-mono: "JetBrains Mono", ui-monospace, Menlo, Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0e1416; --sheet: #151f22; --ink: #d9e3e4; --soft: #90a1a4; --rule: #2a393d;
+    --dim: #ec8b67; --move: #46c3b4; --corridor: #1d3343; --corline: #6d9bbf;
+    --wood: #5b4a2e; --part: #725d39; --servo: #5a6977; --servo-ink: #eef3f4; --tube: #4b6371;
+    --wire-pwr: #f06a5a; --wire-i2c: #b18be2; color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0e1416; --sheet: #151f22; --ink: #d9e3e4; --soft: #90a1a4; --rule: #2a393d;
+  --dim: #ec8b67; --move: #46c3b4; --corridor: #1d3343; --corline: #6d9bbf;
+  --wood: #5b4a2e; --part: #725d39; --servo: #5a6977; --servo-ink: #eef3f4; --tube: #4b6371;
+  --wire-pwr: #f06a5a; --wire-i2c: #b18be2; color-scheme: dark;
+}
+body { background: var(--bg); color: var(--ink); font: 400 17px/1.55 var(--f-body); }
+.wrap { max-width: 1120px; margin: 0 auto; padding-inline: 16px; padding-block: 28px 64px; display: grid; gap: 28px; }
+h1, h2, h3 { font-family: var(--f-disp); font-weight: 700; text-wrap: balance; line-height: 1.1; margin: 0; }
+h1 { font-size: clamp(2rem, 4.6vw, 3.1rem); letter-spacing: .01em; }
+h2 { font-size: 1.45rem; }
+h3 { font-size: 1.12rem; }
+p { margin: 0; max-width: 70ch; }
+.lede { display: grid; gap: 12px; }
+.eyebrow { font: 600 .8rem/1 var(--f-disp); letter-spacing: .14em; text-transform: uppercase; color: var(--dim); }
+.prose { display: grid; gap: 12px; }
+.prose ul, .prose ol { margin: 0; padding-left: 1.3em; max-width: 70ch; display: grid; gap: 6px; }
+
+/* A drawing sheet with its title strip, like a drafting sheet's title block. */
+.sheet { background: var(--sheet); border: 1px solid var(--rule); display: grid; }
+.strip { display: grid; grid-template-columns: 1fr auto; gap: 8px 24px; align-items: end; padding: 12px 16px; border-bottom: 1px solid var(--rule); }
+.strip h2 { font-size: 1.3rem; }
+.strip .sub { color: var(--soft); font-size: .95rem; margin-top: 2px; }
+.meta { display: flex; flex-wrap: wrap; gap: 4px 18px; font: 500 .78rem/1.2 var(--f-mono); color: var(--soft); text-transform: uppercase; letter-spacing: .04em; }
+.meta b { color: var(--ink); font-weight: 500; }
+.draw { overflow-x: auto; padding: 8px 8px 4px; }
+.draw svg { display: block; width: 100%; min-width: 720px; height: auto; }
+.notes { padding: 10px 16px 16px; display: grid; gap: 8px; border-top: 1px dashed var(--rule); font-size: .97rem; }
+.notes p { max-width: 90ch; }
+@media (max-width: 640px) { .strip { grid-template-columns: 1fr; } }
+
+/* Part drawings: one card per laser-cut or wire part. */
+.parts { display: grid; grid-template-columns: repeat(auto-fit, minmax(310px, 1fr)); gap: 1px; background: var(--rule); }
+.part-card { background: var(--sheet); padding: 12px 14px 14px; display: grid; gap: 6px; align-content: start; min-width: 0; }
+.part-card h3 { display: flex; gap: 10px; align-items: baseline; }
+.part-card h3 .no { font: 600 .82rem/1 var(--f-mono); color: var(--dim); }
+.part-card svg { width: 100%; height: auto; display: block; }
+.part-card p { font-size: .93rem; color: var(--soft); }
+
+/* SVG drafting styles. All drawing units are millimetres. */
+svg text { font-family: var(--f-disp); }
+.tx { fill: var(--ink); font-size: 2.4px; font-weight: 500; }
+.sm { fill: var(--soft); font-size: 1.95px; }
+.tc { text-anchor: middle; }
+.te { text-anchor: end; }
+.td { fill: var(--dim); font-family: var(--f-mono); font-size: 2.05px; }
+.k { stroke: var(--ink); stroke-width: .3; fill: none; }
+.k2 { stroke: var(--ink); stroke-width: .15; fill: none; }
+.hid { stroke: var(--soft); stroke-width: .25; fill: none; stroke-dasharray: 1.2 .7; }
+.mv { stroke: var(--move); stroke-width: .6; fill: none; stroke-linecap: round; stroke-linejoin: round; }
+.mvf { fill: var(--move); fill-opacity: .3; stroke: var(--move); stroke-width: .25; }
+.dot { fill: var(--move); }
+.dm { stroke: var(--dim); stroke-width: .18; fill: none; }
+.ex { stroke: var(--dim); stroke-width: .12; fill: none; opacity: .85; }
+.ah { fill: var(--dim); }
+.ply { fill: url(#ply); stroke: var(--ink); stroke-width: .25; }
+.plybg { fill: var(--wood); }
+.plyln { stroke: var(--ink); stroke-width: .14; opacity: .45; }
+.wood { fill: var(--wood); stroke: var(--ink); stroke-width: .25; }
+.part { fill: var(--part); stroke: var(--ink); stroke-width: .3; }
+.hole { fill: var(--sheet); stroke: var(--ink); stroke-width: .25; }
+.cor { fill: var(--corridor); stroke: var(--corline); stroke-width: .25; stroke-dasharray: 1.5 1; }
+.cort { fill: var(--corline); }
+.srv { fill: var(--servo); stroke: var(--ink); stroke-width: .25; }
+.srvt { fill: var(--servo-ink); font-size: 2.1px; }
+.tube { fill: var(--tube); fill-opacity: .45; stroke: var(--ink); stroke-width: .18; }
+.rail { fill: var(--ink); }
+.ld { stroke: var(--ink); stroke-width: .15; fill: none; }
+.bal circle { fill: var(--sheet); stroke: var(--ink); stroke-width: .22; }
+.bal text { fill: var(--ink); font-size: 2.3px; font-weight: 600; text-anchor: middle; dominant-baseline: central; }
+.s2 .tx { font-size: 2.9px; } .s2 .sm { font-size: 2.4px; } .s2 .td { font-size: 2.55px; } .s2 .bal text { font-size: 2.8px; } .s2 .srvt { font-size: 2.5px; }
+.pc .tx { font-size: 2.1px; } .pc .sm { font-size: 1.85px; } .pc .td { font-size: 2px; }
+.wd .tx { font-size: 3.1px; } .wd .sm { font-size: 2.6px; }
+.wp { stroke: var(--wire-pwr); stroke-width: .7; fill: none; }
+.wg { stroke: var(--ink); stroke-width: .7; fill: none; }
+.ws { stroke: var(--move); stroke-width: .7; fill: none; }
+.wi { stroke: var(--wire-i2c); stroke-width: .7; fill: none; }
+.box { fill: var(--sheet); stroke: var(--ink); stroke-width: .35; }
+.pin { fill: var(--ink); }
+
+/* Calculator */
+.calc { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.1fr); gap: 20px; padding: 14px 16px 18px; align-items: start; }
+@media (max-width: 760px) { .calc { grid-template-columns: 1fr; } }
+.fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.field { display: grid; gap: 4px; }
+.field label { font: 600 .85rem/1.2 var(--f-disp); letter-spacing: .03em; }
+.field small { color: var(--soft); font-size: .8rem; line-height: 1.3; }
+.field input { font: 500 1rem var(--f-mono); padding: 6px 8px; border: 1px solid var(--rule); background: var(--bg); color: var(--ink); border-radius: 3px; width: 100%; box-sizing: border-box; }
+.field input:focus-visible { outline: 2px solid var(--move); outline-offset: 1px; }
+.out { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1px; background: var(--rule); border: 1px solid var(--rule); margin-top: 14px; }
+.out div { background: var(--sheet); padding: 8px 10px; display: grid; gap: 2px; }
+.out span { font: 600 .74rem/1.2 var(--f-disp); letter-spacing: .08em; text-transform: uppercase; color: var(--soft); }
+.out b { font: 500 1.08rem/1.2 var(--f-mono); font-variant-numeric: tabular-nums; }
+.warn { color: var(--dim); font-weight: 600; min-height: 1.4em; margin-top: 8px; }
+.calc svg { width: 100%; height: auto; display: block; max-width: 460px; justify-self: center; }
+
+/* Tables */
+.tbl { overflow-x: auto; }
+table { border-collapse: collapse; width: 100%; font-size: .95rem; }
+th, td { text-align: left; padding: 7px 10px; border-bottom: 1px solid var(--rule); vertical-align: top; }
+th { font: 600 .78rem/1.2 var(--f-disp); letter-spacing: .08em; text-transform: uppercase; color: var(--soft); }
+td.n, th.n { font-family: var(--f-mono); font-variant-numeric: tabular-nums; white-space: nowrap; }
+td.no { font-family: var(--f-mono); color: var(--dim); }
+tfoot td { font-weight: 600; }
+
+/* Code */
+.code { position: relative; }
+pre { margin: 0; background: var(--bg); border: 1px solid var(--rule); padding: 14px 16px; overflow-x: auto; font: 400 .85rem/1.5 var(--f-mono); }
+.copy { position: absolute; top: 8px; right: 8px; font: 600 .78rem var(--f-disp); letter-spacing: .06em; text-transform: uppercase; background: var(--sheet); color: var(--ink); border: 1px solid var(--rule); padding: 5px 10px; cursor: pointer; border-radius: 3px; }
+.copy:focus-visible { outline: 2px solid var(--move); }
+.pad { padding: 14px 16px 18px; display: grid; gap: 12px; }
+.legend { display: flex; flex-wrap: wrap; gap: 6px 18px; font-size: .9rem; color: var(--soft); }
+.legend i { display: inline-block; width: 18px; height: 3px; vertical-align: middle; margin-right: 6px; }
+</style>
+</head>
+<body>
+
+<!-- Shared drafting defs: dimension arrowheads and the plywood section hatch. -->
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <defs>
+    <marker id="arr" viewBox="0 0 10 10" refX="10" refY="5" markerWidth="1.6" markerHeight="1.6" markerUnits="userSpaceOnUse" orient="auto-start-reverse">
+      <path class="ah" d="M0 1.5 L10 5 L0 8.5 z"/>
+    </marker>
+    <pattern id="ply" patternUnits="userSpaceOnUse" width="1.1" height="1.1" patternTransform="rotate(45)">
+      <rect class="plybg" width="1.1" height="1.1"/>
+      <line class="plyln" x1="0" y1="0" x2="0" y2="1.1"/>
+    </pattern>
+  </defs>
+</svg>
+
+<main class="wrap">
+
+<header class="lede">
+  <div class="eyebrow">Hexmo modules · turnout drive</div>
+  <h1>Servo Turnout Drive</h1>
+  <p>A hobby servo throws the points from beside the subway, not under the turnout. A single music-wire rod runs in a tube tight under the deck, crosses the subway's train envelope, and turns up through a slot into the turnout's tiebar. An omega loop bent into the wire holds the blades closed and takes up the servo's overtravel.</p>
+  <p>Drawn for N (3 mm ply, subway at 23.8 mm). HO differs only in the wire sizes and clearances in the table below. All dimensions are in millimetres. Servo dimensions are typical SG90 figures, so measure yours before cutting.</p>
+</header>
+
+<!-- SHEET 1 -->
+<section class="sheet" aria-labelledby="s1">
+  <div class="strip">
+    <div><h2 id="s1">Section A–A</h2><div class="sub">Cut through the tiebar, along the line the points move. The wire runs straight from the servo to the tiebar.</div></div>
+    <div class="meta"><span>Scale <b>≈ 3 : 1</b></span><span>Units <b>mm</b></span><span>Scale <b>N</b></span><span>Sheet <b>1 / 5</b></span></div>
+  </div>
+  <div class="draw">
+  <svg viewBox="-26 8 170 64" role="img" aria-label="Cross-section through the deck, turnout tiebar, drive wire, tube, subway envelope and servo">
+    <!-- subway envelope -->
+    <rect class="cor" x="22.5" y="33.2" width="45" height="30.8"/>
+    <text class="tx tc cort" x="45" y="44.5">SUBWAY TRAIN ENVELOPE</text>
+    <text class="sm tc" x="45" y="48">35 mm opening + 5 mm each side</text>
+    <text class="sm tc" x="45" y="51.2">top at 66.8 above the floor (23.8 + 43)</text>
+
+    <!-- deck with slot -->
+    <rect class="ply" x="-26" y="23" width="21.75" height="3"/>
+    <rect class="ply" x="4.25" y="23" width="139.75" height="3"/>
+    <text class="tx" x="-25" y="21.4">deck · 3 mm ply</text>
+    <text class="sm" x="20" y="21.6">deck underside 74.0 above the floor</text>
+
+    <!-- turnout: rails, blades, tiebar -->
+    <rect class="rail" x="3.9" y="20.6" width="1.2" height="1.4"/>
+    <rect class="rail" x="-5.1" y="20.6" width="1.2" height="1.4"/>
+    <rect class="mvf" x="2.3" y="20.8" width="1.1" height="1.2"/>
+    <rect class="mvf" x="-3.4" y="20.8" width="1.1" height="1.2"/>
+    <rect class="mvf" x="-8" y="22" width="16" height="1"/>
+    <text class="sm" x="7" y="17.6">point blades and tiebar move left and right (T)</text>
+
+    <!-- tube clips (behind tube) -->
+    <rect class="ply" x="30" y="26" width="3" height="4"/>
+    <rect class="ply" x="52" y="26" width="3" height="4"/>
+    <rect class="ply" x="74" y="26" width="3" height="4"/>
+
+    <!-- servo mount: spacers, plate, servo, horn -->
+    <rect class="ply" x="84" y="26" width="4" height="12"/>
+    <rect class="ply" x="122" y="26" width="4" height="12"/>
+    <path class="k2" d="M84 29 H88 M84 32 H88 M84 35 H88 M122 29 H126 M122 32 H126 M122 35 H126"/>
+    <rect class="ply" x="84" y="38" width="10" height="3"/>
+    <rect class="ply" x="116.6" y="38" width="9.4" height="3"/>
+    <rect class="srv" x="94.1" y="30.9" width="22.2" height="22.7" rx=".8"/>
+    <rect class="srv" x="89.1" y="35.5" width="32.2" height="2.5"/>
+    <path class="k" d="M91.3 34.6 V41.8 M119.1 34.6 V41.8"/>
+    <rect class="srv" x="96.6" y="30.2" width="6.8" height=".7"/>
+    <rect class="srv" x="99.2" y="29.9" width="1.6" height=".3"/>
+    <rect class="mvf" x="93.5" y="28.4" width="13" height="1.5" rx=".6"/>
+    <text class="srvt tc" x="105.2" y="46">SG90 / MG90S</text>
+
+    <!-- drive wire: hook over tiebar, down the slot, along the tube, omega loop, Z-bend into the horn -->
+    <path class="mv" d="M -2.2 20.3 H 0 V 27 H 87 C 85 33.5, 94 33.5, 92 27 H 100 V 30.6 H 101.2"/>
+    <rect class="tube" x="24" y="26" width="54" height="2"/>
+
+    <!-- frog microswitch beside the wire (behind the section plane, so dashed), its mount block -->
+    <rect class="hid" x="1" y="26" width="20" height="2"/>
+    <rect class="hid" x="1" y="28" width="20" height="6.4"/>
+    <path class="hid" d="M19 28.6 L10.2 27.1"/>
+    <text class="sm" x="1" y="37.2">frog switch, beside the wire</text>
+
+    <!-- dimensions -->
+    <path class="ex" d="M-4.25 22.6 V13.6 M4.25 22.6 V13.6"/>
+    <line class="dm" x1="-4.25" y1="14.5" x2="4.25" y2="14.5" marker-start="url(#arr)" marker-end="url(#arr)"/>
+    <text class="td tc" x="0" y="13.6">T + 6</text>
+
+    <path class="ex" d="M67.5 33.2 H71.6"/>
+    <line class="dm" x1="70.6" y1="26" x2="70.6" y2="33.2" marker-start="url(#arr)" marker-end="url(#arr)"/>
+    <text class="td" x="71.4" y="30.4">7.2</text>
+
+    <path class="ex" d="M55 30 H59.4"/>
+    <line class="dm" x1="58.6" y1="30" x2="58.6" y2="33.2" marker-start="url(#arr)" marker-end="url(#arr)"/>
+    <text class="td" x="59.3" y="32.3">3.2</text>
+
+    <path class="ex" d="M22.5 64 V67 M67.5 64 V67"/>
+    <line class="dm" x1="22.5" y1="66" x2="67.5" y2="66" marker-start="url(#arr)" marker-end="url(#arr)"/>
+    <text class="td tc" x="45" y="65.3">45 corridor</text>
+
+    <path class="ex" d="M89.1 38.6 V61"/>
+    <line class="dm" x1="67.5" y1="60" x2="89.1" y2="60" marker-start="url(#arr)" marker-end="url(#arr)"/>
+    <text class="td tc" x="78.3" y="59.3">21.6 clear</text>
+
+    <path class="ex" d="M84 38 H79.6"/>
+    <line class="dm" x1="80.4" y1="26" x2="80.4" y2="38" marker-start="url(#arr)" marker-end="url(#arr)"/>
+    <text class="td te" x="79.8" y="32.6">12</text>
+
+    <!-- balloons -->
+    <g class="bal"><path class="ld" d="M-7 22.5 L-17.3 17.4"/><circle cx="-19" cy="16" r="2.4"/><text x="-19" y="16">1</text></g>
+    <g class="bal"><path class="ld" d="M-3.4 25 L-16.7 29.6"/><circle cx="-19" cy="30.5" r="2.4"/><text x="-19" y="30.5">2</text></g>
+    <g class="bal"><path class="ld" d="M14 27.3 L12.6 41.7"/><circle cx="12.4" cy="44" r="2.4"/><text x="12.4" y="44">3</text></g>
+    <g class="bal"><path class="ld" d="M26 28.1 L19.4 46.9"/><circle cx="18.6" cy="49.2" r="2.4"/><text x="18.6" y="49.2">4</text></g>
+    <g class="bal"><path class="ld" d="M31.5 30 L12.6 51.8"/><circle cx="11" cy="53.6" r="2.4"/><text x="11" y="53.6">5</text></g>
+    <g class="bal"><path class="ld" d="M1.2 32 L-16.7 41.6"/><circle cx="-19" cy="43" r="2.4"/><text x="-19" y="43">11</text></g>
+    <g class="bal"><path class="ld" d="M16 27.6 L-16.8 54.6"/><circle cx="-19" cy="56" r="2.4"/><text x="-19" y="56">12</text></g>
+    <g class="bal"><path class="ld" d="M1.2 27 L-16.6 67.2"/><circle cx="-19" cy="68.4" r="2.4"/><text x="-19" y="68.4">13</text></g>
+    <g class="bal"><path class="ld" d="M89.4 31.6 L82.3 45"/><circle cx="81" cy="47" r="2.4"/><text x="81" y="47">6</text></g>
+    <g class="bal"><path class="ld" d="M105 28.4 L110 17.3"/><circle cx="111" cy="15" r="2.4"/><text x="111" y="15">7</text></g>
+    <g class="bal"><path class="ld" d="M114 50 L120.6 55.3"/><circle cx="122.5" cy="56.5" r="2.4"/><text x="122.5" y="56.5">8</text></g>
+    <g class="bal"><path class="ld" d="M125 39.5 L133.7 42.2"/><circle cx="136" cy="42.5" r="2.4"/><text x="136" y="42.5">9</text></g>
+    <g class="bal"><path class="ld" d="M125 30 L133.6 30"/><circle cx="136" cy="30" r="2.4"/><text x="136" y="30">10</text></g>
+  </svg>
+  </div>
+  <div class="notes">
+    <p><b>Clearance.</b> The deck's underside is 74.0 mm up and the subway's train envelope tops out at 66.8 mm, so the rod has 7.2 mm to cross in. The tube sits tight against the deck, and its clips reach down to 70.0 mm, leaving 3.2 mm over the tallest train. HO has 12 mm (deck 88, envelope 6 + 70 = 76).</p>
+    <p><b>Servo height.</b> Four 3 mm spacers (12 mm) hang the bracket plate so the horn turns just under the deck, level with the rod. At mid-throw the horn arm points into the page, so its hole sits over the shaft in this view.</p>
+    <p><b>Frog switch.</b> The microswitch (11) sits beside the wire just under the turnout, screwed to a small ply block (13) glued to the deck, and stays clear of the subway corridor. A small kink (12) bent into the wire, 2 mm sideways towards the switch, presses its lever: no extra parts and nothing to solder. The kink is before the omega loop, so it moves exactly with the blades, not with the servo. (In this view the kink points towards you, so it doesn't show.) Slide the switch along its slotted holes until it changes over just before the blade closes.</p>
+  </div>
+</section>
+
+<!-- SHEET 2 -->
+<section class="sheet" aria-labelledby="s2">
+  <div class="strip">
+    <div><h2 id="s2">Plan from below</h2><div class="sub">The same parts seen from underneath the deck: the wire crosses the subway square-on, and the frog switch sits beside it next to the turnout.</div></div>
+    <div class="meta"><span>Scale <b>≈ 3 : 1</b></span><span>Units <b>mm</b></span><span>View <b>from below</b></span><span>Sheet <b>2 / 5</b></span></div>
+  </div>
+  <div class="draw">
+  <svg viewBox="-30 -34 170 60" role="img" aria-label="Underside plan: deck slot, wire with its kink, frog switch on its block, tube and clips crossing the subway corridor, omega loop and servo on its bracket">
+    <!-- subway corridor (runs along the track) -->
+    <rect class="cor" x="22.5" y="-34" width="45" height="60"/>
+    <text class="tx tc cort" x="45" y="-28.5">SUBWAY CORRIDOR</text>
+    <text class="sm tc" x="45" y="-25.2">(below the deck)</text>
+
+    <!-- hidden turnout above the deck -->
+    <path class="hid" d="M-4.5 -32 V24 M4.5 -32 V24"/>
+    <text class="sm" x="-28" y="-30">turnout above (hidden)</text>
+
+    <!-- deck slot -->
+    <rect class="hole" x="-4.25" y="-1.5" width="8.5" height="3"/>
+
+    <!-- frog switch on its block (block hidden behind the switch), lever against the kink -->
+    <rect class="hid" x="0" y="2.5" width="22" height="12"/>
+    <rect class="srv" x="1" y="3" width="20" height="10" rx=".5"/>
+    <path class="k" d="M19 3 L11 0.9"/>
+    <path class="k2" d="M4 13 V14.8 M11 13 V14.8 M18 13 V14.8"/>
+
+    <!-- tube clips -->
+    <rect class="ply" x="30" y="-5" width="3" height="10"/>
+    <rect class="ply" x="52" y="-5" width="3" height="10"/>
+    <rect class="ply" x="74" y="-5" width="3" height="10"/>
+
+    <!-- servo on its bracket: shaft 10 off the wire's line; horn and spacers hidden above -->
+    <rect class="ply" x="84" y="-22" width="42" height="24"/>
+    <rect class="hid" x="84" y="-22" width="4" height="24"/>
+    <rect class="hid" x="122" y="-22" width="4" height="24"/>
+    <rect class="srv" x="89.1" y="-15.9" width="32.2" height="11.8"/>
+    <rect class="srv" x="94.1" y="-15.9" width="22.2" height="11.8" rx=".6"/>
+    <text class="srvt tc" x="108" y="-9">SG90 underside</text>
+    <circle class="hid" cx="100" cy="-10" r="2.8"/>
+    <path class="hid" d="M100 -10 V0"/>
+
+    <!-- drive wire with its kink, omega loop, tube -->
+    <path class="mv" d="M0 0 H14 L15 2 H17 L18 0 H87 M92.2 0 H100"/>
+    <circle class="mv" cx="89.6" cy="2.6" r="2.6"/>
+    <circle class="dot" cx="0" cy="0" r=".75"/>
+    <rect class="tube" x="24" y="-1" width="54" height="2"/>
+
+    <!-- dimensions -->
+    <line class="dm" x1="22.5" y1="22" x2="67.5" y2="22" marker-start="url(#arr)" marker-end="url(#arr)"/>
+    <text class="td tc" x="45" y="21.2">45</text>
+    <path class="ex" d="M21 13.4 V20 M22.5 17 V20"/>
+    <text class="td" x="23.4" y="19.4">1.5 clear</text>
+    <path class="ex" d="M89.1 -4 V20"/>
+    <line class="dm" x1="67.5" y1="18" x2="89.1" y2="18" marker-start="url(#arr)" marker-end="url(#arr)"/>
+    <text class="td tc" x="78.3" y="17.2">21.6 clear</text>
+    <path class="ex" d="M0 1 V-12 M14 -1.4 V-12"/>
+    <line class="dm" x1="0" y1="-11" x2="14" y2="-11" marker-start="url(#arr)" marker-end="url(#arr)"/>
+    <text class="td tc" x="7" y="-11.8">14</text>
+    <text class="td" x="101" y="-1.4">r 10</text>
+
+    <!-- balloons -->
+    <g class="bal"><path class="ld" d="M-3 1 L-17.1 9.6"/><circle cx="-19" cy="11" r="2.4"/><text x="-19" y="11">2</text></g>
+    <g class="bal"><path class="ld" d="M14 0 L13 -18.6"/><circle cx="13" cy="-21" r="2.4"/><text x="13" y="-21">3</text></g>
+    <g class="bal"><path class="ld" d="M60 1 L60 9.6"/><circle cx="60" cy="12" r="2.4"/><text x="60" y="12">4</text></g>
+    <g class="bal"><path class="ld" d="M31.5 -5 L31.5 -14.6"/><circle cx="31.5" cy="-17" r="2.4"/><text x="31.5" y="-17">5</text></g>
+    <g class="bal"><path class="ld" d="M91.5 4.6 L94 10.2"/><circle cx="95" cy="12.4" r="2.4"/><text x="95" y="12.4">6</text></g>
+    <g class="bal"><path class="ld" d="M112 -6 L130.6 -2.8"/><circle cx="133" cy="-2.4" r="2.4"/><text x="133" y="-2.4">8</text></g>
+    <g class="bal"><path class="ld" d="M124 -20 L130.8 -24.6"/><circle cx="133" cy="-25.6" r="2.4"/><text x="133" y="-25.6">9</text></g>
+    <g class="bal"><path class="ld" d="M2 12 L-16.8 20"/><circle cx="-19" cy="21" r="2.4"/><text x="-19" y="21">11</text></g>
+    <g class="bal"><path class="ld" d="M16 2.2 L-16.7 -8.2"/><circle cx="-19" cy="-9" r="2.4"/><text x="-19" y="-9">12</text></g>
+    <g class="bal"><path class="ld" d="M0.4 14.4 L-6.5 21.4"/><circle cx="-8" cy="23.2" r="2.2"/><text x="-8" y="23.2">13</text></g>
+  </svg>
+  </div>
+  <div class="notes">
+    <p><b>Frog switch placement.</b> The switch and its block sit just under the turnout, on the side of the wire away from the servo, and stop 1.5 mm short of the subway corridor. The kink sits under the switch, about 14 mm from the slot near the lever's hinge, and stands 2 mm out towards the switch. When the wire moves towards the turnout, the kink glides along the underside of the lever from the hinge towards the tip, so it rides over the lever rather than butting into it, and presses it about 1 mm. Moving back, it slides clear and the switch releases. The tube starts after the switch, at 24 mm, and the first clip is clear of it.</p>
+    <p><b>Servo position.</b> The servo's shaft is 10 mm off the wire's line, so at mid-throw its horn arm points straight across to the wire. Keep the bracket at least 20 mm from the corridor: the servo body hangs below the trains' roof line.</p>
+  </div>
+</section>
+
+<!-- SHEET 3 -->
+<section class="sheet" aria-labelledby="s3">
+  <div class="strip">
+    <div><h2 id="s3">Parts</h2><div class="sub">Laser-cut from 3 mm ply, except the wire. Hole sizes are drawn nominal; adjust for your laser's kerf.</div></div>
+    <div class="meta"><span>Scale <b>≈ 4 : 1</b></span><span>Units <b>mm</b></span><span>Sheet <b>3 / 5</b></span></div>
+  </div>
+  <div class="parts pc">
+
+    <div class="part-card">
+      <h3><span class="no">9</span>Servo bracket plate</h3>
+      <svg viewBox="-27 -19 54 44" role="img" aria-label="Servo bracket plate drawing, 40 by 24 with servo cutout">
+        <rect class="wood" x="-20" y="-12" width="40" height="24" rx="1.5"/>
+        <rect class="hole" x="-11.5" y="-6.3" width="23" height="12.6"/>
+        <circle class="hole" cx="-13.9" cy="0" r=".9"/>
+        <circle class="hole" cx="13.9" cy="0" r=".9"/>
+        <path class="ex" d="M-20 -12.5 V-16.6 M20 -12.5 V-16.6"/>
+        <line class="dm" x1="-20" y1="-15.6" x2="20" y2="-15.6" marker-start="url(#arr)" marker-end="url(#arr)"/>
+        <text class="td tc" x="0" y="-16.4">40</text>
+        <path class="ex" d="M20.5 -12 H24.6 M20.5 12 H24.6"/>
+        <line class="dm" x1="23.6" y1="-12" x2="23.6" y2="12" marker-start="url(#arr)" marker-end="url(#arr)"/>
+        <text class="td" x="24.2" y=".8">24</text>
+        <path class="ex" d="M-11.5 6.6 V10.2 M11.5 6.6 V10.2"/>
+        <line class="dm" x1="-11.5" y1="9.3" x2="11.5" y2="9.3" marker-start="url(#arr)" marker-end="url(#arr)"/>
+        <text class="td tc" x="0" y="8.6">23</text>
+        <path class="ex" d="M-13.9 1.2 V17 M13.9 1.2 V17"/>
+        <line class="dm" x1="-13.9" y1="16" x2="13.9" y2="16" marker-start="url(#arr)" marker-end="url(#arr)"/>
+        <text class="td tc" x="0" y="15.3">27.8 c/c</text>
+        <path class="ex" d="M-11.9 -6.3 H-18.4 M-11.9 6.3 H-18.4"/>
+        <line class="dm" x1="-17.6" y1="-6.3" x2="-17.6" y2="6.3" marker-start="url(#arr)" marker-end="url(#arr)"/>
+        <text class="td te" x="-18.2" y="-1.2">12.6</text>
+        <text class="sm" x="-26" y="22.5">Ø1.8 pilot holes for the servo's own screws</text>
+      </svg>
+      <p>The servo drops through the cutout and hangs by its tabs. Check the cutout and screw spacing against your servo; clones vary by a few tenths.</p>
+    </div>
+
+    <div class="part-card">
+      <h3><span class="no">10</span>Spacer</h3>
+      <svg viewBox="-4 -9 50 26" role="img" aria-label="Spacer drawing, 24 by 4">
+        <rect class="wood" x="0" y="0" width="24" height="4"/>
+        <path class="ex" d="M0 -.5 V-5 M24 -.5 V-5"/>
+        <line class="dm" x1="0" y1="-4" x2="24" y2="-4" marker-start="url(#arr)" marker-end="url(#arr)"/>
+        <text class="td tc" x="12" y="-4.8">24</text>
+        <path class="ex" d="M24.5 0 H28.6 M24.5 4 H28.6"/>
+        <line class="dm" x1="27.6" y1="0" x2="27.6" y2="4" marker-start="url(#arr)" marker-end="url(#arr)"/>
+        <text class="td" x="28.4" y="2.8">4</text>
+        <rect class="ply" x="32" y="0" width="10" height="12"/>
+        <path class="k2" d="M32 3 H42 M32 6 H42 M32 9 H42"/>
+        <text class="sm tc" x="37" y="15">stack of 4 = 12</text>
+        <text class="sm" x="0" y="11">cut 8 per servo:</text>
+        <text class="sm" x="0" y="14">4 at each end of the plate</text>
+      </svg>
+      <p>Glue each stack under the deck, then glue the bracket plate to the stacks.</p>
+    </div>
+
+    <div class="part-card">
+      <h3><span class="no">5</span>Tube clip</h3>
+      <svg viewBox="-7 -9 30 22" role="img" aria-label="Tube clip drawing, 10 by 4 with a 2.1 notch">
+        <path class="wood" d="M0 0 H3.95 V2.1 H6.05 V0 H10 V4 H0 Z"/>
+        <path class="ex" d="M3.95 -.4 V-4.6 M6.05 -.4 V-4.6"/>
+        <line class="dm" x1="1.4" y1="-3.6" x2="3.95" y2="-3.6" marker-end="url(#arr)"/>
+        <line class="dm" x1="8.6" y1="-3.6" x2="6.05" y2="-3.6" marker-end="url(#arr)"/>
+        <text class="td tc" x="5" y="-5.2">2.1</text>
+        <path class="ex" d="M0 4.5 V8.6 M10 4.5 V8.6"/>
+        <line class="dm" x1="0" y1="7.6" x2="10" y2="7.6" marker-start="url(#arr)" marker-end="url(#arr)"/>
+        <text class="td tc" x="5" y="6.9">10</text>
+        <path class="ex" d="M10.5 0 H14.6 M10.5 4 H14.6"/>
+        <line class="dm" x1="13.6" y1="0" x2="13.6" y2="4" marker-start="url(#arr)" marker-end="url(#arr)"/>
+        <text class="td" x="14.4" y="2.8">4</text>
+        <text class="sm" x="-6" y="11.6">notch = tube OD + 0.1, 2.1 deep</text>
+      </svg>
+      <p>Glue the notched edge to the deck so the tube is trapped against it. Fit one every 80–100 mm of run.</p>
+    </div>
+
+    <div class="part-card">
+      <h3><span class="no">13</span>Switch mount block</h3>
+      <svg viewBox="-5 -9 36 26" role="img" aria-label="Switch mount block drawing, 22 by 12 with two slotted holes">
+        <rect class="wood" x="0" y="0" width="22" height="12" rx="1"/>
+        <rect class="hole" x="3.25" y="5.1" width="5" height="1.8" rx=".9"/>
+        <rect class="hole" x="12.75" y="5.1" width="5" height="1.8" rx=".9"/>
+        <path class="ex" d="M0 -.5 V-5 M22 -.5 V-5"/>
+        <line class="dm" x1="0" y1="-4" x2="22" y2="-4" marker-start="url(#arr)" marker-end="url(#arr)"/>
+        <text class="td tc" x="11" y="-4.8">22</text>
+        <path class="ex" d="M22.5 0 H26.6 M22.5 12 H26.6"/>
+        <line class="dm" x1="25.6" y1="0" x2="25.6" y2="12" marker-start="url(#arr)" marker-end="url(#arr)"/>
+        <text class="td" x="26.3" y="6.8">12</text>
+        <path class="ex" d="M5.75 7.4 V13.6 M15.25 7.4 V13.6"/>
+        <line class="dm" x1="5.75" y1="12.6" x2="15.25" y2="12.6" marker-start="url(#arr)" marker-end="url(#arr)"/>
+        <text class="td tc" x="10.5" y="15.4">9.5 c/c</text>
+        <text class="sm" x="-4" y="-6.4">slots 1.8 wide, 5 long (±1.6 adjust)</text>
+      </svg>
+      <p>Glued under the deck beside the wire, clear of the subway corridor. The KW11 switch screws to it with two M2 screws through its slots, so it can slide along the wire to set the change-over point. Check the hole spacing on your switch.</p>
+    </div>
+
+    <div class="part-card">
+      <h3><span class="no">3 · 6</span>Drive wire</h3>
+      <svg viewBox="0 -2 82 30" role="img" aria-label="Drive wire bending diagram: hook, drop, run, omega loop, Z-bend">
+        <path class="mv" d="M 4 4 H 8 V 14 H 20 L 21 11.5 H 23.5 L 24.5 14 H 46 C 43.5 22.5, 53.5 22.5, 51 14 H 66 V 19 H 69"/>
+        <text class="sm tc" x="6" y="2">hook</text>
+        <path class="ld" d="M8.6 9 H13"/><text class="sm" x="13.6" y="9.7">deck + tiebar + 4</text>
+        <text class="sm tc" x="35.5" y="12.6">run in the tube</text>
+        <text class="sm" x="16" y="18.6">kink 2 (sideways)</text>
+        <path class="ld" d="M48.5 21 L50 25"/><text class="sm" x="50.4" y="26.4">omega Ø6 N / Ø8 HO</text>
+        <text class="sm" x="68" y="16.6">Z 3</text>
+        <text class="sm" x="2" y="26.4">not to scale</text>
+      </svg>
+      <p>One piece of music wire: 0.8 mm for N, 1.0 mm for HO. Bend the kink (12) first, 14 mm from the drop, 2 mm out to the switch side, then the omega loop.</p>
+    </div>
+  </div>
+</section>
+
+<!-- SHEET 4 -->
+<section class="sheet" aria-labelledby="s4">
+  <div class="strip">
+    <div><h2 id="s4">Throw geometry</h2><div class="sub">How far the servo turns for your turnout. The servo's two end angles are set in software, so the wire never needs bending to length.</div></div>
+    <div class="meta"><span>Sheet <b>4 / 5</b></span></div>
+  </div>
+  <div class="calc">
+    <div>
+      <div class="fields">
+        <div class="field"><label for="t">Tiebar travel T (mm)</label><input id="t" type="number" step="0.1" min="0.5" value="2.5"><small>Measure end to end. 2.5 is only an example.</small></div>
+        <div class="field"><label for="o">Overtravel (mm)</label><input id="o" type="number" step="0.1" min="0" value="1"><small>Extra the omega loop takes up, to hold the blade closed.</small></div>
+        <div class="field"><label for="r">Horn hole radius (mm)</label><input id="r" type="number" step="0.5" min="3" value="10"><small>Shaft centre to the hole the rod uses.</small></div>
+      </div>
+      <div class="out" aria-live="polite">
+        <div><span>Rod travel</span><b id="o-travel">—</b></div>
+        <div><span>Servo swing</span><b id="o-swing">—</b></div>
+        <div><span>Start angles</span><b id="o-ang">—</b></div>
+        <div><span>Pulse widths</span><b id="o-us">—</b></div>
+      </div>
+      <p class="warn" id="warn"></p>
+    </div>
+    <svg viewBox="-22 -24 44 30" role="img" aria-label="Servo horn swinging either side of its mid position">
+      <circle class="hid" cx="0" cy="0" r="16"/>
+      <line class="hid" x1="0" y1="0" x2="0" y2="-16"/>
+      <line id="armA" class="mv" x1="0" y1="0" x2="0" y2="-16"/>
+      <line id="armB" class="mv" x1="0" y1="0" x2="0" y2="-16"/>
+      <line id="chord" class="dm" x1="0" y1="-16" x2="0" y2="-16"/>
+      <circle id="holeA" class="dot" cx="0" cy="-16" r=".8"/>
+      <circle id="holeB" class="dot" cx="0" cy="-16" r=".8"/>
+      <circle class="srv" cx="0" cy="0" r="2.2"/>
+      <text id="lblT" class="td tc" x="0" y="-18.4">rod travel</text>
+      <text id="lblA" class="td tc" x="0" y="-6">±θ</text>
+      <path class="k2" d="M-20 -21 H-12" marker-end="url(#arr)"/>
+      <text class="sm" x="-20" y="-22">rod direction</text>
+      <text class="sm tc" x="0" y="4.6">servo shaft</text>
+    </svg>
+  </div>
+</section>
+
+<!-- SHEET 5 -->
+<section class="sheet" aria-labelledby="s5">
+  <div class="strip">
+    <div><h2 id="s5">Wiring</h2><div class="sub">One Arduino Nano and one PCA9685 board drive up to 16 turnouts. A toggle switch per turnout sets its position.</div></div>
+    <div class="meta"><span>Sheet <b>5 / 5</b></span></div>
+  </div>
+  <div class="draw">
+  <svg class="wd" viewBox="0 0 212 122" role="img" aria-label="Wiring diagram: 5 volt supply, Arduino Nano, PCA9685 board, servos, toggle switches and frog microswitch">
+    <!-- blocks -->
+    <rect class="box" x="8" y="6" width="44" height="22"/>
+    <text class="tx" x="11" y="13">5 V 3 A supply</text>
+    <text class="sm te" x="50" y="15.2">+5 V</text><circle class="pin" cx="52" cy="14" r=".8"/>
+    <text class="sm te" x="50" y="23.2">GND</text><circle class="pin" cx="52" cy="22" r=".8"/>
+
+    <rect class="box" x="8" y="48" width="44" height="62"/>
+    <text class="tx" x="11" y="55">Arduino Nano</text>
+    <text class="sm te" x="50" y="63">5V</text><circle class="pin" cx="52" cy="62" r=".8"/>
+    <text class="sm te" x="50" y="69">GND</text><circle class="pin" cx="52" cy="68" r=".8"/>
+    <text class="sm te" x="50" y="75">A4 · SDA</text><circle class="pin" cx="52" cy="74" r=".8"/>
+    <text class="sm te" x="50" y="81">A5 · SCL</text><circle class="pin" cx="52" cy="80" r=".8"/>
+    <text class="sm te" x="50" y="89">D2</text><circle class="pin" cx="52" cy="88" r=".8"/>
+    <text class="sm te" x="50" y="94">D3</text><circle class="pin" cx="52" cy="93" r=".8"/>
+    <text class="sm te" x="50" y="99">D4</text><circle class="pin" cx="52" cy="98" r=".8"/>
+    <text class="sm te" x="50" y="104">D5</text><circle class="pin" cx="52" cy="103" r=".8"/>
+    <text class="sm" x="11" y="59">USB power, or 5 V into 5V</text>
+
+    <rect class="box" x="96" y="40" width="50" height="62"/>
+    <text class="tx" x="99" y="47">PCA9685 servo board</text>
+    <text class="sm" x="98" y="63">VCC</text><circle class="pin" cx="96" cy="62" r=".8"/>
+    <text class="sm" x="98" y="69">GND</text><circle class="pin" cx="96" cy="68" r=".8"/>
+    <text class="sm" x="98" y="75">SDA</text><circle class="pin" cx="96" cy="74" r=".8"/>
+    <text class="sm" x="98" y="81">SCL</text><circle class="pin" cx="96" cy="80" r=".8"/>
+    <text class="sm tc" x="110" y="38">V+</text><circle class="pin" cx="110" cy="40" r=".8"/>
+    <text class="sm tc" x="132" y="38">GND</text><circle class="pin" cx="132" cy="40" r=".8"/>
+    <text class="sm te" x="144" y="59">ch 0</text><circle class="pin" cx="146" cy="58" r=".8"/>
+    <text class="sm te" x="144" y="69">ch 1</text><circle class="pin" cx="146" cy="68" r=".8"/>
+    <text class="sm te" x="144" y="79">ch 2</text><circle class="pin" cx="146" cy="78" r=".8"/>
+    <text class="sm te" x="144" y="89">ch 3</text><circle class="pin" cx="146" cy="88" r=".8"/>
+    <text class="sm" x="98" y="98">up to 16 channels</text>
+
+    <rect class="srv" x="166" y="54" width="38" height="8" rx=".6"/><text class="srvt" x="168.5" y="59.3">servo · turnout 1</text>
+    <rect class="srv" x="166" y="64" width="38" height="8" rx=".6"/><text class="srvt" x="168.5" y="69.3">servo · turnout 2</text>
+    <rect class="srv" x="166" y="74" width="38" height="8" rx=".6"/><text class="srvt" x="168.5" y="79.3">servo · turnout 3</text>
+    <rect class="srv" x="166" y="84" width="38" height="8" rx=".6"/><text class="srvt" x="168.5" y="89.3">servo · turnout 4</text>
+
+    <!-- servo power -->
+    <path class="wp" d="M52 14 H110 V40"/>
+    <path class="wg" d="M52 22 H132 V40"/>
+    <!-- logic and I2C -->
+    <path class="wp" d="M52 62 H96"/>
+    <path class="wg" d="M52 68 H96"/>
+    <path class="wi" d="M52 74 H96 M52 80 H96"/>
+    <!-- servo leads -->
+    <path class="ws" d="M146 58 H166 M146 68 H166 M146 78 H166 M146 88 H166"/>
+    <text class="sm" x="148" y="52">3-pin lead</text>
+    <text class="sm" x="148" y="98.5">signal · V+ · GND</text>
+
+    <!-- toggles to ground -->
+    <path class="ws" d="M52 88 H62 M52 93 H62 M52 98 H62 M52 103 H62"/>
+    <path class="k" d="M62 88 L67.5 85.6 M62 93 L67.5 90.6 M62 98 L67.5 95.6 M62 103 L67.5 100.6"/>
+    <circle class="pin" cx="62" cy="88" r=".6"/><circle class="pin" cx="62" cy="93" r=".6"/><circle class="pin" cx="62" cy="98" r=".6"/><circle class="pin" cx="62" cy="103" r=".6"/>
+    <circle class="pin" cx="69" cy="88" r=".6"/><circle class="pin" cx="69" cy="93" r=".6"/><circle class="pin" cx="69" cy="98" r=".6"/><circle class="pin" cx="69" cy="103" r=".6"/>
+    <path class="wg" d="M69 88 H78 M69 93 H78 M69 98 H78 M69 103 H78 M78 88 V112"/>
+    <path class="k" d="M74 112 H82 M75.4 113.6 H80.6 M76.8 115.2 H79.2"/>
+    <text class="sm" x="60" y="83">toggles</text>
+    <text class="sm" x="82" y="116">GND</text>
+
+    <!-- frog switch -->
+    <text class="tx" x="150" y="106">Frog switch (live frog)</text>
+    <circle class="pin" cx="156" cy="114" r=".6"/>
+    <path class="k" d="M156 114 L167 110.6"/>
+    <circle class="pin" cx="168" cy="110" r=".6"/><circle class="pin" cx="168" cy="118" r=".6"/>
+    <path class="wg" d="M150 114 H156 M168 110 H174 M168 118 H174"/>
+    <text class="sm te" x="149" y="114.8">frog</text>
+    <text class="sm" x="175" y="110.8">rail A</text>
+    <text class="sm" x="175" y="118.8">rail B</text>
+  </svg>
+  </div>
+  <div class="notes">
+    <div class="legend"><span><i style="background:var(--wire-pwr)"></i>+5 V</span><span><i style="background:var(--ink)"></i>ground</span><span><i style="background:var(--wire-i2c)"></i>I²C (SDA, SCL)</span><span><i style="background:var(--move)"></i>signal</span></div>
+    <p><b>Power the servos from their own supply,</b> into the PCA9685's V+ terminal. Each servo can draw half an amp or more while it moves, more than the Nano can supply. The board joins its two grounds, so the supply and the Nano share a common ground.</p>
+    <p><b>Toggles:</b> each switch connects its Nano pin to ground. The sketch uses the internal pull-ups, so a closed switch reads as one position and an open one as the other. <b>Frog switch:</b> the frog wire goes to the microswitch's common, and the two rails to its contacts. It's independent of the Arduino and works on DC or DCC.</p>
+  </div>
+</section>
+
+<section class="sheet" aria-labelledby="t1">
+  <div class="strip"><div><h2 id="t1">N and HO differences</h2></div></div>
+  <div class="tbl pad">
+  <table>
+    <thead><tr><th></th><th>N</th><th>HO</th></tr></thead>
+    <tbody>
+      <tr><td>Deck ply</td><td class="n">3 mm</td><td class="n">6 mm</td></tr>
+      <tr><td>Room between deck and subway envelope</td><td class="n">7.2 mm (74 − 66.8)</td><td class="n">12 mm (88 − 76)</td></tr>
+      <tr><td>Drive wire</td><td class="n">0.8 mm music wire</td><td class="n">1.0 mm music wire</td></tr>
+      <tr><td>Tube</td><td class="n">1.5–2 mm OD</td><td class="n">2–2.4 mm OD</td></tr>
+      <tr><td>Deck slot</td><td class="n">3 × (T + 6)</td><td class="n">4 × (T + 6)</td></tr>
+      <tr><td>Omega loop</td><td class="n">Ø6</td><td class="n">Ø8</td></tr>
+    </tbody>
+  </table>
+  </div>
+</section>
+
+<section class="sheet" aria-labelledby="t2">
+  <div class="strip"><div><h2 id="t2">Parts list</h2><div class="sub">Numbers match the balloons on the drawings. Prices are rough Australian figures per turnout.</div></div></div>
+  <div class="tbl pad">
+  <table>
+    <thead><tr><th>No.</th><th>Part</th><th>Qty</th><th>Notes</th><th class="n">AUD</th></tr></thead>
+    <tbody>
+      <tr><td class="no">1</td><td>Turnout tiebar</td><td>—</td><td>On the turnout; the wire hooks through its hole</td><td class="n">—</td></tr>
+      <tr><td class="no">2</td><td>Deck slot</td><td>1</td><td>Cut in the deck under the tiebar hole</td><td class="n">—</td></tr>
+      <tr><td class="no">3</td><td>Drive wire (music wire)</td><td>1</td><td>0.8 mm N, 1.0 mm HO</td><td class="n">0.30</td></tr>
+      <tr><td class="no">4</td><td>Tube, brass or styrene</td><td>1</td><td>Cut to the run; rod slides inside</td><td class="n">0.50</td></tr>
+      <tr><td class="no">5</td><td>Tube clip</td><td>3–4</td><td>Laser-cut, 3 mm ply</td><td class="n">—</td></tr>
+      <tr><td class="no">6</td><td>Omega loop</td><td>—</td><td>Bent into the drive wire</td><td class="n">—</td></tr>
+      <tr><td class="no">7</td><td>Servo horn</td><td>1</td><td>Supplied with the servo</td><td class="n">—</td></tr>
+      <tr><td class="no">8</td><td>Servo, SG90 or MG90S</td><td>1</td><td>Zaitronics SG90 $3.50; AliExpress MG90S about $2</td><td class="n">2–3.50</td></tr>
+      <tr><td class="no">9</td><td>Servo bracket plate</td><td>1</td><td>Laser-cut, 3 mm ply</td><td class="n">—</td></tr>
+      <tr><td class="no">10</td><td>Spacer</td><td>8</td><td>Laser-cut, 3 mm ply</td><td class="n">—</td></tr>
+      <tr><td class="no">11</td><td>Lever microswitch, SPDT (KW11-3Z)</td><td>1</td><td>Live-frog turnouts only; 2 × M2 screws</td><td class="n">0.50</td></tr>
+      <tr><td class="no">12</td><td>Kink in the drive wire</td><td>—</td><td>Bent in with pliers, 2 mm sideways towards the switch. For an adjustable actuator instead, clamp an RC pushrod stopper (grub screw) on the wire</td><td class="n">—</td></tr>
+      <tr><td class="no">13</td><td>Switch mount block</td><td>1</td><td>Laser-cut, 3 mm ply</td><td class="n">—</td></tr>
+    </tbody>
+    <tfoot><tr><td></td><td colspan="3">Per turnout, plus about $1–1.50 share of the controller below</td><td class="n">≈ 5–6</td></tr></tfoot>
+  </table>
+  <p>Shared by up to 16 turnouts: an Arduino Nano clone, a PCA9685 16-channel board, a 5 V 3 A supply and one toggle switch per turnout. I haven't checked current prices for these.</p>
+  </div>
+</section>
+
+<section class="sheet" aria-labelledby="t3">
+  <div class="strip"><div><h2 id="t3">Fitting a turnout</h2></div></div>
+  <div class="prose pad">
+    <ol>
+      <li>Lay the turnout, then cut the deck slot (2) under its tiebar hole: 3 mm wide for N, 4 mm for HO, and T + 6 long across the track.</li>
+      <li>Glue the spacer stacks (10) and the bracket plate (9) under the deck, outside the subway corridor.</li>
+      <li>Set the points halfway across. Power the servo at 90° and fit the horn so its arm points square to the rod.</li>
+      <li>Bend the drive wire (3): a hook over the tiebar, the drop through the slot, the run, an omega loop (6) near the servo and a 3 mm Z-bend into the horn. Thread the run through its tube (4).</li>
+      <li>Glue the tube clips (5) under the deck every 80–100 mm, with the tube tight against the deck where it crosses the subway.</li>
+      <li>Tune the two end angles in the sketch: move each end until the blade closes and the omega loop just starts to flex.</li>
+      <li>Live frog: bend the kink (12) into the wire about 14 mm from the slot, so it sits under the lever near its hinge, 2 mm out towards the switch side (do this before threading the wire), glue the switch block (13) under the deck beside the wire, and screw the microswitch (11) to it with its lever against the kink. Slide it until it changes over just before the blade closes, and wire it as on sheet 5.</li>
+    </ol>
+  </div>
+</section>
+
+<section class="sheet" aria-labelledby="t4">
+  <div class="strip"><div><h2 id="t4">Arduino sketch</h2><div class="sub">Moves each servo slowly, then switches its signal off so it doesn't buzz. Check the library calls against the version you install.</div></div></div>
+  <div class="pad">
+  <div class="code">
+<button class="copy" id="copy" type="button">Copy</button>
+<pre id="sketch">// Turnout servos on a PCA9685, one toggle switch per turnout.
+// Library: Adafruit PWM Servo Driver.
+#include &lt;Wire.h&gt;
+#include &lt;Adafruit_PWMServoDriver.h&gt;
+
+Adafruit_PWMServoDriver pwm;
+
+const uint8_t COUNT = 4;
+const uint8_t SWITCH_PIN[COUNT] = {2, 3, 4, 5};   // toggles to ground
+const int ANGLE_A[COUNT] = {80, 82, 79, 81};      // tune per turnout
+const int ANGLE_B[COUNT] = {100, 98, 101, 99};
+int angle[COUNT];
+
+// Pulse width (µs) for an angle: 0–180° → 500–2500 µs.
+int pulseFor(int deg) { return map(deg, 0, 180, 500, 2500); }
+
+// Move one servo a degree at a time, then switch its signal off.
+void moveTo(uint8_t ch, int target) {
+  while (angle[ch] != target) {
+    angle[ch] += (target &gt; angle[ch]) ? 1 : -1;
+    pwm.writeMicroseconds(ch, pulseFor(angle[ch]));
+    delay(20);
+  }
+  delay(100);
+  pwm.setPWM(ch, 0, 4096);   // fully off: no buzz, no jitter
+}
+
+void setup() {
+  pwm.begin();
+  pwm.setOscillatorFrequency(27000000);
+  pwm.setPWMFreq(50);
+  for (uint8_t i = 0; i &lt; COUNT; i++) {
+    pinMode(SWITCH_PIN[i], INPUT_PULLUP);
+    // Start where the toggle says, without sweeping across.
+    angle[i] = digitalRead(SWITCH_PIN[i]) ? ANGLE_A[i] : ANGLE_B[i];
+    pwm.writeMicroseconds(i, pulseFor(angle[i]));
+    delay(300);
+    pwm.setPWM(i, 0, 4096);
+  }
+}
+
+void loop() {
+  for (uint8_t i = 0; i &lt; COUNT; i++) {
+    int target = digitalRead(SWITCH_PIN[i]) ? ANGLE_A[i] : ANGLE_B[i];
+    if (target != angle[i]) moveTo(i, target);
+  }
+}</pre>
+  </div>
+  </div>
+</section>
+
+</main>
+
+<script>
+/* Throw calculator: wire travel = T + overtravel;
+   the servo swings ±θ where 2·r·sin θ = rod travel. */
+(function () {
+  const $ = (id) => document.getElementById(id);
+  const R = 16; // drawn horn radius in the diagram
+  const pulse = (deg) => Math.round(500 + deg * 2000 / 180);
+  function calc() {
+    const T = parseFloat($("t").value), o = parseFloat($("o").value);
+    const r = parseFloat($("r").value), k = 1;
+    const warn = $("warn");
+    if ([T, o, r, k].some((v) => !isFinite(v) || v < 0) || r <= 0 || k <= 0) {
+      warn.textContent = "Enter positive numbers in every box.";
+      return;
+    }
+    const travel = (T + o) * k;
+    if (travel >= 2 * r) {
+      warn.textContent = "The rod travel is more than the horn can give: use an outer horn hole.";
+      return;
+    }
+    const th = Math.asin(travel / (2 * r)) * 180 / Math.PI;
+    warn.textContent = th > 35 ? "Over ±35° the drive gets uneven near the ends: try an outer horn hole." : "";
+    const a = 90 - th, b = 90 + th;
+    $("o-travel").textContent = travel.toFixed(1) + " mm";
+    $("o-swing").textContent = "±" + th.toFixed(1) + "°";
+    $("o-ang").textContent = Math.round(a) + "° / " + Math.round(b) + "°";
+    $("o-us").textContent = pulse(a) + " / " + pulse(b) + " µs";
+    const rad = th * Math.PI / 180, x = R * Math.sin(rad), y = -R * Math.cos(rad);
+    $("armA").setAttribute("x2", (-x).toFixed(2)); $("armA").setAttribute("y2", y.toFixed(2));
+    $("armB").setAttribute("x2", x.toFixed(2)); $("armB").setAttribute("y2", y.toFixed(2));
+    $("holeA").setAttribute("cx", (-x).toFixed(2)); $("holeA").setAttribute("cy", y.toFixed(2));
+    $("holeB").setAttribute("cx", x.toFixed(2)); $("holeB").setAttribute("cy", y.toFixed(2));
+    const c = $("chord");
+    c.setAttribute("x1", (-x).toFixed(2)); c.setAttribute("x2", x.toFixed(2));
+    c.setAttribute("y1", (y - 1.6).toFixed(2)); c.setAttribute("y2", (y - 1.6).toFixed(2));
+    c.setAttribute("marker-start", "url(#arr)"); c.setAttribute("marker-end", "url(#arr)");
+    $("lblT").setAttribute("y", (y - 2.6).toFixed(2));
+    $("lblT").textContent = travel.toFixed(1) + " mm";
+    $("lblA").textContent = "±" + th.toFixed(1) + "°";
+  }
+  ["t", "o", "r"].forEach((id) => $(id).addEventListener("input", calc));
+  calc();
+
+  $("copy").addEventListener("click", function () {
+    const text = $("sketch").textContent, btn = this;
+    const done = () => { btn.textContent = "Copied"; setTimeout(() => (btn.textContent = "Copy"), 1600); };
+    const fallback = () => {
+      const sel = window.getSelection(), range = document.createRange();
+      range.selectNodeContents($("sketch")); sel.removeAllRanges(); sel.addRange(range);
+      btn.textContent = "Selected: press Ctrl+C";
+    };
+    try {
+      navigator.clipboard.writeText(text).then(done, fallback);
+    } catch (e) { fallback(); }
+  });
+})();
+</script>
+</body>
+</html>

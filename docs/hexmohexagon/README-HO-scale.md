@@ -636,6 +636,17 @@ into Onshape (import to a single document, **Y Axis Up off**).
 
 ---
 
+## Servo turnout drive
+
+A cheap DIY servo drive for turnouts on the deck, with the servo beside the
+subway rather than under the turnout. The N-scale README describes it, and its
+two pages ([drawings](servo-turnout-drive.html), [3D model](servo-turnout-3d.html))
+are drawn for N. For HO, use 1.0 mm drive wire, a 2–2.4 mm tube and an 8 mm omega
+loop; HO has 12 mm between the deck and the subway's envelope (88 − 76) instead
+of N's 7.2.
+
+---
+
 ## Gotchas
 
 - **`--outside`**: it is **on** by default in both HexmoHexagon and

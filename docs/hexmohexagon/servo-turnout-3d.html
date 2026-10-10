@@ -1,0 +1,398 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Servo Turnout 3D</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Semi+Condensed:wght@500;600;700&family=Source+Sans+3:wght@400;600&display=swap">
+<style>
+/* Layout: one full-width viewport for the model, a control strip above it and a short key below. */
+:root {
+  --bg: #e7ebe9; --sheet: #fbfcfb; --ink: #1b282c; --soft: #5b696d; --rule: #c6cecd;
+  --move: #0b766c; --dim: #b4432a; --wood: #d9c08f; --servo: #3b4853; --corridor: #8fb6d4;
+  --tube: #93a9b6; --rail: #6b6f72; --floor: #cfd5d3;
+  --f-disp: "Barlow Semi Condensed", "Arial Narrow", Arial, sans-serif;
+  --f-body: "Source Sans 3", "Segoe UI", Helvetica, Arial, sans-serif;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0e1416; --sheet: #151f22; --ink: #d9e3e4; --soft: #90a1a4; --rule: #2a393d;
+    --move: #46c3b4; --dim: #ec8b67; --wood: #a88a55; --servo: #6a7a88; --corridor: #3f6f95;
+    --tube: #5d7886; --rail: #a9adb0; --floor: #26333a; color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0e1416; --sheet: #151f22; --ink: #d9e3e4; --soft: #90a1a4; --rule: #2a393d;
+  --move: #46c3b4; --dim: #ec8b67; --wood: #a88a55; --servo: #6a7a88; --corridor: #3f6f95;
+  --tube: #5d7886; --rail: #a9adb0; --floor: #26333a; color-scheme: dark;
+}
+body { background: var(--bg); color: var(--ink); font: 400 17px/1.5 var(--f-body); }
+.wrap { max-width: 1180px; margin: 0 auto; padding-inline: 16px; padding-block: 24px 48px; display: grid; gap: 16px; }
+h1 { font: 700 clamp(1.8rem, 4vw, 2.6rem)/1.1 var(--f-disp); margin: 0; text-wrap: balance; }
+p { margin: 0; max-width: 75ch; }
+.eyebrow { font: 600 .8rem/1 var(--f-disp); letter-spacing: .14em; text-transform: uppercase; color: var(--dim); }
+.stage { background: var(--sheet); border: 1px solid var(--rule); display: grid; }
+.bar { display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: center; padding: 10px 12px; border-bottom: 1px solid var(--rule); }
+.bar .grp { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.bar .lbl { font: 600 .75rem/1 var(--f-disp); letter-spacing: .1em; text-transform: uppercase; color: var(--soft); margin-right: 2px; }
+button { font: 600 .9rem/1 var(--f-disp); letter-spacing: .03em; padding: 7px 12px; border: 1px solid var(--rule); background: var(--bg); color: var(--ink); border-radius: 3px; cursor: pointer; }
+button[aria-pressed="true"] { background: var(--move); color: var(--sheet); border-color: var(--move); }
+button:focus-visible, input:focus-visible { outline: 2px solid var(--move); outline-offset: 1px; }
+label.chk { display: inline-flex; gap: 6px; align-items: center; font-size: .92rem; cursor: pointer; }
+#view { position: relative; height: min(72vh, 680px); min-height: 380px; }
+#view canvas { display: block; width: 100%; height: 100%; touch-action: none; }
+#fallback { position: absolute; inset: 0; display: grid; place-items: center; padding: 16px; text-align: center; color: var(--soft); }
+.hint { position: absolute; left: 10px; bottom: 8px; font-size: .8rem; color: var(--soft); pointer-events: none; }
+.key { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 6px 18px; padding: 12px 14px 14px; border-top: 1px solid var(--rule); font-size: .93rem; }
+.key span { display: inline-block; width: 12px; height: 12px; border-radius: 2px; margin-right: 8px; vertical-align: -1px; border: 1px solid var(--rule); }
+</style>
+</head>
+<body>
+
+<main class="wrap">
+  <header style="display:grid;gap:8px">
+    <div class="eyebrow">Hexmo modules · turnout drive · N scale</div>
+    <h1>Servo Turnout 3D</h1>
+    <p>Both layouts from the drawings, modelled to scale in millimetres. In the <b>straight</b> layout the servo sits in line with the tiebar, and the wire runs straight to it. In the <b>bellcrank</b> layout the servo is further along the track: a bellcrank on a mount plate under the turnout turns the motion 90°, and the rod runs along the track to the servo, crossing a subway square-on. Press <b>Throw</b> to watch the points move.</p>
+  </header>
+
+  <section class="stage" aria-label="3D model">
+    <div class="bar">
+      <div class="grp"><span class="lbl">Layout</span>
+        <button data-layout="straight" type="button" aria-pressed="true">Straight</button>
+        <button data-layout="crank" type="button" aria-pressed="false">Bellcrank</button>
+      </div>
+      <div class="grp"><span class="lbl">Points</span>
+        <button id="throw" type="button">Throw</button>
+        <button id="auto" type="button" aria-pressed="false">Auto</button>
+      </div>
+      <div class="grp"><span class="lbl">View</span>
+        <button data-view="iso" type="button">Overview</button>
+        <button data-view="below" type="button">From below</button>
+        <button data-view="section" type="button">Section</button>
+        <button data-view="near" type="button">Close-up</button>
+        <button data-view="servo" type="button">Servo</button>
+      </div>
+      <div class="grp"><span class="lbl">Show</span>
+        <label class="chk"><input id="deck" type="checkbox" checked> Deck (see-through)</label>
+        <label class="chk"><input id="subway" type="checkbox" checked> Subway</label>
+        <label class="chk"><input id="labels" type="checkbox" checked> Labels</label>
+        <label class="chk"><input id="exag" type="checkbox"> Exaggerate motion ×3</label>
+      </div>
+    </div>
+    <div id="view">
+      <div id="fallback">Loading the 3D model…</div>
+      <div class="hint">Drag to orbit · right-drag to pan · scroll to zoom</div>
+    </div>
+    <div class="key">
+      <div><span style="background:var(--wood)"></span>Plywood: deck, mount plate, bellcrank, clips, bracket, spacers</div>
+      <div><span style="background:var(--move)"></span>Moving parts: wire, tiebar, blades, bellcrank, horn</div>
+      <div><span style="background:var(--tube)"></span>Tube guiding the rod</div>
+      <div><span style="background:var(--servo)"></span>Servo and frog microswitch</div>
+      <div><span style="background:var(--corridor)"></span>Subway train envelope (35 mm + 5 mm each side, 43 mm tall)</div>
+      <div><span style="background:var(--rail)"></span>Rails, pivot screw</div>
+    </div>
+  </section>
+
+  <p>In the straight layout the frog microswitch sits beside the wire just under the turnout, screwed to a small ply block glued to the deck, and clear of the subway corridor. A small kink bent into the wire, 2 mm sideways towards the switch, sits under the lever near its hinge and glides along it to press it: nothing to solder. The kink is before the omega loop, so it moves exactly with the blades.</p>
+  <p>The mount plate is glued under the deck right below the turnout, with its slot over the deck's slot. The bellcrank hangs from it on an M3 screw. A short drop wire runs from the tiebar down through both slots into the bellcrank's input hole; the push-rod leaves from the output hole and runs along the track in its tube. The frog microswitch sits on the plate beside the input arm. Dimensions match the drawings: deck underside 74 mm, envelope top 66.8 mm, rod in its tube at 73 mm, servo 12 mm below the deck on spacers. The real throw is about 3.5 mm, so tick <b>Exaggerate motion</b> to see it clearly.</p>
+</main>
+
+<script src="https://cdn.jsdelivr.net/npm/three@0.147.0/build/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.147.0/examples/js/controls/OrbitControls.js"></script>
+<script>
+(function () {
+  const view = document.getElementById("view");
+  const fallback = document.getElementById("fallback");
+  if (!window.THREE || !THREE.OrbitControls) { fallback.textContent = "The 3D library didn't load. Check your connection and reload."; return; }
+
+  // Colours come from the page's theme tokens so the model follows light and dark.
+  const css = (n) => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+  let C = {};
+  const readColours = () => (C = {
+    bg: css("--sheet"), ink: css("--ink"), wood: css("--wood"), move: css("--move"), servo: css("--servo"),
+    corridor: css("--corridor"), tube: css("--tube"), rail: css("--rail"), floor: css("--floor"), soft: css("--soft")
+  });
+  readColours();
+
+  const renderer = new THREE.WebGLRenderer({ antialias: true });
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+  view.appendChild(renderer.domElement);
+  fallback.remove();
+
+  const scene = new THREE.Scene();
+  const camera = new THREE.PerspectiveCamera(35, 1, 1, 5000);
+  const controls = new THREE.OrbitControls(camera, renderer.domElement);
+  controls.enableDamping = true;
+  scene.add(new THREE.HemisphereLight(0xffffff, 0x445555, 0.85));
+  const sun = new THREE.DirectionalLight(0xffffff, 0.75); sun.position.set(-80, 200, 120); scene.add(sun);
+  const fill = new THREE.DirectionalLight(0xffffff, 0.35); fill.position.set(120, -60, -100); scene.add(fill);
+
+  const std = (o) => new THREE.MeshStandardMaterial(Object.assign({ roughness: 0.75, metalness: 0.05 }, o));
+  const M = {
+    wood: std({}), deck: std({ transparent: true, opacity: 0.42, depthWrite: false }),
+    move: std({ roughness: 0.4, metalness: 0.3 }), servo: std({ roughness: 0.55 }),
+    corridor: std({ transparent: true, opacity: 0.18, depthWrite: false }),
+    train: std({ transparent: true, opacity: 0.35, depthWrite: false }),
+    tube: std({ transparent: true, opacity: 0.55, roughness: 0.3, metalness: 0.4, depthWrite: false }),
+    rail: std({ roughness: 0.35, metalness: 0.6 }), floor: std({ transparent: true, opacity: 0.6 })
+  };
+  const labels = [];
+  function paint() {
+    readColours();
+    scene.background = new THREE.Color(C.bg);
+    M.wood.color.set(C.wood); M.deck.color.set(C.wood); M.move.color.set(C.move); M.servo.color.set(C.servo);
+    M.corridor.color.set(C.corridor); M.train.color.set(C.corridor); M.tube.color.set(C.tube);
+    M.rail.color.set(C.rail); M.floor.color.set(C.floor);
+    labels.forEach((l) => l.redraw());
+  }
+
+  // Helpers: an axis-aligned box from its extents, a rod between two points, a vertical disc.
+  function box(x0, x1, y0, y1, z0, z1, m, parent) {
+    const g = new THREE.Mesh(new THREE.BoxGeometry(x1 - x0, y1 - y0, z1 - z0), m);
+    g.position.set((x0 + x1) / 2, (y0 + y1) / 2, (z0 + z1) / 2);
+    (parent || scene).add(g); return g;
+  }
+  function rod(a, b, r, m, parent) {
+    const A = new THREE.Vector3(...a), B = new THREE.Vector3(...b), d = B.clone().sub(A);
+    const g = new THREE.Mesh(new THREE.CylinderGeometry(r, r, d.length(), 16), m);
+    g.position.copy(A.clone().add(B).multiplyScalar(0.5));
+    g.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), d.normalize());
+    (parent || scene).add(g); return g;
+  }
+  function disc(x, y0, y1, z, r, m, parent) {
+    const g = new THREE.Mesh(new THREE.CylinderGeometry(r, r, y1 - y0, 28), m);
+    g.position.set(x, (y0 + y1) / 2, z); (parent || scene).add(g); return g;
+  }
+  // A plate with a rectangular hole, built from four boxes.
+  function holedPlate(x0, x1, y0, y1, z0, z1, hx0, hx1, hz0, hz1, m, parent) {
+    box(x0, hx0, y0, y1, z0, z1, m, parent); box(hx1, x1, y0, y1, z0, z1, m, parent);
+    box(hx0, hx1, y0, y1, z0, hz0, m, parent); box(hx0, hx1, y0, y1, hz1, z1, m, parent);
+  }
+  function label(text, x, y, z, parent) {
+    const cv = document.createElement("canvas"), ctx = cv.getContext("2d");
+    const tex = new THREE.CanvasTexture(cv);
+    const spr = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, depthTest: false, transparent: true }));
+    spr.position.set(x, y, z); spr.renderOrder = 10; (parent || scene).add(spr);
+    const l = { spr, redraw() {
+      const f = 44, font = `600 ${f}px "Barlow Semi Condensed", Arial, sans-serif`;
+      ctx.font = font; const w = Math.ceil(ctx.measureText(text).width) + 28;
+      cv.width = w; cv.height = f + 22; ctx.font = font;
+      ctx.fillStyle = C.bg; ctx.globalAlpha = 0.85; ctx.fillRect(0, 0, w, cv.height); ctx.globalAlpha = 1;
+      ctx.strokeStyle = C.soft; ctx.lineWidth = 2; ctx.strokeRect(1, 1, w - 2, cv.height - 2);
+      ctx.fillStyle = C.ink; ctx.textBaseline = "middle"; ctx.fillText(text, 14, cv.height / 2 + 2);
+      tex.needsUpdate = true; spr.scale.set(w / 9, cv.height / 9, 1);
+    } };
+    labels.push(l); return l;
+  }
+
+  // ===== Shared: floor, deck with its slot, turnout. Track runs along z; the tiebar moves along x.
+  box(-40, 140, -3, 0, -45, 165, M.floor);
+  const deck = new THREE.Group(); scene.add(deck);
+  holedPlate(-40, 140, 74, 77, -45, 165, -4.25, 4.25, -1.5, 1.5, M.deck, deck);
+  for (let z = -40; z <= 40; z += 5) if (Math.abs(z) > 2) box(-8, 8, 77, 78, z - 1, z + 1, M.wood);
+  box(-5.1, -3.9, 78, 79.4, -45, 45, M.rail);
+  box(3.9, 5.1, 78, 79.4, -45, 45, M.rail);
+  const points = new THREE.Group(); scene.add(points);
+  box(-8, 8, 77, 78, -1, 1, M.move, points);
+  box(-3.4, -2.3, 78, 79.2, -1, 30, M.move, points);
+  box(2.3, 3.4, 78, 79.2, -1, 30, M.move, points);
+  label("tiebar + point blades", -6, 92, -22);
+  label("deck slot", -24, 84, 0);
+
+  // ===== Layout A: straight. Rod along x, subway along z.
+  const A = { group: new THREE.Group(), subway: new THREE.Group() };
+  scene.add(A.group); A.group.add(A.subway);
+  box(28, 62, 20.8, 23.8, -45, 165, M.wood, A.subway);
+  box(40.5, 41.1, 23.8, 25.2, -45, 165, M.rail, A.subway);
+  box(48.9, 49.5, 23.8, 25.2, -45, 165, M.rail, A.subway);
+  box(22.5, 67.5, 23.8, 66.8, -45, 165, M.corridor, A.subway);
+  A.train = box(37, 53, 26, 58, -14, 14, M.train, A.subway);
+  [30, 52, 74].forEach((x) => box(x, x + 3, 70, 74, -5, 5, M.wood, A.group));
+  rod([24, 73, 0], [78, 73, 0], 1.0, M.tube, A.group);
+  // Frog microswitch beside the wire, just under the turnout and clear of the subway corridor:
+  // screwed under a ply block glued to the deck; a kink in the wire presses its lever.
+  box(1, 21, 72, 74, 3, 13, M.wood, A.group);
+  box(1, 21, 65.6, 72, 3, 13, M.servo, A.group);
+  rod([19, 71.4, 3], [11, 72.9, 0.9], 0.35, M.rail, A.group);
+  {
+    const SZ = -10, g = A.group;
+    box(84, 88, 62, 74, SZ - 12, SZ + 12, M.wood, g); box(122, 126, 62, 74, SZ - 12, SZ + 12, M.wood, g);
+    holedPlate(84, 126, 59, 62, SZ - 12, SZ + 12, 94, 116.6, SZ - 6.3, SZ + 6.3, M.wood, g);
+    box(94.1, 116.3, 46.4, 69.1, SZ - 5.9, SZ + 5.9, M.servo, g);
+    box(89.1, 121.3, 62, 64.5, SZ - 5.9, SZ + 5.9, M.servo, g);
+    disc(100, 69.1, 70.4, SZ, 1.2, M.servo, g);
+    A.horn = new THREE.Group(); A.horn.position.set(100, 70.6, SZ); g.add(A.horn);
+    disc(0, -0.75, 0.75, 0, 3, M.move, A.horn);
+    box(-1.6, 1.6, -0.75, 0.75, 0, 11.5, M.move, A.horn);   // arm along +z, hole 10 out
+  }
+  A.wire = new THREE.Group(); A.group.add(A.wire);
+  {
+    const R = 0.45, w = A.wire;
+    rod([-2, 79.6, 0], [0, 79.6, 0], R, M.move, w); rod([0, 79.6, 0], [0, 73, 0], R, M.move, w);
+    // The run, with a 2 mm kink sideways towards the frog switch: its sloped side presses the lever.
+    // Under the lever near its hinge: moving towards the turnout it glides along the lever towards the tip.
+    rod([0, 73, 0], [14, 73, 0], R, M.move, w); rod([14, 73, 0], [15, 73, 2], R, M.move, w);
+    rod([15, 73, 2], [17, 73, 2], R, M.move, w); rod([17, 73, 2], [18, 73, 0], R, M.move, w);
+    rod([18, 73, 0], [87, 73, 0], R, M.move, w);
+    const loop = new THREE.Mesh(new THREE.TorusGeometry(2.6, R, 12, 40), M.move);
+    loop.rotation.x = Math.PI / 2; loop.position.set(89.6, 73, 2.6); w.add(loop);
+    rod([92.2, 73, 0], [100, 73, 0], R, M.move, w); rod([100, 73, 0], [100, 70.2, 0], R, M.move, w);
+  }
+  label("drive wire in tube", 30, 86, 14, A.group);
+  label("tube clip", 52, 64, 14, A.group);
+  label("frog microswitch", 4, 58, 22, A.group);
+  label("kink in the wire", 8, 66, -12, A.group);
+  label("omega loop", 88, 80, 16, A.group);
+  label("servo horn", 104, 84, -2, A.group);
+  label("SG90 servo", 128, 52, -10, A.group);
+  label("bracket + spacers", 128, 70, -26, A.group);
+  label("subway train envelope", 45, 40, 60, A.subway);
+
+  // ===== Layout B: bellcrank. Input hole I under the slot, pivot P 15 along the track,
+  // output hole O 15 across from P. The rod runs along +z, over a subway running along x.
+  const B = { group: new THREE.Group(), subway: new THREE.Group() };
+  scene.add(B.group); B.group.add(B.subway);
+  box(-40, 140, 20.8, 23.8, 50.5, 84.5, M.wood, B.subway);
+  box(-40, 140, 23.8, 25.2, 62.9, 63.5, M.rail, B.subway);
+  box(-40, 140, 23.8, 25.2, 71.5, 72.1, M.rail, B.subway);
+  box(-40, 140, 23.8, 66.8, 45, 90, M.corridor, B.subway);
+  B.train = box(-14, 14, 26, 58, 59.5, 75.5, M.train, B.subway);
+  label("subway train envelope", 110, 40, 67.5, B.subway);
+
+  const P = [0, 15];                              // pivot (x, z)
+  // Mount plate: 40 × 40 × 3, glued under the deck, slot over the deck slot.
+  holedPlate(-12, 28, 71, 74, -10, 30, -4.25, 4.25, -1.5, 1.5, M.wood, B.group);
+  // M3 screw up through the bellcrank into a nut trapped in the plate's hex pocket.
+  disc(P[0], 66, 74, P[1], 1.5, M.rail, B.group);
+  disc(P[0], 65.2, 66.6, P[1], 2.75, M.rail, B.group);
+  disc(P[0], 70.5, 71, P[1], 3.2, M.rail, B.group);       // washer
+  // Bellcrank, pivoting about P: arms in its own frame, input at (0,-15), output at (15,0).
+  B.crank = new THREE.Group(); B.crank.position.set(P[0], 0, P[1]); B.group.add(B.crank);
+  {
+    const y0 = 67.2, y1 = 70.2, k = B.crank;
+    box(-4, 4, y0, y1, -15, 0, M.move, k); box(0, 15, y0, y1, -4, 4, M.move, k);
+    disc(0, y0, y1, -15, 4, M.move, k); disc(0, y0, y1, 0, 4, M.move, k); disc(15, y0, y1, 0, 4, M.move, k);
+  }
+  // Frog microswitch on the plate beside the input arm (body hangs below the plate).
+  box(-11, -5.5, 65, 71, 3, 13, M.servo, B.group);
+  rod([-5.5, 68, 4], [-4.2, 68, 9], 0.3, M.rail, B.group);
+  // Drop wire: tiebar hook down through both slots into the input hole (moves with the tiebar).
+  B.drop = new THREE.Group(); B.group.add(B.drop);
+  rod([-2, 79.6, 0], [0, 79.6, 0], 0.3, M.move, B.drop);
+  rod([0, 79.6, 0], [0, 67, 0], 0.3, M.move, B.drop);
+  // Push-rod: from the output hole up into the tube, along +z, omega loop, into the servo horn.
+  B.rod = new THREE.Group(); B.group.add(B.rod);
+  {
+    const R = 0.45, r = B.rod;
+    rod([15, 68.7, 15], [15, 73, 20], R, M.move, r);
+    rod([15, 73, 20], [15, 73, 101], R, M.move, r);
+    const loop = new THREE.Mesh(new THREE.TorusGeometry(3, R, 12, 40), M.move);
+    loop.rotation.x = Math.PI / 2; loop.position.set(18, 73, 104); r.add(loop);
+    rod([15, 73, 107], [15, 73, 128], R, M.move, r); rod([15, 73, 128], [15, 70.2, 128], R, M.move, r);
+  }
+  rod([15, 73, 24], [15, 73, 98], 1.0, M.tube, B.group);
+  [30, 66, 92].forEach((z) => box(10, 20, 70, 74, z, z + 3, M.wood, B.group));
+  {
+    const g = B.group, SX = 5, SZ = 128;          // servo shaft; its horn hole sits on the rod at mid-throw
+    box(-7, 17, 62, 74, 113, 117, M.wood, g); box(-7, 17, 62, 74, 149, 153, M.wood, g);
+    holedPlate(-7, 17, 59, 62, 113, 153, -1.3, 11.3, 121.6, 144.8, M.wood, g);
+    box(-0.9, 10.9, 46.4, 69.1, 122.1, 144.3, M.servo, g);
+    box(-0.9, 10.9, 62, 64.5, 117.1, 149.3, M.servo, g);
+    disc(SX, 69.1, 70.4, SZ, 1.2, M.servo, g);
+    B.horn = new THREE.Group(); B.horn.position.set(SX, 70.6, SZ); g.add(B.horn);
+    disc(0, -0.75, 0.75, 0, 3, M.move, B.horn);
+    box(0, 11.5, -0.75, 0.75, -1.6, 1.6, M.move, B.horn);   // arm along +x, hole 10 out
+  }
+  label("mount plate", -22, 66, 26, B.group);
+  label("bellcrank on M3 pivot", 30, 60, 6, B.group);
+  label("drop wire", -14, 76, -12, B.group);
+  label("frog microswitch", -26, 60, 8, B.group);
+  label("push-rod in tube", 15, 84, 60, B.group);
+  label("omega loop", 26, 80, 104, B.group);
+  label("SG90 servo + bracket", 22, 50, 136, B.group);
+
+  paint();
+
+  // ===== Throw: the tiebar slides s; the servo horn and (bellcrank layout) crank follow.
+  const RH = 10, TRAVEL = 3.5, TH = Math.asin(TRAVEL / 2 / RH);
+  let layout = "crank", side = -1, cur = -TH, target = -TH, autoOn = false, lastSwitch = 0;
+  function setPose(th) {
+    const k = document.getElementById("exag").checked ? 3 : 1;
+    const s = RH * Math.sin(th * k);                          // wire travel from mid-throw
+    points.position.x = s;
+    // Straight: wire and horn hole move along x.
+    A.wire.position.x = s; A.horn.rotation.y = Math.asin(s / RH);
+    // Bellcrank: input hole follows the tiebar (x = s), so the crank turns φ = −asin(s/15)
+    // and its output hole (and the rod) moves s along z; the horn arm along +x turns to match.
+    B.drop.position.x = s;
+    B.crank.rotation.y = -Math.asin(s / 15);
+    B.rod.position.z = s;
+    B.horn.rotation.y = -Math.asin(s / RH);
+  }
+  function throwPoints() { side = -side; target = side * TH; }
+  document.getElementById("throw").addEventListener("click", throwPoints);
+  const autoBtn = document.getElementById("auto");
+  autoBtn.addEventListener("click", () => { autoOn = !autoOn; autoBtn.setAttribute("aria-pressed", String(autoOn)); });
+  document.getElementById("deck").addEventListener("change", (e) => { deck.visible = e.target.checked; });
+  const subwayBox = document.getElementById("subway");
+  subwayBox.addEventListener("change", () => { A.subway.visible = B.subway.visible = subwayBox.checked; });
+  document.getElementById("labels").addEventListener("change", (e) => labels.forEach((l) => (l.spr.visible = e.target.checked)));
+  document.getElementById("exag").addEventListener("change", () => setPose(cur));
+
+  const views = {
+    straight: {
+      iso: [[-70, 175, 190], [55, 62, 0]], below: [[40, -60, 120], [55, 66, 0]],
+      section: [[50, 62, 260], [50, 62, 0]], near: [[-25, 95, 70], [10, 70, 4]], servo: [[70, 95, 70], [96, 70, -4]]
+    },
+    crank: {
+      iso: [[-170, 170, 200], [5, 62, 70]], below: [[-60, -50, 40], [6, 68, 50]],
+      section: [[-260, 62, 70], [5, 62, 70]], near: [[-45, 95, -30], [6, 70, 10]], servo: [[-60, 95, 150], [5, 70, 130]]
+    }
+  };
+  function go(name) { const v = views[layout][name]; camera.position.set(...v[0]); controls.target.set(...v[1]); controls.update(); }
+  document.querySelectorAll("[data-view]").forEach((b) => b.addEventListener("click", () => go(b.dataset.view)));
+  function setLayout(name) {
+    layout = name;
+    A.group.visible = name === "straight"; B.group.visible = name === "crank";
+    document.querySelectorAll("[data-layout]").forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.layout === name)));
+    go("iso");
+  }
+  document.querySelectorAll("[data-layout]").forEach((b) => b.addEventListener("click", () => setLayout(b.dataset.layout)));
+
+  function resize() {
+    const w = view.clientWidth, h = view.clientHeight;
+    renderer.setSize(w, h, false); camera.aspect = w / h; camera.updateProjectionMatrix();
+  }
+  new ResizeObserver(resize).observe(view); resize();
+  setLayout("straight");
+
+  const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  const scheme = window.matchMedia("(prefers-color-scheme: dark)");
+  if (scheme.addEventListener) scheme.addEventListener("change", paint);
+  new MutationObserver(paint).observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
+  if (document.fonts && document.fonts.ready) document.fonts.ready.then(() => labels.forEach((l) => l.redraw()));
+
+  let last = performance.now();
+  function tick(now) {
+    const dt = Math.min(0.05, (now - last) / 1000); last = now;
+    if (autoOn && now - lastSwitch > 2200) { throwPoints(); lastSwitch = now; }
+    const step = (reduce ? 10 : 0.87) * dt;               // about 1° per 20 ms, as in the sketch
+    if (Math.abs(target - cur) <= step) cur = target; else cur += Math.sign(target - cur) * step;
+    setPose(cur);
+    if (!reduce) {
+      A.train.position.z += 30 * dt; if (A.train.position.z > 150) A.train.position.z = -30;
+      B.train.position.x += 30 * dt; if (B.train.position.x > 125) B.train.position.x = -25;
+    }
+    controls.update();
+    renderer.render(scene, camera);
+    requestAnimationFrame(tick);
+  }
+  setPose(cur);
+  requestAnimationFrame(tick);
+})();
+</script>
+</body>
+</html>
