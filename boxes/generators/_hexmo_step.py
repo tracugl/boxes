@@ -262,7 +262,13 @@ def _supports(bd, box, r, l, t, isTrapezoid):
     if not box.supports:
         return []
     parts, seen = [], {}
-    for support in box._supportLayout(r, isTrapezoid):
+    for index, support in enumerate(box._supportLayout(r, isTrapezoid)):
+        if hasattr(support, "centre"):
+            # The track-following floor's supports stand across the tracks.
+            (x, y), angle = support.centre, support.angle
+            solid = _box(bd, (x, y, l / 2), (box.support_length, t, l), angle)
+            parts.append(Part3D(f"support {index + 1}", "support", solid))
+            continue
         _, _, edge, d, turned = support
         theta = EDGE_ANGLES[edge]
         u = _unit(theta)

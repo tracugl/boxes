@@ -161,7 +161,7 @@ class TestExtraLength:
 
     def test_trapezoid_panels_keep_their_outline(self) -> None:
         box = hexagon(["--radius=220", "--thickness=3", "--h=100", "--trapezoid=1",
-                       "--bottom=spoke", "--edge_width=22", "--spoke_width=60",
+                       "--bottom=kites", "--edge_width=22", "--spoke_width=60",
                        "--FingerJoint_extra_length=0.1"])
         parts = {p.name: p for p in exact_hexmo_parts(box)}
         for name in ("deck", "floor"):

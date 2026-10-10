@@ -34,7 +34,7 @@ SPINE = ([(40.0, -50.0), (40.0, 150.0)], [(60.0, -50.0), (60.0, 150.0)])
 
 # Helix ring M1 at h=80 on a spoke floor, with its riser.
 M1 = ["--radius=220", "--thickness=3", "--h=80", "--trapezoid=1", "--track_lead_in=26",
-      "--track_width=17", "--bottom=spoke", "--edge_width=22", "--spoke_width=60",
+      "--track_width=17", "--bottom=kites", "--edge_width=22", "--spoke_width=60",
       "--support_length=55", "--support_position=125",
       "--track_routes=3:17.5-5:17.5,3:-17.5-5:-35",
       "--track_openings=3:-17.5:72.5:26,5:35:65.2:26", "--deck_slots=3:-17.5-5:-35/26"]
@@ -163,7 +163,7 @@ class TestSpokeFloor:
                 assert not any(inside(poly, p) for poly in cut)
 
     def test_closed_floor_still_works(self) -> None:
-        args = [a for a in M1 if a != "--bottom=spoke"] + ["--bottom=closed"]
+        args = [a for a in M1 if a != "--bottom=kites"] + ["--bottom=closed"]
         cut, spines, _ = render(args + [M1_RISER])
         assert cut == [] and spines == []
 

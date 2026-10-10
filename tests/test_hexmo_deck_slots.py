@@ -151,7 +151,11 @@ class TestRefused:
             render(M1 + ["--deck_slots=3:-17.5-5:-35/30"])
 
     def test_crossing_a_support(self) -> None:
-        args = [a for a in M1 if a != "--supports=0"] + ["--supports=1", "--support_length=55"]
+        # The kite floor's half-spoke support is where the user put it, so a
+        # slot across it is refused (the track-following floor's supports
+        # keep clear of slots by themselves).
+        args = [a for a in M1 if a != "--supports=0"] + ["--supports=1", "--support_length=55",
+                                                         "--bottom=kites"]
         with pytest.raises(ValueError, match="support"):
             render(args + [M1_SLOT])
 

@@ -52,8 +52,10 @@ class RingSize:
     * the return then runs down to ``exit`` at edge 1, at most 27.8 (the most
       that fits a train under the entry rectangle's deck).  It is also the
       lower ground's height in the scenery ring;
-    * the trapezoids' supports (``supports``): one radial just past the spur's
-      slot, and one turned across the half-spoke just inside the main line.
+    * the trapezoids' supports (``supports``, the 220 ring's kite floor only;
+      the access-wall rings' track-following floor places its own): one
+      radial just past the spur's slot, and one turned across the half-spoke
+      just inside the main line.
 
     @ivar radius     - Module outside radius (``--radius``).
     @ivar lead_in    - The straight where each track crosses a joint
@@ -111,13 +113,21 @@ def helix_ring(size):
     @returns ``{"M1": [...], …, "M6": [...]}``: HexmoHexagon options.
     """
     common = [f"--radius={size.radius:g}", "--thickness=3", "--h=80", "--edge_width=22",
-              "--spoke_width=60", "--bottom=spoke", "--support_length=55",
+              # The access-wall ring has the track-following floor, whose
+              # supports place themselves; the 220 ring keeps the kite floor
+              # and its half-spoke supports, as it was built.
+              "--spoke_width=60", f"--bottom={'spoke' if size.access else 'kites'}",
+              "--support_length=55",
               f"--track_lead_in={size.lead_in:g}",
               "--track_width=17", "--under_track_width=35",
               # Every subway opening at the lower level's exit height, so they
               # line up all round (M6's edge 1 is the lower level's own).
-              f"--under_track_height={size.exit:g}"] + _CUT + _walls(size)
-    trapezoid = common + ["--trapezoid=1", f"--support_edges={size.supports}"]
+              f"--under_track_height={size.exit:g}",
+              # A cutout in the middle of the hexagon saves next to nothing
+              # at N's size.
+              "--center_cutout=0"] + _CUT + _walls(size)
+    trapezoid = common + ["--trapezoid=1"] + (
+        [] if size.access else [f"--support_edges={size.supports}"])
     j = size.joints
     ring = {"M1": trapezoid + [
         "--track_routes=3:17.5-5:17.5,3:-17.5-5:-35",
@@ -134,8 +144,7 @@ def helix_ring(size):
             f"--risers=3:-35-5:-35~{a:g}..{b:g}/35"]
     s, e = size.spur_start, size.return_end
     h, x = size.slot_height, size.exit
-    ring["M6"] = common + [
-        "--support_edges=2,4,6",
+    ring["M6"] = common + ([] if size.access else ["--support_edges=2,4,6"]) + [
         "--track_routes=1:-35-5:-17.5,3:-17.5-1:-35,1:0-5:17.5",
         "--under_track_edges=1",
         f"--track_openings=5:17.5:74:35,3:-35:{j[5]:g}:35",
@@ -213,7 +222,7 @@ def helix_ring_ho():
     @returns ``{"M1": [...], …, "M6": [...]}``: HexmoHexagon options.
     """
     j = _HO_JOINTS
-    trapezoid = _HO_COMMON + ["--trapezoid=1", "--support_edges=4@64,4@285"]
+    trapezoid = _HO_COMMON + ["--trapezoid=1"]
     ring = {"M1": trapezoid + [
         "--track_routes=3:40-5:40,3:-40-5:-80",
         f"--track_openings=3:-40:{j[0]:g}:60,5:80:{j[1]:g}:60",
@@ -228,7 +237,6 @@ def helix_ring_ho():
             f"--risers=3:-80-5:-80~{a:g}..{b:g}/60"]
     u, f = _HO_UNDER_DECK, _HO_FLOOR
     ring["M6"] = _HO_COMMON + [
-        "--support_edges=2,4,6",
         "--track_routes=1:-80-5:-40,3:-40-1:-80,1:0-5:40",
         "--under_track_edges=1",
         f"--track_openings=5:40:88:60,3:-80:{j[5]:g}:60",
@@ -241,13 +249,10 @@ def helix_ring_ho():
 # The HO ring opened up for scenery (see with_ground): the lower ground at the
 # spur's lowest trapezoid joint (M5/M6, 21.8), so it meets the track there and
 # the spur climbs above it everywhere else; the decks stop 25 mm inside the main
-# line (N's 15, scaled to HO's 30 mm track).  The trapezoids' support under the
-# main line is turned across the half-spoke (60 mm out, just inside the main
-# line, which crosses at 68): a radial one there would straddle the deck's new
-# edge.
+# line (N's 15, scaled to HO's 30 mm track).  The track-following floor's
+# supports keep wholly under the deck or the lower plate by themselves.
 _HO_GROUND = 21.8
 _HO_EDGE_GAP = 25
-_HO_GROUND_SUPPORTS = "4@285,4@60/90"
 
 
 def helix_ring_ho_ground():
@@ -255,14 +260,8 @@ def helix_ring_ho_ground():
 
     @returns ``{"M1": [...], …, "M6": [...]}``: HexmoHexagon options.
     """
-    ring = {}
-    for name, args in helix_ring_ho().items():
-        if name != "M6":
-            args = [f"--support_edges={_HO_GROUND_SUPPORTS}" if a.startswith("--support_edges")
-                    else a for a in args]
-        ring[name] = args + [f"--lower_ground={_HO_GROUND:g}",
-                             f"--upper_edge_gap={_HO_EDGE_GAP:g}"]
-    return ring
+    return {name: args + [f"--lower_ground={_HO_GROUND:g}", f"--upper_edge_gap={_HO_EDGE_GAP:g}"]
+            for name, args in helix_ring_ho().items()}
 
 
 def helix_entry_ho():
