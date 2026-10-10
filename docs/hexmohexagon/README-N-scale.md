@@ -693,8 +693,11 @@ bed lying on the floor) has solid floor under it.
 The support walls are there to stop the deck sagging, and they keep out of the way
 of any subway. On the **full hexagon** there are **six**, one beside each spoke,
 parallel to it near its start: on its strip, but just outside its train corridor
-(`--under_track_width` plus 5 mm either side) and every other spoke's, where a
-subway can run. So each has a corner of its own, about `--support_position` from
+(`--under_track_width` plus a sixth of it either side, room for long cars
+swinging out on curves) and every other spoke's, where a subway can run. An 89 ft
+car on the hexagon's connection curve reaches about 17 mm from the track's centre
+in N (R 335) and 30 mm in HO (R 700); the supports stand at least 23 and 40 mm
+away. A riser or subway keeps them the same distance off. So each has a corner of its own, about `--support_position` from
 the centre (default half the apothem, where the kite floor's supports stood), and
 the six stand alike round the hexagon, the same on every module of a size. The
 deck's own tracks don't move them: a support may stand under a deck track's
@@ -714,7 +717,7 @@ Every support lies along a strip, with `max(10 mm, 3 × thickness)` of board all
 round its slot (10 mm in 3 mm ply), so no slot leaves a sliver at an opening's
 edge. On the full hexagon the strips are widened to make room for that beside the
 train corridor: at least the corridor, the slot and its board each side of the
-centre line (N's 60 mm strips come out 78 mm, HO's 120 mm 128 mm), with straight
+centre line (N's 60 mm strips come out 80 mm, HO's 120 mm 138 mm), with straight
 sides. The central cutout keeps 10 mm clear of every support's slot. With `--lower_ground` each support is wholly under the deck or
 wholly under the lower plate. `--support_edges` doesn't apply to this floor.
 

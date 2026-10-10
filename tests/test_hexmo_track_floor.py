@@ -31,11 +31,19 @@ from shapely.geometry import LineString, Point, Polygon
 
 from boxes.generators import _hexmo_step
 from boxes.generators._hexmo_helix_ring import (
-    HELIX_RING_N250, HELIX_RING_N250_GROUND, helix_ring_ho,
+    _HO_COMMON, HELIX_RING_N250, HELIX_RING_N250_GROUND, helix_ring_ho,
 )
 from boxes.generators._hexmo_track_floor import TrackSupport
 from boxes.generators._hexmo_track_routes import segments_polyline
 from boxes.generators.hexmohexagon import HexmoHexagon
+
+_N_PLAIN = [a for a in HELIX_RING_N250["M6"] if not a.startswith(
+    ("--track_routes", "--under_track_edges", "--track_openings", "--deck_slots", "--risers",
+     "--under_track_height"))]
+# Plain hexagons with a subway 1→3 under a main line, as the user builds them.
+_HO_SUBWAY = _HO_COMMON + ["--subway=1:0-3:0~6", "--track_routes=1:0-3:0,3:0-5:0,1:0-5:0"]
+_N_SUBWAY = _N_PLAIN + ["--under_track_height=23.8", "--subway=1:0-3:0~23.8",
+                        "--track_routes=2:0-6:0,2:0-5:0"]
 
 MODULES = {"N250 M2": HELIX_RING_N250["M2"], "N250 M6": HELIX_RING_N250["M6"],
            "N250 ground M2": HELIX_RING_N250_GROUND["M2"], "HO M6": helix_ring_ho()["M6"],
@@ -216,11 +224,12 @@ class TestSupports:
     @pytest.mark.parametrize("args", [[], HELIX_RING_N250["M6"], helix_ring_ho()["M6"]],
                              ids=["default", "N250 M6", "HO M6"])
     def test_hexagon_supports_keep_out_of_every_subway_path(self, args) -> None:
-        # No support stands in a train corridor (--under_track_width and its
-        # clearance) along any connection, where a subway can run.  The
-        # deck's own tracks don't count: a support may stand under one.
+        # No support stands in a train corridor (--under_track_width and a
+        # sixth of it either side, for long cars swinging out on curves)
+        # along any connection, where a subway can run.  The deck's own
+        # tracks don't count: a support may stand under one.
         box, r, _, _ = rendered(args)
-        half = box.under_track_width / 2 + box._UNDER_TRACK_CLEAR
+        half = box.under_track_width * (0.5 + 1 / 6)
         supports = box._supportLayout(r, False)
         assert supports
         for g in box._spokeRoutes(r, False):
@@ -270,6 +279,19 @@ class TestSupports:
                                              f"--subway=1:0-4:0~{height}"])
         centre = Point(0, 0).buffer(5)
         assert any(h.contains(centre) for h in openings(box, r, risers)) == hole
+
+    @pytest.mark.parametrize("args, need", [
+        (_HO_SUBWAY, 30.2), (_N_SUBWAY, 17.1)], ids=["HO", "N"])
+    def test_long_cars_clear_the_supports_on_a_subway_curve(self, args, need) -> None:
+        # An 89 ft autorack on the subway's connection curve (HO R 700, N
+        # R 335) reaches 30.2 mm (HO) or 17.1 mm (N) from the track's centre
+        # with its swing-out and a little sway: every support face is further
+        # out than that, with room to spare for bigger stock.
+        box, r, risers, _ = rendered(args)
+        faces = [LineString(box._supportPoints(sp, 1)).distance(
+                     LineString(segments_polyline(rp["segments"], 64))) - box.thickness / 2
+                 for sp in box._supportLayout(r, False) for rp in risers]
+        assert faces and min(faces) >= need + 5
 
     def test_ground_supports_never_straddle_the_deck_edge(self) -> None:
         box, r, _, _ = rendered(HELIX_RING_N250_GROUND["M2"])

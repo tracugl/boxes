@@ -20,7 +20,8 @@ is cut away, with a round cutout in the middle of the hexagon unless
 
 The support walls stand on the strips.  On the full hexagon there are six,
 one beside each spoke near its start, just outside its train corridor
-(``--under_track_width`` and _UNDER_TRACK_CLEAR either side) and every other
+(_supportCorridor: ``--under_track_width`` and _SUPPORT_SWING of it either
+side, room for long cars swinging out on curves) and every other
 spoke's, where a subway can run: each in its own corner, the six alike round
 the hexagon, about ``--support_position`` from the centre.  The deck's own
 tracks don't move them (a support may stand under one).  A riser, subway or
@@ -93,6 +94,9 @@ class HexmoTrackFloorMixin:
     # Steps (mm) a hexagon's support is tried at, sideways from its spoke;
     # its strip is widened to leave at least one.
     _SUPPORT_SIDE_STEP = 2.5
+    # Extra room either side of a lower track's opening width that a support
+    # keeps clear, as a fraction of that width (see _supportCorridor).
+    _SUPPORT_SWING = 1.0 / 6.0
     # Polyline steps per arc for the floor's strips.
     _FLOOR_ARC_STEPS = 32
     # The largest central cutout's radius, as a fraction of the apothem.
@@ -276,6 +280,23 @@ class HexmoTrackFloorMixin:
 
     # ----------------------------------------------------------- supports
 
+    def _supportCorridor(self, width=None):
+        """Half the train corridor a support keeps out of (mm), either side of
+        a lower track's centre line.
+
+        The track's opening width (--under_track_width) plus _SUPPORT_SWING
+        of it each side: room for long cars, whose middles cut inside a curve
+        and whose ends swing outside it.  An 89 ft car on the hexagon's
+        connection curves needs about 30 mm in HO (R 700) and 17 mm in N
+        (R 335) from the track's centre; this gives 40 and 23.3, about 0.9 m
+        full-size in either scale.
+
+        @param width - The track's opening width (default --under_track_width).
+        @returns The corridor's half width.
+        """
+        width = self.under_track_width if width is None else width
+        return width * (0.5 + self._SUPPORT_SWING)
+
     def _supportBow(self, r):
         """How far a straight support beside a curved spoke bows away from
         the curve over its length (mm): the sagitta of a --support_length
@@ -285,7 +306,7 @@ class HexmoTrackFloorMixin:
         @param r - Inner hexagon circumradius.
         @returns The bow (0 with only straight spokes).
         """
-        corridor = self.under_track_width / 2.0 + self._UNDER_TRACK_CLEAR
+        corridor = self._supportCorridor()
         half = self.support_length / 2.0
         bows = [0.0]
         for g in self._spokeRoutes(r, False):
@@ -300,10 +321,10 @@ class HexmoTrackFloorMixin:
 
         Half --spoke_width; on the full hexagon, with supports, at least
         enough for a support beside the track: the train corridor
-        (--under_track_width and _UNDER_TRACK_CLEAR either side), the slot,
+        (_supportCorridor), the slot,
         its land (_supportLand) beyond it, and its bow (_supportBow).  So the
         strip stays straight-sided rather than bulging round each support
-        (N's 60 mm strips come out 78 mm).
+        (N's 60 mm strips come out 80 mm, HO's 120 mm 138 mm).
 
         @param r           - Inner hexagon circumradius.
         @param isTrapezoid - True for the half-hexagon (its support stands
@@ -313,7 +334,7 @@ class HexmoTrackFloorMixin:
         half = self.spoke_width / 2.0
         if isTrapezoid or not self.supports:
             return half
-        corridor = self.under_track_width / 2.0 + self._UNDER_TRACK_CLEAR
+        corridor = self._supportCorridor()
         return max(half, corridor + self.thickness + self._supportLand()
                    + self._supportBow(r) + self._SUPPORT_SIDE_STEP)
 
@@ -397,7 +418,10 @@ class HexmoTrackFloorMixin:
             blocked.append(path.buffer(reach))
             slot_bands.append(path.buffer(slot["width"] / 2.0))
         for rp in self._riserPlan(r, isTrapezoid, l, notches):
-            reach = rp["width"] / 2.0 + t + clear + 1.0
+            # Clear of the bed and its supports' feet, and of the trains on
+            # it swinging out on curves (_supportCorridor of its width).
+            reach = max(rp["width"] / 2.0 + t + clear + 1.0,
+                        self._supportCorridor(rp["width"]) + t / 2.0 + 0.5)
             blocked.append(LineString(segments_polyline(rp["segments"], 32)).buffer(reach))
         blocked = unary_union(blocked) if blocked else None
         edges = sorted(self._TRAPEZOID_EDGES) if isTrapezoid else range(1, 7)
@@ -451,12 +475,12 @@ class HexmoTrackFloorMixin:
         target = self.support_position or apothem / 2.0
         spokes = self._spokeRoutes(r, False)
         line = lambda g: LineString(segments_polyline(g.segments, self._FLOOR_ARC_STEPS))
-        # A lower track's path: the train corridor (--under_track_width and
-        # _UNDER_TRACK_CLEAR either side) along every spoke, where a subway
+        # A lower track's path: the train corridor (_supportCorridor) along
+        # every spoke, where a subway
         # can run, widened by half the slot so the support's board stays out
         # of it.  The deck's own tracks don't count: a support may stand
         # under one (nothing hangs under the deck there).
-        corridor = self.under_track_width / 2.0 + self._UNDER_TRACK_CLEAR
+        corridor = self._supportCorridor()
         paths = unary_union([line(g).buffer(corridor + t / 2.0) for g in spokes])
         # The floor the slot must stand on: the strips under the spokes and
         # deck routes (a support beside its track stays on its strip; its

@@ -113,13 +113,13 @@ class HexmoHexagon(HexmoStepFormatMixin, HexmoBigHoleMixin, HexmoTrackGuideMixin
                  "keeping clear of anything standing on the floor).  Off: the "
                  "middle stays solid (the N ring: too small to be worth it).")
         self.argparser.add_argument(
-            "--edge_width", action="store", type=float, default=60.0,
+            "--edge_width", action="store", type=float, default=50.0,
             help="Width of the outer hexagonal frame for spoke bottom.")
         self.argparser.add_argument(
-            "--spoke_width", action="store", type=float, default=120.0,
+            "--spoke_width", action="store", type=float, default=100.0,
             help="Width of the spokes for spoke bottom.")
         self.argparser.add_argument(
-            "--support_length", action="store", type=float, default=150.0,
+            "--support_length", action="store", type=float, default=100.0,
             help="length of the internal supports.")
         self.argparser.add_argument(
             "--supports", action="store", type=boolarg, default=True,
