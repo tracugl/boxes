@@ -35,26 +35,30 @@ from boxes.generators.hexmohexagon import HexmoHexagon
 
 T = 3.0
 L = 74.0                                  # wall body at h=80: floor top to deck underside
-R_OUT = 220.0                             # --outside: radius is the outer corner radius
+R_OUT = 250.0                             # --outside: radius is the outer corner radius
 A_OUT = R_OUT * math.sqrt(3) / 2
+# What a 35 mm track's notches, openings and slots are cut: the track plus a
+# sixth each side, for long cars swinging out on curves.
+CUT = 35 * 4 / 3
 
-# The helix ring's M6 (N, h=80), as in the N README.
-M6 = ["--radius=220", "--thickness=3", "--h=80", "--edge_width=22", "--spoke_width=60",
+# The helix ring's M6 (N, h=80), on the kite floor with supports on spokes
+# 2, 4 and 6 (the ring itself uses the track-following floor).
+M6 = ["--radius=250", "--thickness=3", "--h=80", "--edge_width=22", "--spoke_width=60",
       "--bottom=kites", "--support_length=55", "--support_edges=2,4,6",
-      "--track_lead_in=26", "--track_width=17",
+      "--track_lead_in=20", "--track_width=17",
       "--track_routes=1:-35-5:-17.5,3:-17.5-1:-35,1:0-5:17.5",
-      "--under_track_edges=1", "--under_track_height=27.8", "--under_track_width=35",
-      "--track_openings=5:17.5:74:35,3:-35:35.6:35",
-      "--deck_slots=1:0-5:17.5@169../35,3:35-1:0@..186/35",
-      "--risers=1:0-5:17.5@169..~77..74/35,3:35-1:0@..186~35.6..31/35,"
-      "3:35-1:0@186..~31..27.8/35"] + PLAIN_WALLS
-# The helix ring's M1 (a trapezoid).
-M1 = ["--radius=220", "--thickness=3", "--h=80", "--trapezoid=1", "--bottom=kites",
+      "--under_track_edges=1", "--under_track_height=23.8", "--under_track_width=35",
+      "--track_openings=5:17.5:74:35,3:-35:33.3:35",
+      "--deck_slots=1:0-5:17.5@178../35,3:35-1:0@..210/35",
+      "--risers=1:0-5:17.5@178..~77..74/35,3:35-1:0@..210~33.3..28.5/35,"
+      "3:35-1:0@210..~28.5..23.8/35", "--train_envelope=43"] + PLAIN_WALLS
+# The helix ring's M1 (a trapezoid), on the kite floor.
+M1 = ["--radius=250", "--thickness=3", "--h=80", "--trapezoid=1", "--bottom=kites",
       "--edge_width=22", "--spoke_width=60", "--support_length=55",
-      "--support_edges=4@132,4@30/90", "--track_lead_in=26", "--track_width=17",
+      "--support_edges=4@140,4@38/90", "--track_lead_in=20", "--track_width=17",
       "--track_routes=3:17.5-5:17.5,3:-17.5-5:-35",
-      "--track_openings=3:-17.5:74:35,5:35:66.1:35", "--deck_slots=3:-17.5-5:-35/35",
-      "--risers=3:-17.5-5:-35~74..66.1/35"] + PLAIN_WALLS
+      "--track_openings=3:-17.5:74:35,5:35:65.6:35", "--deck_slots=3:-17.5-5:-35/35",
+      "--risers=3:-17.5-5:-35~74..65.6/35", "--train_envelope=43"] + PLAIN_WALLS
 
 
 def parts(args):
@@ -95,18 +99,19 @@ class TestM6Parts:
 
     def test_deck_slots_are_cut(self, m6) -> None:
         full = 3 * math.sqrt(3) / 2 * R_OUT ** 2 * T
-        # Two 35 mm slots, roughly 190 + 190 mm long, come out of the deck.
-        assert full - m6["deck"].solid.volume == pytest.approx(35 * 380 * T, rel=0.15)
+        # Two slots cut CUT wide, the spur's 225 and the return's 210 mm long,
+        # come out of the deck.
+        assert full - m6["deck"].solid.volume == pytest.approx(CUT * 435 * T, rel=0.15)
 
     def test_wall_openings(self, m6) -> None:
         plain = m6["wall edge 2"].solid.volume
         # Edge 5: the spur crosses on the wall top (flush), so nothing is cut.
         assert m6["wall edge 5"].solid.volume == pytest.approx(plain)
-        # Edge 3: the return's notch, 35 wide, from 35.6 up through the top.
-        assert plain - m6["wall edge 3"].solid.volume == pytest.approx(35 * (L - 35.6) * T, rel=0.01)
-        # Edge 1: the under-deck opening, 35 wide, 27.8 up to one thickness under the deck.
+        # Edge 3: the return's notch, CUT wide, from 33.3 up through the top.
+        assert plain - m6["wall edge 3"].solid.volume == pytest.approx(CUT * (L - 33.3) * T, rel=0.01)
+        # Edge 1: the under-deck opening, CUT wide, 23.8 up to one thickness under the deck.
         assert plain - m6["wall edge 1"].solid.volume == pytest.approx(
-            35 * (L - T - 27.8) * T, rel=0.01)
+            CUT * (L - T - 23.8) * T, rel=0.01)
 
     def test_risers(self, m6) -> None:
         beds = sorted(n for n in m6 if n.startswith("riser bed"))
@@ -122,9 +127,9 @@ class TestM6Parts:
     def test_tracks(self, m6) -> None:
         tracks = [p for p in m6.values() if p.kind == "track"]
         # The deck tracks sit on the deck top; the lowest track is the return
-        # leaving at edge 1, 27.8 above the floor panel.
+        # leaving at edge 1, 23.8 above the floor panel.
         assert max(zrange(p)[1] for p in tracks) == pytest.approx(L + T + 3, abs=0.05)
-        assert min(zrange(p)[0] for p in tracks) == pytest.approx(27.8, abs=0.05)
+        assert min(zrange(p)[0] for p in tracks) == pytest.approx(23.8, abs=0.05)
 
     def test_clearance_only_over_the_risers_by_default(self, m6) -> None:
         # The deck tracks can't hit anything, so only the three riser stretches
@@ -134,15 +139,16 @@ class TestM6Parts:
 
     def test_smooth_sloping_bed(self, m6) -> None:
         # One smooth solid (top, bottom, two sides, two ends), not a mesh of
-        # triangles, with the bed's true volume: 35 wide, 3 thick, 188 long.
+        # triangles, with the bed's true volume: 35 wide (the bed keeps the
+        # track's width), 3 thick, 225 long (178 to the route's end at 403).
         spur = next(p for n, p in m6.items() if n.startswith("riser bed 1:0-5:17.5"))
         assert len(spur.solid.faces()) <= 8
-        assert spur.solid.volume == pytest.approx(35 * 3 * (357.0 - 169), rel=0.01)
+        assert spur.solid.volume == pytest.approx(35 * 3 * (403.0 - 178), rel=0.01)
 
     def test_return_clearance_fits_under_the_deck(self, m6) -> None:
         # Past its slot the return's train envelope must stay under the deck.
         under = [p for n, p in m6.items()
-                 if p.kind == "clearance" and "3:35-1:0@186" in n]
+                 if p.kind == "clearance" and "3:35-1:0@210" in n]
         assert under and zrange(under[0])[1] <= L + 1e-6
 
 

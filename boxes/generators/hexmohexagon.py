@@ -21,6 +21,7 @@ identical kite-shaped cutouts arranged symmetrically around the centre.
 
 import argparse
 import copy
+import dataclasses
 import datetime
 import math
 import re
@@ -194,7 +195,9 @@ class HexmoHexagon(HexmoStepFormatMixin, HexmoBigHoleMixin, HexmoTrackGuideMixin
                  "position: mm along the edge from its midpoint, anticlockwise "
                  "seen from above (to the right, facing the wall from outside). "
                  "height: the track base above the floor panel (the opening's "
-                 "bottom).  width: default --under_track_width.  If a 40 mm train "
+                 "bottom).  width: the track's, default --under_track_width; the "
+                 "opening is cut a sixth wider each side, for long cars swinging "
+                 "out on curves.  If a 40 mm train "
                  "on that track still fits one thickness under the deck it is a "
                  "closed hole; otherwise a notch open at the top of the wall, "
                  "with the deck's edge left plain over it.  E.g. '5:17.5:92.5:26'.")
@@ -204,8 +207,9 @@ class HexmoHexagon(HexmoStepFormatMixin, HexmoBigHoleMixin, HexmoTrackGuideMixin
                  "comma-separated 'route[@from..to][/width]'.  route: as in "
                  "--track_routes (offsets default 0).  from..to: the stretch in "
                  "mm along the route from its start, either end optional "
-                 "(default the whole route).  width: default --under_track_width. "
-                 " A slot reaching a deck edge needs a --track_openings notch "
+                 "(default the whole route).  width: the track's, default "
+                 "--under_track_width; the slot is cut a sixth wider each side, for "
+                 "long cars swinging out on curves.  A slot reaching a deck edge needs a --track_openings notch "
                  "there, and slots must keep clear of the support slots.  E.g. "
                  "'1:-17.5-5:17.5@157..'.")
         self.argparser.add_argument(
@@ -287,7 +291,7 @@ class HexmoHexagon(HexmoStepFormatMixin, HexmoBigHoleMixin, HexmoTrackGuideMixin
                  "each centreline.  Set to your scale's track width (30 mm HO, "
                  "17 mm N).")
         self.argparser.add_argument(
-            "--track_lead_in", action="store", type=float, default=30.0,
+            "--track_lead_in", action="store", type=float, default=23.0,
             help="Length (mm) of a straight lead-in section where each track "
                  "line meets an edge.  The line runs straight (perpendicular to "
                  "the edge) for this distance from the edge, then the curve "
@@ -900,7 +904,7 @@ class HexmoHexagon(HexmoStepFormatMixin, HexmoBigHoleMixin, HexmoTrackGuideMixin
             if under_track:
                 self._checkUnderTrackClearsCorners(s)
                 bottom, top = self._underTrackSpan(l)
-                half = self.under_track_width / 2
+                half = self._passWidth() / 2
                 under_rect = (bottom, top, s / 2 - half, s / 2 + half)
                 big_ys = [y for y in big_ys
                           if abs(y - s / 2) >= half + r1 + self._UNDER_TRACK_CLEAR]
@@ -1499,10 +1503,10 @@ class HexmoHexagon(HexmoStepFormatMixin, HexmoBigHoleMixin, HexmoTrackGuideMixin
         edges = set(self._TRAPEZOID_EDGES) if isTrapezoid else set(range(1, 7))
         if self.lower_ground > 0:
             edges -= {3, 4, 5} if isTrapezoid else {3, 5}
-        reach = self.under_track_width / 2 + self._UNDER_TRACK_CLEAR
+        reach = self._passWidth() / 2 + self._UNDER_TRACK_CLEAR
         for o in parse_track_openings(self._withSubwayOpenings(self.track_openings),
                                       self.under_track_width):
-            if abs(o.position) < reach + o.width / 2:
+            if abs(o.position) < reach + self._passWidth(o.width) / 2:
                 edges.discard(o.edge)
         side_orig, l = self._wallSize()
         if not self._portFits(l):
@@ -1587,6 +1591,8 @@ class HexmoHexagon(HexmoStepFormatMixin, HexmoBigHoleMixin, HexmoTrackGuideMixin
                     f"--track_openings: a track at {opening.height:g} mm is above "
                     f"the deck underside ({l:g} mm above the floor panel).")
             notch = opening.height + self.train_envelope > l - t
+            # Cut wide enough for long cars swinging out on curves.
+            opening = dataclasses.replace(opening, width=self._passWidth(opening.width))
             plan.setdefault(opening.edge, []).append((opening, notch))
         return plan
 
@@ -1894,21 +1900,24 @@ class HexmoHexagon(HexmoStepFormatMixin, HexmoBigHoleMixin, HexmoTrackGuideMixin
             if hi >= total - 1e-6:
                 hi = total + overrun
                 ends.append((slot.end, geometry.segments[-1].p1))
+            # The slot is cut wide enough for long cars swinging out on curves.
+            cut = self._passWidth(slot.width)
             for edge, point in ends:
                 position = edge_position(edge, point, apothem)
-                fits = any(abs(position - pos) <= (w - slot.width) / 2 + 1e-6
+                fits = any(abs(position - pos) <= (w - cut) / 2 + 1e-6
                            for pos, w, _ in notches.get(edge, []))
                 if not fits:
                     raise ValueError(
                         f"{name} reaches edge {edge} at {position:+.1f} mm, where the "
-                        f"wall has no notch at least {slot.width:g} mm wide; add "
+                        f"wall has no notch at least {cut:.1f} mm wide; add "
                         f"--track_openings for it, or stop the slot short of the edge.")
             segments = trim_segments(geometry.segments, lo, hi)
-            self._checkDeckSlotClearsSupports(r, isTrapezoid, segments, slot.width, name)
+            self._checkDeckSlotClearsSupports(r, isTrapezoid, segments, cut, name)
             split = self._lower_split_key == (slot.start, slot.start_offset, slot.end,
                                               slot.end_offset, slot.lo, slot.hi, slot.width)
-            plan.append({"segments": segments, "width": slot.width, "bed": bed,
-                         "split": split})
+            # "width" is the cut; "bed_width" the track's (a bed slot's bed).
+            plan.append({"segments": segments, "width": cut, "bed_width": slot.width,
+                         "bed": bed, "split": split})
         return plan
 
     def _slotBedKeys(self):
@@ -1982,8 +1991,14 @@ class HexmoHexagon(HexmoStepFormatMixin, HexmoBigHoleMixin, HexmoTrackGuideMixin
                     continue
                 segments, width = slot["segments"], slot["width"]
                 if slot.get("stations"):
+                    # A bed slot: the bed (its track's width, its support
+                    # slots inside) is cut first, then the wider slot round
+                    # it, so the bed falls out with a scrap strip each side.
+                    bed = slot["bed_width"]
                     with self.saved_context():
-                        self._riserFingerHoles(slot["stations"], width)
+                        self._riserFingerHoles(slot["stations"], bed)
+                    start, heading, steps = slot_outline(segments, bed)
+                    self._drawDeckSlotOutline(start, heading, steps)
                 start, heading, steps = slot_outline(segments, width)
                 self._drawDeckSlotOutline(start, heading, steps)
 
@@ -2152,9 +2167,11 @@ class HexmoHexagon(HexmoStepFormatMixin, HexmoBigHoleMixin, HexmoTrackGuideMixin
         for slot in parse_deck_slots(self.deck_slots, self.under_track_width):
             same = (slot.start, slot.start_offset, slot.end, slot.end_offset) == (
                 spec.start, spec.start_offset, spec.end, spec.end_offset)
-            if same and slot.width < width:
+            # The slot is cut wider than its track, for long cars on curves.
+            cut = self._passWidth(slot.width)
+            if same and cut < width:
                 raise ValueError(
-                    f"{name}: the {width:g} mm bed is wider than its {slot.width:g} mm "
+                    f"{name}: the {width:g} mm bed is wider than its {cut:.1f} mm "
                     "deck slot; widen the slot (--deck_slots) or narrow the bed.")
 
     def _checkRiserFootprints(self, r, isTrapezoid, plan):
@@ -2693,7 +2710,7 @@ class HexmoHexagon(HexmoStepFormatMixin, HexmoBigHoleMixin, HexmoTrackGuideMixin
         for slot in slot_plan:
             if slot["bed"]:
                 match = next(rp for rp in bed_risers
-                             if rp["width"] == slot["width"]
+                             if rp["width"] == slot["bed_width"]
                              and math.dist(rp["segments"][0].p0, slot["segments"][0].p0) < 1e-6)
                 slot["stations"] = match["stations"]
         # Upper and lower ground (--lower_ground), checked up front too.
@@ -3116,9 +3133,9 @@ class HexmoHexagon(HexmoStepFormatMixin, HexmoBigHoleMixin, HexmoTrackGuideMixin
             post = self.spoke_width
             rects = [rect for rect, _ in openings]
             if port:
-                post = max(post, self.under_track_width + 2 * self._UNDER_TRACK_CLEAR)
+                post = max(post, self._passWidth() + 2 * self._UNDER_TRACK_CLEAR)
                 bottom, top = self._underTrackSpan(l)
-                half = self.under_track_width / 2
+                half = self._passWidth() / 2
                 rects.append((bottom, top, middle - half, middle + half))
             solid = [(middle - post / 2, middle + post / 2)] + list(solid)
             length, width = self._CABLE_SLOT

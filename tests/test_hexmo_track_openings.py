@@ -37,7 +37,8 @@ from boxes.generators._hexmo_track_openings import (
 from boxes.generators.hexmohexagon import HexmoHexagon
 
 T = 3.0
-N_HEX = ["--radius=220", "--thickness=3", "--h=100"]
+# N-sized: a 43 mm train envelope (the default is HO's 70).
+N_HEX = ["--radius=220", "--thickness=3", "--h=100", "--train_envelope=43"]
 L = 100 - 2 * T                          # wall body: floor panel top to deck underside
 SIDE_ORIG = 2 * (220 - T / math.cos(math.radians(30))) * math.sin(math.radians(30))
 SIDE = SIDE_ORIG - 2 * T                 # wall top-edge length
@@ -112,9 +113,11 @@ class TestClosedOpening:
 
     def test_low_track_gets_a_closed_hole(self) -> None:
         # 30 + 43 = 73, under the 91 mm limit (one thickness below the deck).
+        # Cut 26 × 4/3 wide: the track plus a sixth each side for long cars.
         holes, splits = render(N_HEX + ["--track_openings=1:-20:30:26"])
         assert splits == []
-        opening = [h for h in holes if h[2:] == (pytest.approx(L - T - 30), pytest.approx(26))]
+        opening = [h for h in holes
+                   if h[2:] == (pytest.approx(L - T - 30), pytest.approx(26 * 4 / 3))]
         assert len(opening) == 1
         x, y, dx, dy = opening[0]
         assert x - dx / 2 == pytest.approx(30)
@@ -130,9 +133,10 @@ class TestNotch:
         # (the counterpart).
         assert bases == ["FingerJointEdge", "FingerJointEdgeCounterPart"]
         wall = next(p for b, _, p in splits if b == "FingerJointEdge")
-        assert wall[1] == ("notch", pytest.approx(26.0), pytest.approx(L - 80))
+        # Cut 26 × 4/3 wide: the track plus a sixth each side for long cars.
+        assert wall[1] == ("notch", pytest.approx(26 * 4 / 3), pytest.approx(L - 80))
         # No hole is cut for a notch.
-        assert not [h for h in holes if pytest.approx(26) in h[2:]]
+        assert not [h for h in holes if pytest.approx(26 * 4 / 3) in h[2:]]
 
     def test_trapezoid_ring_module(self) -> None:
         # M1 of the helix ring at h=80 (trains run edge 3 → 5): the spur enters
@@ -202,12 +206,13 @@ class TestRefused:
 class TestMediumHolesGiveWay:
     """A medium (cable) hole an opening needs the room of is left out."""
 
-    def test_m5_at_h80_with_35mm_notches(self) -> None:
-        # The M4/M5 (43.9) and M5/M6 (36.5) joints: each notch takes one
-        # medium hole's room on its wall, and nothing else gives way.
+    def test_notches_take_a_medium_holes_room(self) -> None:
+        # A 220 mm trapezoid with 30 mm openings (cut 40, with room for long
+        # cars) high on both side walls: each notch takes one medium hole's
+        # room on its wall, and nothing else gives way.
         box = HexmoHexagon()
         box.parseArgs(["--radius=220", "--thickness=3", "--h=80", "--trapezoid=1",
-                       "--track_openings=3:-35:43.9:35,5:35:36.5:35"] + PLAIN_WALLS)
+                       "--track_openings=3:-35:43.9:30,5:35:36.5:30"] + PLAIN_WALLS)
         box.metadata["reproducible"] = True
         dropped = []
         orig = box._checkTrackOpenings

@@ -33,7 +33,7 @@ pytestmark = IGNORE_CORE_MATMUL
 
 import build123d as bd
 
-from boxes.generators._hexmo_helix_ring import HELIX_ENTRY_N, HELIX_RING_N
+from boxes.generators._hexmo_helix_ring import HELIX_ENTRY_N250, HELIX_RING_N250
 from boxes.generators._hexmo_step import (
     exact_hexmo_parts, exact_rect_parts, hexmo_parts,
 )
@@ -52,23 +52,23 @@ def hexagon(args):
 
 @pytest.fixture(scope="module")
 def m6():
-    return {p.name: p for p in exact_hexmo_parts(hexagon(HELIX_RING_N["M6"]))}
+    return {p.name: p for p in exact_hexmo_parts(hexagon(HELIX_RING_N250["M6"]))}
 
 
 @pytest.fixture(scope="module")
 def m6_simple():
-    return {p.name: p for p in hexmo_parts(hexagon(HELIX_RING_N["M6"]))}
+    return {p.name: p for p in hexmo_parts(hexagon(HELIX_RING_N250["M6"]))}
 
 
 @pytest.fixture(scope="module")
 def m1():
-    return {p.name: p for p in exact_hexmo_parts(hexagon(HELIX_RING_N["M1"]))}
+    return {p.name: p for p in exact_hexmo_parts(hexagon(HELIX_RING_N250["M1"]))}
 
 
 @pytest.fixture(scope="module")
 def entry():
     box = HexmoRectangle()
-    box.parseArgs(HELIX_ENTRY_N)
+    box.parseArgs(HELIX_ENTRY_N250)
     return {p.name: p for p in exact_rect_parts(box)}
 
 
@@ -101,9 +101,10 @@ class TestHexagon:
         assert (bbox(m6["deck"]).min.Z, bbox(m6["deck"]).max.Z) == pytest.approx((L, L + T))
 
     def test_exact_parts_are_close_to_the_simple_ones(self, m6, m6_simple) -> None:
-        # Same parts, give or take finger joints and holes.
-        for name in ("deck", "wall edge 4", "support edge 4"):
-            assert m6[name].solid.volume == pytest.approx(m6_simple[name].solid.volume, rel=0.25)
+        # Same parts, give or take finger joints and holes.  A wall's access
+        # openings, and a small support's lightening hole and tabs, take more.
+        for name, rel in (("deck", 0.25), ("wall edge 4", 0.4), ("support 1", 0.4)):
+            assert m6[name].solid.volume == pytest.approx(m6_simple[name].solid.volume, rel=rel)
             a, b = bbox(m6[name]), bbox(m6_simple[name])
             assert (a.center().X, a.center().Y) == pytest.approx((b.center().X, b.center().Y), abs=3)
 
@@ -114,7 +115,7 @@ class TestHexagon:
         import math
         th = math.radians(330)
         u, tan = (math.cos(th), math.sin(th)), (-math.sin(th), math.cos(th))
-        a = 216.5 * math.sqrt(3) / 2 + T / 2          # mid-thickness of the wall
+        a = 246.5 * math.sqrt(3) / 2 + T / 2          # mid-thickness of the wall
         wall = m6["wall edge 3"].solid
 
         def at(pos, z):
@@ -132,11 +133,21 @@ class TestHexagon:
 
     @pytest.mark.parametrize("panel", ["floor", "deck"])
     def test_support_tabs_mesh_with_the_panel_slots(self, m6, panel) -> None:
-        assert overlap(m6["support edge 4"], m6[panel]) < 5.0
+        assert overlap(m6["support 1"], m6[panel]) < 5.0
 
     def test_riser_supports_mesh_with_the_floor(self, m6) -> None:
         name = next(n for n in m6 if n.startswith("riser support"))
         assert overlap(m6[name], m6["floor"]) < 5.0
+
+    def test_every_riser_bed_is_one_whole_piece(self, m6, m6_simple) -> None:
+        # A bed cut out of its deck slot is one solid, nearly its full strip:
+        # only its support slots come out (the slot is cut wider than the bed,
+        # for long cars on curves, so the bed's outline must not be taken for
+        # one of its holes).
+        for name, part in m6.items():
+            if name.startswith("riser bed"):
+                assert len(part.solid.solids()) == 1
+                assert part.solid.volume > 0.8 * m6_simple[name].solid.volume
 
     def test_beds_get_their_support_slots(self, m6, m6_simple) -> None:
         bed = next(n for n in m6 if n.startswith("riser bed 1:0-5:17.5"))

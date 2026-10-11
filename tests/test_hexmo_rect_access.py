@@ -64,6 +64,16 @@ def big(boxes_):
     return [b for b in boxes_ if b[1] - b[0] > 30]
 
 
+# The default subway opening's width: the 60 mm (HO) track plus a sixth each
+# side, for long cars on curves.
+PORT = 60 * 4 / 3
+
+
+def lane_openings(boxes_):
+    """The access openings: big, tall holes other than the subway opening."""
+    return [b for b in big(boxes_) if b[3] - b[2] > 50 and abs((b[1] - b[0]) - PORT) > 0.5]
+
+
 def pilots(boxes_):
     """The Ø6 holes' centres, (along, across)."""
     return sorted((round((b[0] + b[1]) / 2, 1), round((b[2] + b[3]) / 2, 1))
@@ -131,7 +141,7 @@ class TestEndWalls:
 
     def test_end_wall_openings_and_port(self) -> None:
         wall = holes(self.DEFAULT, "end wall 1")
-        openings = [b for b in big(wall) if b[3] - b[2] > 50]
+        openings = lane_openings(wall)
         # The two outer lanes (the middle lane's room is taken by the post).
         assert len(openings) == 2
         # The subway opening and its cable slot, on the centre line.
@@ -147,8 +157,8 @@ class TestEndWalls:
 
     def test_dividers_take_the_full_lane(self) -> None:
         # Dividers register to nothing, so their openings needn't keep pilots.
-        end = [b for b in big(holes(self.DEFAULT, "end wall 1")) if b[3] - b[2] > 50]
-        div = [b for b in big(holes(self.DEFAULT, "divider 1")) if b[3] - b[2] > 50]
+        end = lane_openings(holes(self.DEFAULT, "end wall 1"))
+        div = lane_openings(holes(self.DEFAULT, "divider 1"))
         assert len(div) == 2
         for e, d in zip(end, div):
             assert d[0] <= e[0] and d[1] >= e[1]

@@ -85,17 +85,17 @@ class TestRing:
             assert (h0 - h1) / (hi - lo) == pytest.approx(0.0189, abs=0.0002)
 
     def test_m6_supports_stop_at_twice_the_thickness(self) -> None:
-        # The return's last riser (12.5 down to the floor) keeps one support;
+        # The return's last riser (13.3 down to the floor) keeps one support;
         # the bed then slopes on to rest on the floor strip at edge 1.
         last = [rp for rp in plan(RING["M6"]) if rp["route"][0] == 3][-1]
-        assert last["heights"] == (12.5, 6)
+        assert last["heights"] == (13.3, 6)
         heights = [h for _, _, h in last["stations"]]
         assert heights and min(heights) >= 2 * T
 
     def test_room_for_the_train_under_m6s_deck(self) -> None:
-        # Past the return's deck slot the track is at most 12.5: a 70 mm
+        # Past the return's deck slot the track is at most 13.3: a 70 mm
         # train clears the 88 mm deck underside.
-        assert 12.5 + 70 <= 100 - 2 * T
+        assert 13.3 + 70 <= 100 - 2 * T
 
     def test_tracks_meet_at_every_joint(self) -> None:
         pytest.importorskip("build123d")
@@ -105,8 +105,9 @@ class TestRing:
             if not any(j != i and mm != m and math.dist(pp, p) < 0.5 and abs(zz - z) < 0.05
                        for j, (mm, pp, zz) in enumerate(ends)))
         # Only the lower level leaving M6 at edge 1 (on the floor) and the
-        # entry's three deck tracks at its far end.
-        assert unmatched == [("M6", 6.0), ("entry", 94.0), ("entry", 94.0), ("entry", 94.0)]
+        # entry line at the entry's far end: its two turnouts' legs meet M6's
+        # loop tracks at the joint.
+        assert unmatched == [("M6", 6.0), ("entry", 94.0)]
 
     def test_m6_fits_in_3d(self) -> None:
         # The return's bed, sloping onto the floor, touches no wall or panel.
@@ -175,7 +176,7 @@ class TestGround:
             (m, round(z, 1)) for i, (m, p, z) in enumerate(ends)
             if not any(j != i and mm != m and math.dist(pp, p) < 0.5 and abs(zz - z) < 0.05
                        for j, (mm, pp, zz) in enumerate(ends)))
-        assert unmatched == [("M6", 6.0), ("entry", 94.0), ("entry", 94.0), ("entry", 94.0)]
+        assert unmatched == [("M6", 6.0), ("entry", 94.0)]
 
     @pytest.mark.parametrize("name", ["M1", "M6"])
     def test_builds_in_3d(self, name) -> None:
@@ -224,7 +225,7 @@ class TestOnTheFloor:
         # Between the floor (6) and the lowest support (12) nothing would hold
         # the bed's end up.
         with pytest.raises(ValueError, match="too low for a support"):
-            plan(RING["M6"][:-1] + [f"--risers=3:80-1:0@490..~12.5..{height}/60"])
+            plan(RING["M6"][:-1] + [f"--risers=3:80-1:0@450..~13.3..{height}/60"])
 
     def test_rectangle_refuses_between_floor_and_support(self) -> None:
         box = HexmoRectangle()

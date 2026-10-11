@@ -29,12 +29,12 @@ from hexmo_testutil import IGNORE_CORE_MATMUL
 
 pytestmark = IGNORE_CORE_MATMUL
 
-from boxes.generators._hexmo_helix_ring import HELIX_ENTRY_N, HELIX_RING_N
+from boxes.generators._hexmo_helix_ring import HELIX_ENTRY_N250, HELIX_RING_N250
 from boxes.generators._hexmo_step import rect_parts, ring_parts, ring_track_ends
 from boxes.generators.hexmorectangle import HexmoRectangle
 
 T = 3.0
-A_OUT = 220 * math.sqrt(3) / 2            # outer apothem (--outside: radius is outer)
+A_OUT = 250 * math.sqrt(3) / 2            # outer apothem (--outside: radius is outer)
 DECK_TOP = 77.0                           # above the floor panel top, at h=80
 
 
@@ -46,13 +46,13 @@ def zrange(part):
 @pytest.fixture(scope="module")
 def entry():
     box = HexmoRectangle()
-    box.parseArgs(HELIX_ENTRY_N)
+    box.parseArgs(HELIX_ENTRY_N250)
     return {p.name: p for p in rect_parts(box)}
 
 
 @pytest.fixture(scope="module")
 def ring():
-    return {p.name: p for p in ring_parts("N")}
+    return {p.name: p for p in ring_parts("N250")}
 
 
 class TestRectangle:
@@ -70,10 +70,18 @@ class TestRectangle:
         assert zrange(entry["deck"]) == pytest.approx((DECK_TOP - T, DECK_TOP))
         assert zrange(entry["end wall 1"]) == pytest.approx((-T, DECK_TOP - T))
 
-    def test_under_track_opening(self, entry) -> None:
-        plain = (208 * T * (DECK_TOP))         # end wall: 208 wide, 77 tall, t thick
-        cut = plain - entry["end wall 1"].solid.volume
-        assert cut == pytest.approx(35 * (74 - T - 27.8) * T, rel=0.01)
+    def test_under_track_opening(self) -> None:
+        # The lower level's opening through an end wall: its 35 mm track plus
+        # a sixth each side for long cars on curves (46.7 mm), from the track
+        # height (23.8) up to one thickness under the deck.  Measured against
+        # the same wall without it (access openings off, so only it differs).
+        def end_wall(*extra):
+            box = HexmoRectangle()
+            box.parseArgs(HELIX_ENTRY_N250 + ["--access_openings=0", "--subway_ports=0", *extra])
+            return {p.name: p for p in rect_parts(box)}["end wall 1"].solid.volume
+        plain = end_wall("--under_track=0", "--subway=")
+        cut = plain - end_wall()
+        assert cut == pytest.approx(35 * 4 / 3 * (74 - T - 23.8) * T, rel=0.01)
 
     def test_tracks(self, entry) -> None:
         tracks = [p for p in entry.values() if p.kind == "track"]
@@ -95,7 +103,7 @@ class TestRing:
         entry = ring["entry deck"].solid.bounding_box()
         # Runs on from M6 edge 1 (its outer face 3 apothems up), straight up.
         assert entry.min.Y == pytest.approx(3 * A_OUT, abs=0.01)
-        assert entry.max.Y - entry.min.Y == pytest.approx(220 * math.sqrt(3), abs=0.01)
+        assert entry.max.Y - entry.min.Y == pytest.approx(250 * math.sqrt(3), abs=0.01)
 
     def test_trapezoids_face_the_centre(self, ring) -> None:
         # Each trapezoid deck's nearest point to the ring centre is one outer
@@ -106,7 +114,7 @@ class TestRing:
             assert max(math.hypot(x, y) for x, y in corners) > 2 * A_OUT
 
     def test_tracks_meet_at_every_joint(self) -> None:
-        ends = ring_track_ends("N")
+        ends = ring_track_ends("N250")
         unmatched = []
         for i, (module, point, z) in enumerate(ends):
             partner = [m for j, (m, p, zz) in enumerate(ends)
@@ -115,5 +123,5 @@ class TestRing:
             if not partner:
                 unmatched.append((module, round(z, 1)))
         # Only the two ends of the line: the lower level leaving M6 at edge 1
-        # (27.8 mm, under the entry rectangle) and the entry line's far end.
-        assert sorted(unmatched) == [("M6", 27.8), ("entry", DECK_TOP)]
+        # (23.8 mm, under the entry rectangle) and the entry line's far end.
+        assert sorted(unmatched) == [("M6", 23.8), ("entry", DECK_TOP)]

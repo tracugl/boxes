@@ -318,7 +318,9 @@ class HexmoLowerGroundMixin:
         centre = centreline_points(slot)
         inner_mark = (0.0, -apothem)                  # edge 4's midpoint
         sides = []
-        for d in (width / 2, -width / 2):
+        # The slot's cut edges: wide enough for long cars on curves.
+        half = self._passWidth(width) / 2
+        for d in (half, -half):
             pts = _towards_3_to_5(segments_polyline(offset_segments(slot, d), _ARC_STEPS),
                                   apothem)
             sides.append((d, pts))

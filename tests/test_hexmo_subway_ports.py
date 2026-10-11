@@ -40,13 +40,18 @@ HEX = ["--radius=250", "--thickness=3", "--h=80", "--edge_width=22", "--spoke_wi
        "--gap_holes=g2", "--big_hole_shape=rounded_rect", "--support_edges=2,4,6"]
 
 
+# The subway opening's width as cut: the 35 mm track plus a sixth each side.
+CUT = 35 * 4 / 3
+
+
 def ports(cls, args):
     """Part name → (cable slots, subway openings) found in it.
 
     A slot is a hole 20 wide and at least 30 long (30 between a pilot pair,
     the access openings' height outside one), as ``(x, y, w, h)``: its centre and size in
-    the part's frame; an opening one 35 wide and taller than 40, as its
-    bounding box ``(x0, x1, y0, y1)``.
+    the part's frame; an opening one CUT wide (the 35 mm track plus a sixth
+    each side, for long cars on curves) and taller than 40, as its bounding
+    box ``(x0, x1, y0, y1)``.
     """
     box = cls()
     box.parseArgs(args + ["--subway_ports=1"])
@@ -63,7 +68,7 @@ def ports(cls, args):
             w, h = max(xs) - min(xs), max(ys) - min(ys)
             if round(min(w, h)) == 20 and round(max(w, h)) >= 30:
                 slots.append(((min(xs) + max(xs)) / 2, (min(ys) + max(ys)) / 2, w, h))
-            elif round(min(w, h)) == 35 and max(w, h) > 40:
+            elif round(min(w, h)) == round(CUT) and max(w, h) > 40:
                 openings.append((min(xs), max(xs), min(ys), max(ys)))
         found[f.name] = (slots, openings)
     return found
@@ -169,7 +174,8 @@ class TestHexagon:
 
     def test_access_walls_get_it_in_the_middle_post(self) -> None:
         # Between the two access openings, centred on the wall, with the
-        # same 12.5 mm of wood either side (60 mm post, 35 mm opening).
+        # same 6.7 mm of wood either side (60 mm post, 46.7 mm opening: the
+        # 35 mm track plus a sixth each side).
         found = ports(HexmoHexagon, HEX + ["--access_openings=1", "--access_edges=2,4,6"])
         assert ported(found) == [f"wall edge {e}" for e in range(1, 7)]
         box = HexmoHexagon()
@@ -178,7 +184,7 @@ class TestHexagon:
         side, _ = box._wallSize()
         _, openings = found["wall edge 2"]
         (x0, x1, y0, y1), = openings
-        assert (y1 - y0) == pytest.approx(35)
+        assert (y1 - y0) == pytest.approx(CUT)
         assert (y0 + y1) / 2 == pytest.approx(side / 2)
 
     def test_trapezoid_long_wall_with_access(self) -> None:
@@ -186,8 +192,8 @@ class TestHexagon:
         assert found["long wall"][1] and not found["long wall"][0]
 
     def test_middle_post_widens_for_the_opening(self) -> None:
-        # A 40 mm spoke is narrower than the 35 mm opening plus 5 mm of wood
-        # each side: the post widens to 45 and the openings give way.
+        # A 40 mm spoke is narrower than the 46.7 mm opening plus 5 mm of
+        # wood each side: the post widens to 56.7 and the openings give way.
         found = ports(HexmoHexagon, HEX + ["--spoke_width=40"])
         assert ported(found) == [f"wall edge {e}" for e in range(1, 7)]
         box = HexmoHexagon()
@@ -201,7 +207,7 @@ class TestHexagon:
         # The access openings, not the 20 mm cable slots of the same height.
         spans = [sp for sp in spans if sp[1] - sp[0] > 25]
         assert len(spans) == 2
-        assert spans[1][0] - spans[0][1] == pytest.approx(45, abs=0.1)
+        assert spans[1][0] - spans[0][1] == pytest.approx(CUT + 10, abs=0.1)
 
     def test_low_opening_keeps_the_slots(self) -> None:
         # The slots are at the wall ends, so a low subway opening (15 mm)

@@ -28,7 +28,7 @@ from hexmo_testutil import IGNORE_CORE_MATMUL
 pytestmark = IGNORE_CORE_MATMUL
 
 from boxes.generators import _hexmo_step
-from boxes.generators._hexmo_helix_ring import HELIX_ENTRY_N, HELIX_RING_N
+from boxes.generators._hexmo_helix_ring import HELIX_ENTRY_N250, HELIX_RING_N250
 from boxes.generators.hexmohexagon import HexmoHexagon
 from boxes.generators.hexmorectangle import HexmoRectangle
 
@@ -63,13 +63,13 @@ class TestOutput:
 
     def test_hexagon(self) -> None:
         pytest.importorskip("build123d")
-        data = output(HexmoHexagon, HELIX_RING_N["M6"] + ["--format=step"])
+        data = output(HexmoHexagon, HELIX_RING_N250["M6"] + ["--format=step"])
         assert data.startswith(b"ISO-10303-21")
         assert b"riser bed" in data and b"clearance" in data
 
     def test_rectangle(self) -> None:
         pytest.importorskip("build123d")
-        data = output(HexmoRectangle, HELIX_ENTRY_N + ["--format=step"])
+        data = output(HexmoRectangle, HELIX_ENTRY_N250 + ["--format=step"])
         assert data.startswith(b"ISO-10303-21")
         assert b"long support" in data
 
@@ -77,8 +77,8 @@ class TestOutput:
         # The exact parts (finger joints, holes …) make a far bigger file than
         # the plain slabs of step_detail=simple.
         pytest.importorskip("build123d")
-        exact = output(HexmoHexagon, HELIX_RING_N["M6"] + ["--format=step"])
-        simple = output(HexmoHexagon, HELIX_RING_N["M6"] + ["--format=step",
+        exact = output(HexmoHexagon, HELIX_RING_N250["M6"] + ["--format=step"])
+        simple = output(HexmoHexagon, HELIX_RING_N250["M6"] + ["--format=step",
                                                            "--step_detail=simple"])
         assert simple.startswith(b"ISO-10303-21")
         assert len(exact) > 3 * len(simple)
@@ -95,19 +95,19 @@ class TestOutput:
         # library's does.
         bd = pytest.importorskip("build123d")
         from boxes.generators._hexmo_step import exact_hexmo_parts
-        data = output(HexmoHexagon, HELIX_RING_N["M1"] + ["--format=step"])
+        data = output(HexmoHexagon, HELIX_RING_N250["M1"] + ["--format=step"])
         path = tmp_path / "m1.step"
         path.write_bytes(data)
         web = bd.import_step(str(path)).bounding_box()
         box = HexmoHexagon()
-        box.parseArgs(HELIX_RING_N["M1"])
+        box.parseArgs(HELIX_RING_N250["M1"])
         lib = bd.Compound([p.solid for p in exact_hexmo_parts(box)]).bounding_box()
         for a, b in ((web.min, lib.min), (web.max, lib.max)):
             assert (a.X, a.Y, a.Z) == pytest.approx((b.X, b.Y, b.Z), abs=0.05)
 
     def test_clearance_option(self) -> None:
         pytest.importorskip("build123d")
-        data = output(HexmoHexagon, HELIX_RING_N["M6"] + ["--format=step",
+        data = output(HexmoHexagon, HELIX_RING_N250["M6"] + ["--format=step",
                                                          "--step_clearance=none"])
         assert b"clearance" not in data
 

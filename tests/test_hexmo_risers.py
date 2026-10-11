@@ -160,18 +160,23 @@ class TestRefused:
 
 
 class TestBedWidth:
-    """A bed may not be wider than the notch or deck slot it runs through."""
+    """A bed may not be wider than the notch or deck slot it runs through, as
+    cut: the 26 mm track plus a sixth each side (34.7 mm), for long cars."""
 
     def test_wider_than_the_notch(self) -> None:
         with pytest.raises(ValueError, match="wider than the wall notch"):
-            render(M1 + ["--risers=3:-17.5-5:-35~72.5..65.2/30"])
+            render(M1 + ["--risers=3:-17.5-5:-35~72.5..65.2/36"])
+
+    def test_a_bed_fits_the_cut_notch(self) -> None:
+        # 30 mm is wider than the 26 mm track, but fits the 34.7 mm cut.
+        render(M1 + ["--risers=3:-17.5-5:-35~72.5..65.2/30"])
 
     def test_wider_than_the_deck_slot(self) -> None:
         args = [a for a in M1 if not a.startswith(("--track_openings", "--deck_slots"))]
-        with pytest.raises(ValueError, match="wider than its 26 mm deck slot"):
+        with pytest.raises(ValueError, match="wider than its 34.7 mm deck slot"):
             render(args + ["--track_openings=3:-17.5:72.5:35,5:35:65.2:35",
                            "--deck_slots=3:-17.5-5:-35/26",
-                           "--risers=3:-17.5-5:-35~72.5..65.2/30"])
+                           "--risers=3:-17.5-5:-35~72.5..65.2/36"])
 
     def test_35mm_everywhere(self) -> None:
         args = [a for a in M1 if not a.startswith(("--track_openings", "--deck_slots",
