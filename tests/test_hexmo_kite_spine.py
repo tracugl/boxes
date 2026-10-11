@@ -168,13 +168,19 @@ class TestSpokeFloor:
         assert cut == [] and spines == []
 
 
+def _kite_m6():
+    """The helix ring's M6 on the kite floor, with supports on spokes 2, 4, 6."""
+    from boxes.generators._hexmo_helix_ring import HELIX_RING_N250
+    return [a for a in HELIX_RING_N250["M6"] if not a.startswith("--bottom")] + [
+        "--bottom=kites", "--support_edges=2,4,6"]
+
+
 def test_helix_m6_keeps_all_six_kites() -> None:
     # M6's lower-level return riser cuts one kite down to a triangle about
     # 35 × 84 mm; it is cut, not left solid.
     from boxes.generators import _hexmo_step
-    from boxes.generators._hexmo_helix_ring import HELIX_RING_N
     box = HexmoHexagon()
-    box.parseArgs(HELIX_RING_N["M6"])
+    box.parseArgs(_kite_m6())
     floor = next(f for f in _hexmo_step._render_frames(box) if f.name == "floor")
     big = []
     for loop in _hexmo_step._frame_loops(floor):
@@ -199,9 +205,8 @@ class TestCappedSpines:
                 for loop in _hexmo_step._frame_loops(floor)]
 
     def test_m6_kites_beyond_the_spur_riser_are_whole(self) -> None:
-        # The spur's riser starts 169 mm along its route; the two kites by
+        # The spur's riser starts 178 mm along its route; the two kites by
         # edges 1/2 and 1/6 are past its start, so they are the full kites.
-        from boxes.generators._hexmo_helix_ring import HELIX_RING_N
 
         def span(l):
             return max(p[0] for p in l) - min(p[0] for p in l)
@@ -209,15 +214,14 @@ class TestCappedSpines:
         def areas(args):
             return sorted(round(area(l)) for l in self.floor_loops(args) if 25 < span(l) < 300)
 
-        m6 = HELIX_RING_N["M6"]
+        m6 = _kite_m6()
         plain = [a for a in m6 if not a.startswith("--risers")]
         full = max(areas(plain))
-        assert sum(1 for a in areas(m6) if a == full) >= 3   # the two north ones + edge 3/4
+        assert sum(1 for a in areas(m6) if a == full) >= 2   # the two by edge 1
 
     def test_m6_slots_keep_clear_of_the_kites(self) -> None:
         import math
-        from boxes.generators._hexmo_helix_ring import HELIX_RING_N
-        loops = self.floor_loops(HELIX_RING_N["M6"])
+        loops = self.floor_loops(_kite_m6())
 
         def span(l):
             return max(p[0] for p in l) - min(p[0] for p in l)

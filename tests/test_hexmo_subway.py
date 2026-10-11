@@ -28,14 +28,14 @@ from hexmo_testutil import IGNORE_CORE_MATMUL
 pytestmark = IGNORE_CORE_MATMUL
 
 from boxes.generators import _hexmo_step
-from boxes.generators._hexmo_helix_ring import HELIX_ENTRY_N, HELIX_ENTRY_N250
+from boxes.generators._hexmo_helix_ring import HELIX_ENTRY_N250
 from boxes.generators.hexmohexagon import HexmoHexagon
 from boxes.generators.hexmorectangle import HexmoRectangle
 
 T = 3.0
 HEX = ["--radius=250", "--thickness=3", "--h=80", "--edge_width=22", "--spoke_width=60",
        "--bottom=spoke", "--support_length=55", "--track_lead_in=20", "--track_width=17",
-       "--under_track_width=35", "--corner_holes=g2", "--gap_holes=g2"]
+       "--under_track_width=35", "--corner_holes=g2", "--gap_holes=g2", "--train_envelope=43"]
 RECT = [a for a in HELIX_ENTRY_N250 if not a.startswith(("--subway", "--under_track="))]
 
 
@@ -190,8 +190,6 @@ class TestRectangle:
 
 
 def test_helix_entry_presets() -> None:
-    # The 250 ring's entry carries the lower level on a subway; the 220
-    # ring's is unchanged.
+    # The ring's entry carries the lower level on a subway.
     assert "--subway=23.8" in HELIX_ENTRY_N250
-    assert not any(a.startswith("--subway=") for a in HELIX_ENTRY_N)
     render(HexmoRectangle, HELIX_ENTRY_N250)

@@ -20,8 +20,8 @@ is cut away, with a round cutout in the middle of the hexagon unless
 
 The support walls stand on the strips.  On the full hexagon there are six,
 one beside each spoke near its start, just outside its train corridor
-(_supportCorridor: ``--under_track_width`` and _SUPPORT_SWING of it either
-side, room for long cars swinging out on curves) and every other
+(_supportCorridor: half of _passWidth, ``--under_track_width`` and a sixth of
+it either side, room for long cars swinging out on curves) and every other
 spoke's, where a subway can run: each in its own corner, the six alike round
 the hexagon, about ``--support_position`` from the centre.  The deck's own
 tracks don't move them (a support may stand under one).  A riser, subway or
@@ -94,9 +94,6 @@ class HexmoTrackFloorMixin:
     # Steps (mm) a hexagon's support is tried at, sideways from its spoke;
     # its strip is widened to leave at least one.
     _SUPPORT_SIDE_STEP = 2.5
-    # Extra room either side of a lower track's opening width that a support
-    # keeps clear, as a fraction of that width (see _supportCorridor).
-    _SUPPORT_SWING = 1.0 / 6.0
     # Polyline steps per arc for the floor's strips.
     _FLOOR_ARC_STEPS = 32
     # The largest central cutout's radius, as a fraction of the apothem.
@@ -284,8 +281,8 @@ class HexmoTrackFloorMixin:
         """Half the train corridor a support keeps out of (mm), either side of
         a lower track's centre line.
 
-        The track's opening width (--under_track_width) plus _SUPPORT_SWING
-        of it each side: room for long cars, whose middles cut inside a curve
+        Half the passage a train needs (_passWidth): the track's width
+        (--under_track_width) plus _TRAIN_SWING of it each side: room for long cars, whose middles cut inside a curve
         and whose ends swing outside it.  An 89 ft car on the hexagon's
         connection curves needs about 30 mm in HO (R 700) and 17 mm in N
         (R 335) from the track's centre; this gives 40 and 23.3, about 0.9 m
@@ -294,8 +291,7 @@ class HexmoTrackFloorMixin:
         @param width - The track's opening width (default --under_track_width).
         @returns The corridor's half width.
         """
-        width = self.under_track_width if width is None else width
-        return width * (0.5 + self._SUPPORT_SWING)
+        return self._passWidth(width) / 2.0
 
     def _supportBow(self, r):
         """How far a straight support beside a curved spoke bows away from

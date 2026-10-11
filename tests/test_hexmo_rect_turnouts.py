@@ -35,7 +35,10 @@ from boxes.generators.hexmorectangle import HexmoRectangle
 # Peco N medium (SL-E395/396) and the N rectangle's 375.1 mm deck.
 PECO_N = dict(length=123.7, radius=457.0, angle=14.0, reverse_radius=300.0)
 N_RECT = ["--radius=220", "--thickness=3", "--h=80", "--track_width=17", "--track_lead_in=26",
-          "--num_rows=3", "--reference=0"]
+          "--num_rows=3", "--reference=0",
+          # Peco N medium (the turnout defaults are HO's).
+          "--turnout_length=123.7", "--turnout_radius=457", "--turnout_angle=14",
+          "--turnout_reverse_radius=300"]
 HELIX = "--turnouts=10:0:-35,133.7:0:35"
 # The N deck is the short wall (220 − 2t) less the two long walls: 208 mm.
 DECK_WIDTH = 220 - 4 * 3
@@ -158,8 +161,8 @@ class TestTrackGuides:
         return calls
 
     def test_helix_entry_has_a_plate_per_end(self) -> None:
-        from boxes.generators._hexmo_helix_ring import HELIX_ENTRY_N
-        assert self.guides(HELIX_ENTRY_N) == [("track guide turnout toe end", 1),
+        from boxes.generators._hexmo_helix_ring import HELIX_ENTRY_N250
+        assert self.guides(HELIX_ENTRY_N250) == [("track guide turnout toe end", 1),
                                               ("track guide turnout leg end", 3)]
 
     def test_without_turnouts_one_plate(self) -> None:

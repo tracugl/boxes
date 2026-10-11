@@ -36,7 +36,7 @@ same calls ``render`` makes), so the 3D model matches what is cut.
 Needs the optional ``step`` dependency (``pip install .[step]``, which brings
 build123d and the OpenCascade kernel).  Command line::
 
-    python -m boxes.generators._hexmo_step out.step --radius=220 --h=80 …
+    python -m boxes.generators._hexmo_step out.step --radius=250 --h=80 …
 
 The module name starts with an underscore, so generator discovery skips it.
 """
@@ -246,7 +246,7 @@ def _walls(bd, box, r, l, t, isTrapezoid, opening_plan):
                 wall = wall - cut(opening.position, opening.width, opening.height,
                                   top + (1.0 if notch else 0.0))
         if under and edge in under_edges:
-            wall = wall - cut(0.0, box.under_track_width, under[0], under[1])
+            wall = wall - cut(0.0, box._passWidth(), under[0], under[1])
         parts.append(Part3D(f"wall edge {edge}", "wall", wall))
     if isTrapezoid:
         # The long wall lies just inside the centre line, between the slanted
@@ -396,7 +396,7 @@ def _tracks(bd, box, pieces, clearance):
         if clearance == "all" or (clearance == "under" and piece.on_riser):
             envelope = box.train_envelope
             parts.append(Part3D(f"clearance {piece.name}", "clearance",
-                                _strip(bd, piece.segments, box.under_track_width,
+                                _strip(bd, piece.segments, box._passWidth(),
                                        lambda s, p=piece: p.base(s) + envelope,
                                        envelope - RAIL_HEIGHT)))
     return parts
@@ -530,7 +530,7 @@ def rect_parts(box, clearance="under"):
         if under is None:
             return solid
         return solid - _box(bd, (x, 0.0, (under[0] + under[1]) / 2),
-                            (4 * t, box.under_track_width, under[1] - under[0]), 0)
+                            (4 * t, box._passWidth(), under[1] - under[0]), 0)
 
     parts = [Part3D("deck", "panel", slab(-x_out, x_out, -W / 2, W / 2, underside, underside + t))]
     for k, sign in enumerate((-1, 1), 1):
@@ -566,7 +566,7 @@ def _ring_layout(ring):
     M1 at 150°, … M5 at 30°.  The entry rectangle runs on from M6 edge 1,
     turnout end first.
 
-    @param ring - Key of :data:`_hexmo_helix_ring.RINGS`, e.g. ``"N"``.
+    @param ring - Key of :data:`_hexmo_helix_ring.RINGS`, e.g. ``"N250"``.
     @returns ``[(name, box, kind, angle°, (dx, dy))]``: place a part by
              turning it ``angle`` about z, then moving it by (dx, dy).
     @throws KeyError - For an unknown ring.
@@ -615,7 +615,7 @@ def module_parts(box, kind, clearance="under", detail="exact"):
     return (hexmo_parts if kind == "hexmo" else rect_parts)(box, clearance)
 
 
-def ring_parts(ring="N", clearance="under", detail="exact"):
+def ring_parts(ring="N250", clearance="under", detail="exact"):
     """Every part of a helix ring, placed, each name prefixed by its module.
 
     @param ring      - Key of :data:`_hexmo_helix_ring.RINGS`.
@@ -632,7 +632,7 @@ def ring_parts(ring="N", clearance="under", detail="exact"):
     return parts
 
 
-def ring_track_ends(ring="N"):
+def ring_track_ends(ring="N250"):
     """Where every track meets a module edge, placed: ``[(module, (x, y), height)]``.
 
     For checking that joined modules' tracks meet (same place, same height).
@@ -901,8 +901,15 @@ def _exact_from_frames(bd, frames):
             bed_holes += [plan(p) for p, d in zip(polys, depths) if d == 1]
             continue
         if frame.name == "deck":
-            # A slot's cut-out that is a riser bed carries these slots.
-            bed_holes += [plan(p) for p, d in zip(polys, depths) if d == 2]
+            # A slot's cut-out that is a riser bed carries these slots: the
+            # innermost loops inside a slot.  (The slot is cut wider than the
+            # bed, for long cars on curves, so the bed's own outline sits in
+            # the slot with its support slots inside that; it is not a hole.)
+            def has_inner(i):
+                return any(depths[j] == depths[i] + 1 and _inside(polys[j][0], polys[i])
+                           for j in range(len(polys)))
+            bed_holes += [plan(p) for i, (p, d) in enumerate(zip(polys, depths))
+                          if d >= 2 and not has_inner(i)]
         solid = _frame_solid(bd, frame, loops, polys, depths)
         if solid is not None:
             parts.append(Part3D(frame.name, frame.kind, solid))
@@ -1027,7 +1034,7 @@ def export_step_file(box, path, clearance="under", detail="exact"):
     bd.export_step(assembly(module_parts(box, "hexmo", clearance, detail)), str(path))
 
 
-def export_ring_step_file(path, ring="N", clearance="under", detail="exact"):
+def export_ring_step_file(path, ring="N250", clearance="under", detail="exact"):
     """Write a whole helix ring (six modules and the entry) to one STEP file."""
     bd = _bd()
     bd.export_step(assembly(ring_parts(ring, clearance, detail), label=f"helix ring {ring}"),
@@ -1039,8 +1046,8 @@ def main(argv=None):
 
     * ``OUT.step [--clearance=MODE] [--detail=exact|simple] [generator args…]``
       — one HexmoHexagon;
-    * ``OUT.step --ring=N [--clearance=MODE] [--detail=…]`` — the whole helix ring
-      (``--ring=N-ground`` with the scenery's upper and lower ground);
+    * ``OUT.step --ring=N250 [--clearance=MODE] [--detail=…]`` — the whole helix ring
+      (``--ring=N250-ground`` with the scenery's upper and lower ground);
     * ``OUT.svg …`` — the same, drawn as a 3D line drawing; ``--deck`` adds
       the decks.
 
@@ -1052,7 +1059,7 @@ def main(argv=None):
     if not argv or argv[0].startswith("-"):
         print(__doc__.split("\n\n")[0])
         print("usage: python -m boxes.generators._hexmo_step OUT.step|OUT.svg "
-              "[--ring=N|N-ground|N250|N250-ground|HO|HO-ground] [--clearance=under|all|none] [--detail=exact|simple] "
+              "[--ring=N250|N250-ground|HO|HO-ground] [--clearance=under|all|none] [--detail=exact|simple] "
               "[--deck] [--option=value …]")
         return 2
     clearance, ring, detail, deck = "under", None, "exact", False

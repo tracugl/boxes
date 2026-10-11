@@ -38,9 +38,11 @@ from boxes.generators.hexmohexagon import HexmoHexagon
 from boxes.generators.hexmorectangle import HexmoRectangle
 
 T = 3.0
-N_HEX = ["--radius=220", "--thickness=3", "--h=100"]
+# N-sized: a 30 mm lower track and a 43 mm train envelope (the defaults are HO).
+N_HEX = ["--radius=220", "--thickness=3", "--h=100", "--under_track_width=30", "--train_envelope=43"]
 # Three column compartments → two short (horizontal) dividers.
-N_RECT = ["--radius=220", "--thickness=3", "--h=100", "--num_columns=3"]
+N_RECT = ["--radius=220", "--thickness=3", "--h=100", "--num_columns=3",
+          "--under_track_width=30", "--train_envelope=43"]
 WIDTH = 30.0          # default opening width
 ENVELOPE = 43.0       # track (3) + a 40 mm train: the automatic opening height
 
@@ -73,7 +75,8 @@ def rendered(cls, args):
     box.open()
     box.render()
     box.close()
-    width = getattr(box, "under_track_width", WIDTH)
+    # Openings are cut wider than the track, for long cars on curves.
+    width = box._passWidth() if hasattr(box, "_passWidth") else WIDTH
     openings = [c for c in calls
                 if min(c[2], c[3]) > 10 and pytest.approx(width) in (c[2], c[3])]
     return box, openings, circles[0]
@@ -107,7 +110,8 @@ class TestHexagon:
         bottom, top = hex_span(opening)
         assert top == pytest.approx(l - T)    # one thickness of wall under the deck
         assert bottom == pytest.approx(l - T - ENVELOPE)
-        assert opening[3] == pytest.approx(WIDTH)
+        # The track's 30 mm plus a sixth each side, for long cars on curves.
+        assert opening[3] == pytest.approx(WIDTH * 4 / 3)
 
     def test_opening_is_on_the_wall_centre_line(self) -> None:
         box, (opening,), _ = rendered(HexmoHexagon, N_HEX + ["--under_track_edges=1"])
@@ -122,7 +126,7 @@ class TestHexagon:
         bottom, top = hex_span(opening)
         assert bottom == pytest.approx(48.5)
         assert top == pytest.approx(100 - 2 * T - T)
-        assert opening[3] == pytest.approx(26)
+        assert opening[3] == pytest.approx(26 * 4 / 3)
 
     def test_several_edges(self) -> None:
         _, openings, _ = rendered(HexmoHexagon, N_HEX + ["--under_track_edges=1,4"])
@@ -130,7 +134,9 @@ class TestHexagon:
 
     def test_works_at_h80(self) -> None:
         _, (opening,), _ = rendered(HexmoHexagon, ["--radius=220", "--thickness=3",
-                                                   "--h=80", "--under_track_edges=1"])
+                                                   "--h=80", "--under_track_edges=1",
+                                                   "--under_track_width=30",
+                                                   "--train_envelope=43"])
         bottom, top = hex_span(opening)
         assert top == pytest.approx(80 - 3 * T)
         assert bottom == pytest.approx(80 - 3 * T - ENVELOPE)
@@ -195,10 +201,11 @@ class TestRectangle:
 class TestTrainEnvelope:
     """--train_envelope: the room a lower track needs above its track height."""
 
-    def test_default_is_43(self) -> None:
+    def test_default_is_70(self) -> None:
+        # The defaults are HO-sized: HO track and its tallest trains.
         box = HexmoHexagon()
-        box.parseArgs(N_HEX)
-        assert box.train_envelope == 43.0
+        box.parseArgs([])
+        assert box.train_envelope == 70.0
 
     def test_sets_the_automatic_opening_height(self) -> None:
         _, (opening,), _ = rendered(HexmoHexagon, N_HEX + ["--under_track_edges=1",

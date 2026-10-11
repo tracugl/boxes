@@ -228,9 +228,11 @@ class TestTurnedSupports:
         assert calls == [(-27.5, -45.0, 55.0, 0)] * 2
 
     def test_m1_with_both_supports_on_a_spoke_floor(self) -> None:
-        deck, _, walls = support_parts(self.M1_SPOKE + ["--support_edges=4@125,4@45/90"])
+        # 40 mm out: clear of the spur's slot, which is cut wider than its
+        # track for long cars on curves (45 now reaches into it).
+        deck, _, walls = support_parts(self.M1_SPOKE + ["--support_edges=4@125,4@40/90"])
         assert walls == 2
-        assert [d for _, d in deck] == pytest.approx([45.0, 125.0], abs=0.01)
+        assert [d for _, d in deck] == pytest.approx([40.0, 125.0], abs=0.01)
 
     def test_turned_support_over_a_kite_is_refused(self) -> None:
         args = [a for a in self.M1_SPOKE if a != "--spoke_width=60"] + ["--spoke_width=30"]

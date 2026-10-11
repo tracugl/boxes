@@ -8,17 +8,14 @@ deck to the lower level, which leaves under M6's deck at edge 1.  The README's
 "Riser boards" section explains the numbers; these are the same settings, at
 h=80.
 
-The ring comes in two module sizes, each built by :func:`helix_ring`:
+The N ring is ``radius=250`` (spur curve about R300, main line R353), with a
+20 mm straight where each track crosses a joint, built by :func:`helix_ring`.
+The spur falls at a steady 2.28 %, leaving 3 mm spare headroom where it runs
+under M6's deck and 4 mm under the entry.  (An earlier ``radius=220`` ring,
+with the kite floor, has been retired.)
 
-* ``radius=220``: the original ring (its spur curve is about R245), with a
-  26 mm straight where each track crosses a joint;
-* ``radius=250``: bigger curves (spur about R300, main line R353), for 14 %
-  more floor, with a 20 mm straight at each joint.  Its longer run lets the
-  spur end lower at a gentler grade (2.28 % rather than 2.47 %), leaving 3 mm
-  spare headroom where it runs under M6's deck and 4 mm under the entry.
-
-Only a few numbers depend on the size; they are worked out once per size and
-kept here (see :class:`RingSize`), so the presets are plain data.
+The few numbers that depend on the module size are worked out once and kept
+here (see :class:`RingSize`), so the presets are plain data.
 
 Each entry is the generator's own command-line options.
 
@@ -51,11 +48,7 @@ class RingSize:
       web between the two slots;
     * the return then runs down to ``exit`` at edge 1, at most 27.8 (the most
       that fits a train under the entry rectangle's deck).  It is also the
-      lower ground's height in the scenery ring;
-    * the trapezoids' supports (``supports``, the 220 ring's kite floor only;
-      the access-wall rings' track-following floor places its own): one
-      radial just past the spur's slot, and one turned across the half-spoke
-      just inside the main line.
+      lower ground's height in the scenery ring.
 
     @ivar radius     - Module outside radius (``--radius``).
     @ivar lead_in    - The straight where each track crosses a joint
@@ -64,16 +57,10 @@ class RingSize:
     @ivar joints     - The spur's height at each joint: M6/M1, M1/M2 … M5/M6.
     @ivar spur_start - Where the spur's riser starts on M6 (mm along 1:0-5:17.5).
     @ivar return_end - Where the return's deck slot ends on M6 (mm along 3:35-1:0).
-    @ivar supports   - The trapezoids' --support_edges.
     @ivar slot_height - The spur's height where the return's slot ends on M6.
     @ivar exit       - The lower level's height leaving M6 at edge 1.
     @ivar subway     - Carry the lower level through the entry rectangle on a
                        level bed and supports (--subway), at the exit height.
-    @ivar access     - Access walls (--access_openings and --subway_ports,
-                       both on by default): hand-access openings in every
-                       wall, with the subway opening and its cable slot in
-                       the middle post.  Off pins the original walls (the
-                       220 ring, kept as it was built).
     """
 
     radius: float
@@ -81,29 +68,21 @@ class RingSize:
     joints: tuple
     spur_start: float
     return_end: float
-    supports: str
     slot_height: float = 31
     exit: float = 27.8
     subway: bool = False
-    access: bool = False
 
 
-SIZE_220 = RingSize(220, 26, (74, 66.1, 58.5, 50.8, 43.2, 35.6), 169, 186, "4@132,4@30/90")
-# One steady 2.28 % grade, leaving 46 mm headroom under M6's deck (3 more than
-# a train needs) and 47.2 mm under the entry rectangle's.
-SIZE_250 = RingSize(250, 20, (74, 65.6, 57.6, 49.5, 41.4, 33.3), 178, 233, "4@140,4@38/90",
-                    slot_height=28, exit=23.8, subway=True, access=True)
+# One steady 2.28 % grade, leaving 45.5 mm headroom under M6's deck (2.5 more
+# than a train needs) and 47.2 mm under the entry rectangle's.  The return's
+# slot ends at 210 (not further), so the two slots on M6, cut wider than the
+# track for long cars on curves, still leave a 10 mm web of deck between them.
+SIZE_250 = RingSize(250, 20, (74, 65.6, 57.6, 49.5, 41.4, 33.3), 178, 210,
+                    slot_height=28.5, exit=23.8, subway=True)
 
-
-def _walls(size):
-    """The wall options for a size.
-
-    @param size - :class:`RingSize`.
-    @returns Access walls with subway ports, or the original walls.
-    """
-    if size.access:
-        return ["--access_openings=1", "--subway_ports=1"]
-    return ["--access_openings=0", "--subway_ports=0"]
+# Access walls (hand-access openings in every wall, with the subway opening
+# and its cable slot in the middle post).
+_WALLS = ["--access_openings=1", "--subway_ports=1"]
 
 
 def helix_ring(size):
@@ -113,21 +92,20 @@ def helix_ring(size):
     @returns ``{"M1": [...], …, "M6": [...]}``: HexmoHexagon options.
     """
     common = [f"--radius={size.radius:g}", "--thickness=3", "--h=80", "--edge_width=22",
-              # The access-wall ring has the track-following floor, whose
-              # supports place themselves; the 220 ring keeps the kite floor
-              # and its half-spoke supports, as it was built.
-              "--spoke_width=60", f"--bottom={'spoke' if size.access else 'kites'}",
+              # The track-following floor, whose supports place themselves.
+              "--spoke_width=60", "--bottom=spoke",
               "--support_length=55",
               f"--track_lead_in={size.lead_in:g}",
               "--track_width=17", "--under_track_width=35",
               # Every subway opening at the lower level's exit height, so they
               # line up all round (M6's edge 1 is the lower level's own).
               f"--under_track_height={size.exit:g}",
+              # N track and a 40 mm train (the default is HO's).
+              "--train_envelope=43",
               # A cutout in the middle of the hexagon saves next to nothing
               # at N's size.
-              "--center_cutout=0"] + _CUT + _walls(size)
-    trapezoid = common + ["--trapezoid=1"] + (
-        [] if size.access else [f"--support_edges={size.supports}"])
+              "--center_cutout=0"] + _CUT + _WALLS
+    trapezoid = common + ["--trapezoid=1"]
     j = size.joints
     ring = {"M1": trapezoid + [
         "--track_routes=3:17.5-5:17.5,3:-17.5-5:-35",
@@ -144,7 +122,7 @@ def helix_ring(size):
             f"--risers=3:-35-5:-35~{a:g}..{b:g}/35"]
     s, e = size.spur_start, size.return_end
     h, x = size.slot_height, size.exit
-    ring["M6"] = common + ([] if size.access else ["--support_edges=2,4,6"]) + [
+    ring["M6"] = common + [
         "--track_routes=1:-35-5:-17.5,3:-17.5-1:-35,1:0-5:17.5",
         "--under_track_edges=1",
         f"--track_openings=5:17.5:74:35,3:-35:{j[5]:g}:35",
@@ -168,8 +146,12 @@ def helix_entry(size):
             "--num_columns=2", "--track_width=17", f"--track_lead_in={size.lead_in:g}",
             "--under_track=1",
             f"--under_track_height={size.exit:g}", "--under_track_width=35",
-            "--turnouts=10:0:-35,133.7:0:35"] + _CUT + (
-        [f"--subway={size.exit:g}"] if size.subway else []) + _walls(size)
+            "--train_envelope=43",
+            "--turnouts=10:0:-35,133.7:0:35",
+            # Peco N medium (SL-E395/396); the defaults are HO's.
+            "--turnout_length=123.7", "--turnout_radius=457", "--turnout_angle=14",
+            "--turnout_reverse_radius=300"] + _CUT + (
+        [f"--subway={size.exit:g}"] if size.subway else []) + _WALLS
 
 
 def with_ground(ring, size):
@@ -196,13 +178,15 @@ def with_ground(ring, size):
 # One steady 1.89 % grade from the M6/M1 joint (88, on the wall tops) to M6's
 # edge 1 (6: the bed lying on the floor), over the routes' 4336 mm: M1 722.4,
 # M2–M5 695.0 each, M6's return 833.6.  Under M6's deck (past the return's
-# slot, @490) the track is at most 12.5, leaving the 70 mm train envelope
-# room under the 88 mm deck underside.  The return's riser has supports down to
+# slot, @450) the track is at most 13.3, leaving the 70 mm train envelope
+# room under the 88 mm deck underside.  The slot ends there (not further) so the
+# two slots on M6, cut wider than the track for long cars on curves, still
+# leave a 10 mm web of deck between them.  The return's riser has supports down to
 # 12 (2t); its bed then slopes the last ~330 mm onto the floor strip at edge 1.
 # Every module after the helix carries the lower level on the floor (a flat
 # bed on the floor strip, --subway 6), so needs no supports.
 _HO_JOINTS = (88, 74.3, 61.2, 48.1, 34.9, 21.8)
-_HO_UNDER_DECK = 12.5         # the return's height where its deck slot ends
+_HO_UNDER_DECK = 13.3         # the return's height where its deck slot ends
 _HO_FLOOR = 6                 # the lower level: one thickness, on the floor
 
 # The HO README's cut settings, with every subway opening at the floor level.
@@ -213,7 +197,8 @@ _HO_COMMON = ["--radius=500", "--h=100", "--thickness=6", "--edge_width=50",
               "--track_lines=1", "--draw_track=1", "--track_width=30",
               "--track_lead_in=23", "--support_length=100", "--train_envelope=70",
               "--under_track_width=60", f"--under_track_height={_HO_FLOOR}",
-              "--access_openings=1", "--subway_ports=1", "--labels=0", "--reference=0"]
+              "--access_openings=1", "--subway_ports=1", "--track_guide=1",
+              "--track_template=1", "--labels=0", "--reference=0"]
 
 
 def helix_ring_ho():
@@ -240,9 +225,9 @@ def helix_ring_ho():
         "--track_routes=1:-80-5:-40,3:-40-1:-80,1:0-5:40",
         "--under_track_edges=1",
         f"--track_openings=5:40:88:60,3:-80:{j[5]:g}:60",
-        "--deck_slots=1:0-5:40@327../60,3:80-1:0@..490/60",
-        f"--risers=1:0-5:40@327..~94..88/60,3:80-1:0@..490~{j[5]:g}..{u:g}/60,"
-        f"3:80-1:0@490..~{u:g}..{f:g}/60"]
+        "--deck_slots=1:0-5:40@327../60,3:80-1:0@..450/60",
+        f"--risers=1:0-5:40@327..~94..88/60,3:80-1:0@..450~{j[5]:g}..{u:g}/60,"
+        f"3:80-1:0@450..~{u:g}..{f:g}/60"]
     return ring
 
 
@@ -267,9 +252,11 @@ def helix_ring_ho_ground():
 def helix_entry_ho():
     """The HO ring's entry rectangle at M6 edge 1.
 
-    M6's three deck tracks (±80 and the centre line) run straight on, the
-    lower level on the floor underneath.  No turnouts: --turnouts models
-    Peco's N medium turnout only.
+    Two Peco HO medium turnouts (SL-E95/96, the --turnout defaults) split the
+    entry line into M6's three deck tracks, as on the N ring: T1 (toe 10 mm
+    in) sends one loop leg to −80, T2 (toe at T1's heel, 229) the other to
+    +80, and the centre line runs on as the spur.  The lower level runs on the
+    floor underneath.
 
     @returns HexmoRectangle options.
     """
@@ -277,21 +264,15 @@ def helix_entry_ho():
             if not a.startswith(("--edge_width", "--bottom", "--top", "--support_length",
                                  "--train_envelope"))] + [
         "--slot_tolerance=1", "--num_columns=3", "--num_rows=3",
-        "--track_line_count=3", "--track_spacing=80",
+        "--turnouts=10:0:-80,229:0:80",
         "--under_track=1", f"--subway={_HO_FLOOR}/60"]
 
-
-HELIX_RING_N = helix_ring(SIZE_220)
-HELIX_ENTRY_N = helix_entry(SIZE_220)
-HELIX_RING_N_GROUND = with_ground(HELIX_RING_N, SIZE_220)
 
 HELIX_RING_N250 = helix_ring(SIZE_250)
 HELIX_ENTRY_N250 = helix_entry(SIZE_250)
 HELIX_RING_N250_GROUND = with_ground(HELIX_RING_N250, SIZE_250)
 
-RINGS = {"N": (HELIX_RING_N, HELIX_ENTRY_N),
-         "N-ground": (HELIX_RING_N_GROUND, HELIX_ENTRY_N),
-         "N250": (HELIX_RING_N250, HELIX_ENTRY_N250),
+RINGS = {"N250": (HELIX_RING_N250, HELIX_ENTRY_N250),
          "N250-ground": (HELIX_RING_N250_GROUND, HELIX_ENTRY_N250),
          "HO": (helix_ring_ho(), helix_entry_ho()),
          "HO-ground": (helix_ring_ho_ground(), helix_entry_ho())}

@@ -33,25 +33,27 @@ from hexmo_testutil import IGNORE_CORE_MATMUL
 pytestmark = IGNORE_CORE_MATMUL
 
 from boxes.generators import _hexmo_step
-from boxes.generators._hexmo_helix_ring import HELIX_RING_N
+from boxes.generators._hexmo_helix_ring import HELIX_RING_N250
 from boxes.generators._hexmo_track_routes import route_geometry
 from boxes.generators._hexmo_deck_slots import centreline_points
 from boxes.generators.hexmohexagon import HexmoHexagon
 
 T = 3.0
-GROUND = 27.8
+GROUND = 23.8
 BODY = GROUND - T
 L = 74.0
-SLOT = 35.0
-# The deck's inner radius r (220 outside, less t / cos 30°) and apothem.
-R_IN = 220 - T / math.cos(math.radians(30))
+# The spur's deck slot as cut: its 35 mm track plus room for long cars on
+# curves (a sixth of the width each side).
+SLOT = 35.0 * 4 / 3
+# The deck's inner radius r (250 outside, less t / cos 30°) and apothem.
+R_IN = 250 - T / math.cos(math.radians(30))
 APOTHEM = R_IN * math.sqrt(3) / 2
 SIDE_ORIG = R_IN
 
 
 def module(name, *extra):
     box = HexmoHexagon()
-    box.parseArgs(HELIX_RING_N[name] + [f"--lower_ground={GROUND:g}", *extra])
+    box.parseArgs(HELIX_RING_N250[name] + [f"--lower_ground={GROUND:g}", *extra])
     return box
 
 
@@ -87,7 +89,7 @@ def deck_frame(p):
 
 
 def slot_centre(start=3, so=-35, end=5, eo=-35):
-    return centreline_points(route_geometry(start, so, end, eo, APOTHEM, 26).segments)
+    return centreline_points(route_geometry(start, so, end, eo, APOTHEM, 20).segments)
 
 
 def distance(p, pts):
@@ -132,7 +134,7 @@ class TestOutlines:
 
     def test_off_by_default(self) -> None:
         box = HexmoHexagon()
-        box.parseArgs(HELIX_RING_N["M2"])
+        box.parseArgs(HELIX_RING_N250["M2"])
         assert "lower ground" not in frames(box)
 
 
@@ -163,8 +165,9 @@ class TestTrapezoid:
             assert not _inside(poly, mid)
 
     def test_spur_slot_is_not_cut_in_the_deck(self, m2) -> None:
-        # Only the deck's outline and the support's slot: no slot outline.
-        assert len(points(m2["deck"])) == 2
+        # Only the deck's outline: no slot outline (M2's support stands under
+        # the lower plate, so the deck has no support slot either).
+        assert len(points(m2["deck"])) == 1
 
     def test_the_riser_gets_its_own_bed(self, m2) -> None:
         assert any(n.startswith("riser bed") for n in m2)
@@ -176,7 +179,7 @@ class TestWalls:
         heights = [p[0] for p in outline(m2["wall edge 4"])]
         assert max(heights) == pytest.approx(BODY + T)      # fingers into the plate
 
-    @pytest.mark.parametrize("edge, band", [(3, 66.1), (5, 58.5)])
+    @pytest.mark.parametrize("edge, band", [(3, 65.6), (5, 57.6)])
     def test_side_walls_step(self, m2, edge, band) -> None:
         pts = outline(m2[f"wall edge {edge}"])
         inward = -1 if edge == 3 else 1
@@ -208,9 +211,11 @@ class TestWalls:
                 xs, ys = [p[0] for p in loop], [p[1] for p in loop]
                 centres.append((round((min(xs) + max(xs)) / 2, 1), round((min(ys) + max(ys)) / 2, 1)))
             return centres
-        m2_5 = holes("M2", 5)
+        m2_5 = sorted(holes("M2", 5))
         m3_3 = sorted((x, round(SIDE_ORIG - y, 1)) for x, y in holes("M3", 3))
-        assert sorted(m2_5) == pytest.approx(m3_3, abs=0.2)
+        assert len(m2_5) == len(m3_3)
+        for a, b in zip(m2_5, m3_3):
+            assert math.dist(a, b) <= 0.2
 
     def test_no_hole_crosses_the_lowered_top(self, m2) -> None:
         for edge in (3, 4, 5):
@@ -225,17 +230,23 @@ class TestWalls:
 class TestSupports:
 
     def test_support_under_the_plate_is_shortened(self, m2) -> None:
-        heights = [p[1] for p in outline(m2["support edge 4"])]
+        # M2's one support, down its middle line, stands under the lower plate.
+        heights = [p[1] for p in outline(m2["support 1"])]
         assert max(heights) == pytest.approx(BODY + T)
 
-    def test_support_under_the_deck_is_unchanged(self, m2) -> None:
-        heights = [p[1] for p in outline(m2["support edge 4 #2"])]
-        assert max(heights) == pytest.approx(L + T)
+    def test_support_under_the_deck_is_unchanged(self) -> None:
+        # M6 has no lower plate: its supports stay full height, under the deck.
+        m6 = frames(module("M6"))
+        supports = [n for n in m6 if n.startswith("support ")]
+        assert supports
+        for name in supports:
+            assert max(p[1] for p in outline(m6[name])) == pytest.approx(L + T)
 
     def test_each_panel_carries_its_own_supports_slots(self, m2) -> None:
-        # The lower plate: outline and the shortened support's slot.
+        # The lower plate: outline and the shortened support's slot; the deck
+        # has only its outline.
         assert len(points(m2["lower ground"])) == 2
-        assert len(points(m2["deck"])) == 2
+        assert len(points(m2["deck"])) == 1
 
 
 class TestLowerPlateIsSolid:
@@ -256,7 +267,7 @@ class TestUpperEdgeGap:
 
     def test_edge_follows_the_main_line(self) -> None:
         f = frames(module("M2", "--upper_edge_gap=5"))["deck"]
-        main = centreline_points(route_geometry(3, 17.5, 5, 17.5, APOTHEM, 26).segments)
+        main = centreline_points(route_geometry(3, 17.5, 5, 17.5, APOTHEM, 20).segments)
         deck = [deck_frame(p) for p in outline(f)]
         inner = [p for p in deck if abs(p[0]) < 100 and p[1] < -20]   # the curved edge
         assert min(distance(p, main) for p in inner) == pytest.approx(17 / 2 + 5, abs=0.05)
@@ -295,13 +306,13 @@ class TestErrors:
 
     def test_needs_the_spur_slot(self) -> None:
         box = HexmoHexagon()
-        box.parseArgs(["--trapezoid=1", "--lower_ground=27.8"])
+        box.parseArgs(["--trapezoid=1", "--lower_ground=23.8"])
         with pytest.raises(ValueError, match="deck slot"):
             box.open(); box.render()
 
     def test_needs_the_spur_openings(self) -> None:
         box = HexmoHexagon()
-        box.parseArgs(["--lower_ground=27.8"])
+        box.parseArgs(["--lower_ground=23.8"])
         with pytest.raises(ValueError, match="track_openings on edge 3"):
             box.open(); box.render()
 
@@ -313,15 +324,15 @@ class TestErrors:
 
     def test_gap_without_lower_ground(self) -> None:
         box = HexmoHexagon()
-        box.parseArgs(HELIX_RING_N["M2"] + ["--upper_edge_gap=5"])
+        box.parseArgs(HELIX_RING_N250["M2"] + ["--upper_edge_gap=5"])
         with pytest.raises(ValueError, match="only applies with --lower_ground"):
             box.open(); box.render()
 
     def test_support_neither_under_plate_nor_deck(self) -> None:
-        # Turned across the spoke 55 mm out: clear of the spur's slot, but with
-        # a 15 mm gap the deck's edge is further out than it.
-        box = module("M2", "--upper_edge_gap=15")
-        box.support_edges = "4@132,4@55/90"
+        # On the kite floor, turned across the spoke 60 mm out: clear of the
+        # spur's slot, but with a 15 mm gap the deck's edge is further out.
+        box = module("M2", "--upper_edge_gap=15", "--bottom=kites")
+        box.support_edges = "4@150,4@60/90"
         with pytest.raises(ValueError, match="neither under the lower plate nor under the deck"):
             box.open(); box.render()
 
@@ -332,8 +343,8 @@ class TestErrors:
             box.open(); box.render()
 
     @pytest.mark.parametrize("edit", [
-        {"track_openings": "3:-35:66.1:35,5:35:58.5:35,4:0:5:10"},
-        {"under_track_edges": "4", "under_track_height": 27.8}])
+        {"track_openings": "3:-35:65.6:35,5:35:57.6:35,4:0:5:10"},
+        {"under_track_edges": "4", "under_track_height": 23.8}])
     def test_opening_on_the_lowered_edge_4(self, edit) -> None:
         box = module("M2")
         for k, v in edit.items():
@@ -349,7 +360,7 @@ class Test3D:
         del bd
         parts = {p.name: p for p in _hexmo_step.exact_hexmo_parts(module("M2"), clearance="none")}
         plate = parts["lower ground"]
-        for other in ("wall edge 3", "wall edge 4", "wall edge 5", "support edge 4"):
+        for other in ("wall edge 3", "wall edge 4", "wall edge 5", "support 1"):
             common = plate.solid & parts[other].solid
             assert (sum(s.volume for s in common.solids()) if common else 0.0) < 5.0
         bb = plate.solid.bounding_box()
@@ -369,12 +380,12 @@ class TestRing:
 
     def test_tracks_still_meet_at_every_joint(self) -> None:
         pytest.importorskip("build123d")
-        ends = _hexmo_step.ring_track_ends("N-ground")
+        ends = _hexmo_step.ring_track_ends("N250-ground")
         unmatched = sorted(
             (m, round(z, 1)) for i, (m, p, z) in enumerate(ends)
             if not any(j != i and mm != m and math.dist(pp, p) < 0.5 and abs(zz - z) < 0.05
                        for j, (mm, pp, zz) in enumerate(ends)))
-        assert unmatched == [("M6", 27.8), ("entry", 77.0)]
+        assert unmatched == [("M6", 23.8), ("entry", 77.0)]
 
     def test_simple_parts_refuse(self) -> None:
         pytest.importorskip("build123d")
@@ -387,9 +398,9 @@ def test_m1_with_the_preset_gap_builds_in_3d() -> None:
     # offset to the spur slot's edge; the switch must not leave an edge too
     # short to model (the 3D faces need closed outlines).
     pytest.importorskip("build123d")
-    from boxes.generators._hexmo_helix_ring import HELIX_RING_N_GROUND
+    from boxes.generators._hexmo_helix_ring import HELIX_RING_N250_GROUND
     box = HexmoHexagon()
-    box.parseArgs(HELIX_RING_N_GROUND["M1"])
+    box.parseArgs(HELIX_RING_N250_GROUND["M1"])
     parts = {p.name: p for p in _hexmo_step.exact_hexmo_parts(box, clearance="none")}
     assert parts["deck"].solid.is_valid
 
@@ -419,7 +430,7 @@ def test_deck_fingers_match_across_every_joint(left, right) -> None:
     # one's edge-3 wall.  With --upper_edge_gap the trapezoids' deck joints are
     # shorter; M6, given the same gap, starts its joints at the same place, so
     # the fingers line up (M6's deck is left whole and cut back by hand).
-    from boxes.generators._hexmo_helix_ring import HELIX_RING_N_GROUND as ring
+    from boxes.generators._hexmo_helix_ring import HELIX_RING_N250_GROUND as ring
     a = _deck_fingers(ring[left], 5)
     b = _deck_fingers(ring[right], 3, mirror=True)
     assert a and a == pytest.approx(b, abs=0.05)

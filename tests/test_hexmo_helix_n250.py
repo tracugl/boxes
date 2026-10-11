@@ -28,8 +28,7 @@ pytestmark = IGNORE_CORE_MATMUL
 
 from boxes.generators import _hexmo_step
 from boxes.generators._hexmo_helix_ring import (
-    HELIX_ENTRY_N, HELIX_ENTRY_N250, HELIX_RING_N, HELIX_RING_N250, HELIX_RING_N250_GROUND,
-    SIZE_250,
+    HELIX_ENTRY_N250, HELIX_RING_N250, HELIX_RING_N250_GROUND, SIZE_250,
 )
 from boxes.generators._hexmo_risers import point_at
 from boxes.generators._hexmo_track_routes import route_geometry
@@ -59,32 +58,22 @@ def open_ends(box):
 
 class TestPresets:
 
-    def test_220_ring_unchanged(self) -> None:
-        # Spot checks of the original ring's hand-worked numbers.
-        assert "--radius=220" in HELIX_RING_N["M1"]
-        assert "--support_edges=4@132,4@30/90" in HELIX_RING_N["M3"]
-        assert "--risers=3:-35-5:-35~58.5..50.8/35" in HELIX_RING_N["M3"]
-        assert ("--deck_slots=1:0-5:17.5@169../35,3:35-1:0@..186/35"
-                in HELIX_RING_N["M6"])
-        assert "--radius=220" in HELIX_ENTRY_N
-
     def test_250_ring_numbers(self) -> None:
         assert "--radius=250" in HELIX_RING_N250["M2"]
         assert "--track_lead_in=20" in HELIX_RING_N250["M2"]
         assert "--risers=3:-35-5:-35~65.6..57.6/35" in HELIX_RING_N250["M2"]
-        assert ("--risers=1:0-5:17.5@178..~77..74/35,3:35-1:0@..233~33.3..28/35,"
-                "3:35-1:0@233..~28..23.8/35") in HELIX_RING_N250["M6"]
+        assert ("--risers=1:0-5:17.5@178..~77..74/35,3:35-1:0@..210~33.3..28.5/35,"
+                "3:35-1:0@210..~28.5..23.8/35") in HELIX_RING_N250["M6"]
         assert "--under_track_height=23.8" in HELIX_RING_N250["M6"]
         assert "--under_track_height=23.8" in HELIX_ENTRY_N250
         assert "--lower_ground=23.8" in HELIX_RING_N250_GROUND["M3"]
         assert "--radius=250" in HELIX_ENTRY_N250
         assert "--track_lead_in=20" in HELIX_ENTRY_N250
-        assert "--track_lead_in=26" in HELIX_RING_N["M2"]
 
     def test_250_joints_are_one_steady_grade(self) -> None:
-        # 74 at the M6/M1 joint down to 28.0 at the end of the return's slot
-        # (46 mm under M6's 74 mm deck underside: 3 spare over a 43 mm train),
-        # and on at the same grade to the 23.8 exit at edge 1.
+        # 74 at the M6/M1 joint down to 28.5 at the end of the return's slot
+        # (45.5 mm under M6's 74 mm deck underside: 2.5 spare over a 43 mm
+        # train), and on at the same grade to the 23.8 exit at edge 1.
         apothem = (250 - 3 / math.cos(math.radians(30))) * math.sqrt(3) / 2
 
         def length(*route):
@@ -95,7 +84,7 @@ class TestPresets:
         for run in [m1] + [m2] * 4:
             expect.append(expect[-1] - grade * run)
         assert list(SIZE_250.joints) == pytest.approx(expect, abs=0.06)
-        assert 74 - SIZE_250.slot_height == pytest.approx(46)
+        assert 74 - SIZE_250.slot_height == pytest.approx(45.5)
         ret = length(3, 35, 1, 0)
         assert SIZE_250.exit == pytest.approx(
             SIZE_250.slot_height - grade * (ret - SIZE_250.return_end), abs=0.06)
@@ -142,9 +131,9 @@ class TestN250Ring:
 
     def test_m6_spur_starts_clear_of_the_return(self) -> None:
         # The spur's riser starts 178 mm along its route on M6; much earlier
-        # and its first support would stand in the return's track.
+        # (150) and its first support would stand in the return's track.
         box = HexmoHexagon()
-        box.parseArgs([a.replace("@178", "@166") for a in HELIX_RING_N250["M6"]])
+        box.parseArgs([a.replace("@178", "@150") for a in HELIX_RING_N250["M6"]])
         with pytest.raises(ValueError, match="would stand in the track"):
             box.open()
             box.render()

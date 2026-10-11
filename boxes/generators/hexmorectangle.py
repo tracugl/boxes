@@ -398,7 +398,7 @@ class HexmoRectangle(HexmoStepFormatMixin, HexmoBigHoleMixin, HexmoTrackGuideMix
             help="Physical width (mm) of the laid track/roadbed, used by "
                  "--draw_track for the footprint edges.  30 mm HO, 17 mm N.")
         self.argparser.add_argument(
-            "--track_lead_in", action="store", type=float, default=30.0,
+            "--track_lead_in", action="store", type=float, default=23.0,
             help="Distance (mm) in from each short-wall end at which the "
                  "entry/exit crossing tick is drawn (see --track_crossing).")
         self.argparser.add_argument(
@@ -416,20 +416,22 @@ class HexmoRectangle(HexmoStepFormatMixin, HexmoBigHoleMixin, HexmoTrackGuideMix
                  "the helix ring's entry: '10:0:-35,133.7:0:35'.  Blank (default): "
                  "none.")
         self.argparser.add_argument(
-            "--turnout_length", action="store", type=float, default=123.7,
-            help="Turnout length, toe to heel (mm).  Default: Peco N medium "
-                 "(SL-E395/396).")
+            "--turnout_length", action="store", type=float, default=219.0,
+            help="Turnout length, toe to heel (mm).  Default: Peco HO medium "
+                 "(SL-E95/96, Code 100); Peco N medium (SL-E395/396) is 123.7.")
         self.argparser.add_argument(
-            "--turnout_radius", action="store", type=float, default=457.0,
-            help="Radius (mm) of the turnout's diverging road.  Default: Peco N "
-                 "medium.")
+            "--turnout_radius", action="store", type=float, default=914.0,
+            help="Radius (mm) of the turnout's diverging road.  Default: Peco HO "
+                 "medium (36\"); Peco N medium is 457.")
         self.argparser.add_argument(
-            "--turnout_angle", action="store", type=float, default=14.0,
-            help="Turnout crossing angle (degrees).  Default: Peco N medium.")
+            "--turnout_angle", action="store", type=float, default=12.0,
+            help="Turnout crossing angle (degrees).  Default: Peco HO medium; "
+                 "Peco N medium is 14.")
         self.argparser.add_argument(
-            "--turnout_reverse_radius", action="store", type=float, default=300.0,
+            "--turnout_reverse_radius", action="store", type=float, default=700.0,
             help="Radius (mm) of the flexible-track curve that brings a "
-                 "diverging leg back parallel at its offset.")
+                 "diverging leg back parallel at its offset.  Default: 700, the "
+                 "HO modules' curve; N uses 300.")
         # --track_guide / --track_guide_clearance, shared with HexmoHexagon so
         # both generators cut the same guide plate.
         self._addTrackGuideArgs()
@@ -538,13 +540,13 @@ class HexmoRectangle(HexmoStepFormatMixin, HexmoBigHoleMixin, HexmoTrackGuideMix
         t = self.thickness
         self._checkUnderTrackClearsCorners(s_hex)
         bottom, top = self._underTrackSpan(l_eff)
-        half = self.under_track_width / 2
+        half = self._passWidth() / 2
         for i in range(n_div_v):
             if abs(under_x - lane_pos(i)) < half + t / 2 + self._MIN_CLEAR:
                 raise ValueError(
                     "--under_track: a long support (--num_rows "
                     f"{n_rows}) crosses the end walls within the "
-                    f"{self.under_track_width:g} mm opening; use an odd "
+                    f"{self._passWidth():.1f} mm opening; use an odd "
                     "--num_rows or a narrower --under_track_width.")
         return l_eff - top, l_eff - bottom
 
@@ -1592,10 +1594,10 @@ class HexmoRectangle(HexmoStepFormatMixin, HexmoBigHoleMixin, HexmoTrackGuideMix
             # corner radius below the bed's underside, its rounded corners
             # clear of the bed's (with --subway_ports it already runs nearly
             # to the floor).  y runs down from the deck.
-            corner = max(0.0, self.big_hole_roundness) * self.under_track_width / 2
+            corner = max(0.0, self.big_hole_roundness) * self._passWidth() / 2
             under_y = (under_y[0], min(l_eff - t, under_y[1] + t + corner))
         if under_y is not None:
-            half = self.under_track_width / 2
+            half = self._passWidth() / 2
             big_half = self._bigHoleHalfExtent(self._bigHoleRadius())[0]
             end_big_xs = [x for x in end_big_xs
                           if abs(x - under_x) >= half + big_half + self._MIN_CLEAR]
@@ -1720,8 +1722,8 @@ class HexmoRectangle(HexmoStepFormatMixin, HexmoBigHoleMixin, HexmoTrackGuideMix
         end_post = sw
         end_rects = []
         if under_y is not None:
-            end_post = max(end_post, self.under_track_width + 2 * self._UNDER_TRACK_CLEAR)
-            half = self.under_track_width / 2
+            end_post = max(end_post, self._passWidth() + 2 * self._UNDER_TRACK_CLEAR)
+            half = self._passWidth() / 2
             end_rects.append((under_x - half, under_x + half, *under_y))
         end_solid = ([(under_x - end_post / 2, under_x + end_post / 2)] if end_post > 0 else []) + [
             (lane_pos(i) - t / 2 - self._ACCESS_POST, lane_pos(i) + t / 2 + self._ACCESS_POST)
@@ -2016,7 +2018,7 @@ class HexmoRectangle(HexmoStepFormatMixin, HexmoBigHoleMixin, HexmoTrackGuideMix
                 spans = [(x - r4 - mc, x + r4 + mc) for x in bigs]
                 if under_y is not None and x_lo <= under_x <= x_hi:
                     self._drawUnderTrackOpening(under_x, *under_y, along_x=True)
-                    half = self.under_track_width / 2
+                    half = self._passWidth() / 2
                     spans = sorted(spans + [(under_x - half - mc, under_x + half + mc)])
                 los = [x_lo] + [hi for _, hi in spans]
                 his = [lo for lo, _ in spans] + [x_hi]

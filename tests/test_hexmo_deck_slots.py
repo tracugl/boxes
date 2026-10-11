@@ -179,7 +179,10 @@ class TestStripAtTheDeckEdge:
         box = HexmoHexagon()
         box.parseArgs(M1 + [M1_SLOT])
         box.open()
-        notches = {3: [(-17.5, 26.0, 7.5)], 5: [(35.0, 26.0, 15.0)]}
+        # The notches as the opening plan cuts them: the 26 mm track plus a
+        # sixth each side, for long cars on curves.
+        cut = 26.0 * 4 / 3
+        notches = {3: [(-17.5, cut, 7.5)], 5: [(35.0, cut, 15.0)]}
         (slot,) = box._deckSlotPlan(R_IN, True, notches)
         segments = slot["segments"]
         # Routes end at the wall's inner face (the apothem); the slot runs

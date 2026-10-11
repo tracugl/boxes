@@ -32,10 +32,16 @@ from boxes import boolarg
 class HexmoUnderTrackMixin:
     """Size, checks and drawing of the under-deck track opening."""
 
-    # Default --train_envelope: 3 mm of N track plus a 40 mm train.
-    _UNDER_TRACK_ENVELOPE = 43.0
+    # Default --train_envelope: HO track and its tallest trains, with a little
+    # margin (the generator's defaults are HO-sized; N uses 43: 3 mm of track
+    # plus a 40 mm train).
+    _UNDER_TRACK_ENVELOPE = 70.0
     # Minimum solid material between the opening and any other hole or slot.
     _UNDER_TRACK_CLEAR = 5.0
+    # Room either side of a track's width for long cars swinging out on
+    # curves (middles cut inside, ends swing outside), as a fraction of the
+    # width: see _passWidth.
+    _TRAIN_SWING = 1.0 / 6.0
     # --subway_ports: the upright cable slot at each end of an access wall
     # (length up the wall where it stands between a pilot pair, width; mm),
     # and the least wood between it and the pilots beside it.  Outside the
@@ -61,15 +67,18 @@ class HexmoUnderTrackMixin:
                  "0 (default) puts the track as high as still leaves "
                  "--train_envelope for the track and train.")
         self.argparser.add_argument(
-            "--under_track_width", action="store", type=float, default=30.0,
-            help="Under-deck track opening: width (mm) along the wall, centred on "
-                 "the wall's centre line (the track centreline).")
+            "--under_track_width", action="store", type=float, default=60.0,
+            help="The lower track's width (mm) for its under-deck opening, "
+                 "centred on the wall's centre line (the track centreline).  The "
+                 "opening is cut a sixth wider each side, for long cars swinging "
+                 "out on curves; it is also the default width for --track_openings "
+                 "and --deck_slots.")
         self.argparser.add_argument(
             "--train_envelope", action="store", type=float,
             default=self._UNDER_TRACK_ENVELOPE,
             help="Height (mm) a lower track needs above its track height: track "
-                 "plus the tallest train, with a little margin.  43 (default) is "
-                 "3 mm of N track and a 40 mm train; about 70 suits HO.  Sets the "
+                 "plus the tallest train, with a little margin.  70 (default) suits "
+                 "HO; 43 is 3 mm of N track and a 40 mm train.  Sets the "
                  "under-deck opening's automatic height, and whether a track "
                  "opening can be a closed hole or must be a notch open at the top.")
         self.argparser.add_argument(
@@ -156,11 +165,28 @@ class HexmoUnderTrackMixin:
         @throws ValueError - If the opening reaches into a corner group.
         """
         reach = 3 * self._SPACER + self._R2 + self._UNDER_TRACK_CLEAR
-        if s / 2.0 - self.under_track_width / 2.0 < reach:
+        if s / 2.0 - self._passWidth() / 2.0 < reach:
+            fits = (s - 2 * reach) / (1.0 + 2.0 * self._TRAIN_SWING)
             raise ValueError(
-                f"--under_track_width {self.under_track_width:g} mm runs into the "
-                f"wall's corner hole groups; at most {s - 2 * reach:.1f} mm fits "
-                "on this wall.")
+                f"--under_track_width {self.under_track_width:g} mm (a "
+                f"{self._passWidth():.1f} mm opening, with room for long cars on "
+                f"curves) runs into the wall's corner hole groups; at most "
+                f"{fits:.1f} mm fits on this wall.")
+
+    def _passWidth(self, width=None):
+        """How wide a passage a train needs where it goes through a board
+        (a wall opening, a deck slot): the track's width plus _TRAIN_SWING
+        of it each side, for long cars swinging out on curves.
+
+        An 89 ft car on the helix's tightest ramp curves (N R 283, HO R 580)
+        reaches 18.2 / 32.2 mm from the track's centre; 35 and 60 mm widths
+        become 46.7 and 80 mm passages (23.3 / 40 either side).
+
+        @param width - The track's width (default --under_track_width).
+        @returns The passage width.
+        """
+        width = self.under_track_width if width is None else width
+        return width * (1.0 + 2.0 * self._TRAIN_SWING)
 
     def _drawUnderTrackOpening(self, centre, lo, hi, along_x):
         """Cut the opening.
@@ -170,7 +196,7 @@ class HexmoUnderTrackMixin:
         @param along_x - True when the frame's x runs along the wall (rect
                          walls), False when x runs up the wall (hex side walls).
         """
-        width, span = self.under_track_width, hi - lo
+        width, span = self._passWidth(), hi - lo
         corner = max(0.0, self.big_hole_roundness) * min(width, span) / 2.0
         mid = (lo + hi) / 2.0
         if along_x:

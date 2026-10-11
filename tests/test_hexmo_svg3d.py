@@ -27,7 +27,7 @@ from hexmo_testutil import IGNORE_CORE_MATMUL
 pytestmark = IGNORE_CORE_MATMUL
 
 from boxes.generators import _hexmo_step
-from boxes.generators._hexmo_helix_ring import HELIX_ENTRY_N, HELIX_RING_N
+from boxes.generators._hexmo_helix_ring import HELIX_ENTRY_N250, HELIX_RING_N250
 from boxes.generators.hexmohexagon import HexmoHexagon
 from boxes.generators.hexmorectangle import HexmoRectangle
 
@@ -53,21 +53,21 @@ def test_offered_by_the_hexmo_generators(cls) -> None:
 
 def test_hexagon_drawing() -> None:
     pytest.importorskip("build123d")
-    svg = output(HexmoHexagon, HELIX_RING_N["M6"] + ["--format=svg_3d"])
+    svg = output(HexmoHexagon, HELIX_RING_N250["M6"] + ["--format=svg_3d"])
     assert b"<svg" in svg[:400] and lines(svg) > 50
 
 
 def test_rectangle_drawing() -> None:
     pytest.importorskip("build123d")
-    svg = output(HexmoRectangle, HELIX_ENTRY_N + ["--format=svg_3d"])
+    svg = output(HexmoRectangle, HELIX_ENTRY_N250 + ["--format=svg_3d"])
     assert b"<svg" in svg[:400] and lines(svg) > 10
 
 
 def test_deck_toggle() -> None:
     pytest.importorskip("build123d")
-    open_top = output(HexmoHexagon, HELIX_RING_N["M1"] + ["--format=svg_3d",
+    open_top = output(HexmoHexagon, HELIX_RING_N250["M1"] + ["--format=svg_3d",
                                                          "--step_detail=simple"])
-    decked = output(HexmoHexagon, HELIX_RING_N["M1"] + ["--format=svg_3d",
+    decked = output(HexmoHexagon, HELIX_RING_N250["M1"] + ["--format=svg_3d",
                                                        "--step_detail=simple", "--view_deck=1"])
     # The deck hides most of the inside, so the drawings differ.
     assert open_top != decked
@@ -78,7 +78,7 @@ def test_only_cut_parts_are_drawn() -> None:
     # ribbons or clearance boxes; the deck only when asked for.
     pytest.importorskip("build123d")
     box = HexmoHexagon()
-    box.parseArgs(HELIX_RING_N["M6"])
+    box.parseArgs(HELIX_RING_N250["M6"])
     parts = _hexmo_step.exact_hexmo_parts(box, clearance="all")
     drawn = _hexmo_step._drawn_parts(parts, deck=False)
     assert drawn and all(p.kind not in ("track", "clearance") for p in drawn)
