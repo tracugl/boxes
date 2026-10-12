@@ -8,7 +8,8 @@ deck to the lower level, which leaves under M6's deck at edge 1.  The README's
 "Riser boards" section explains the numbers; these are the same settings, at
 h=80.
 
-The N ring is ``radius=250`` (spur curve about R300, main line R353), with a
+The N ring is ``radius=250`` (spur curve about R300, main line R358, 22.5 mm
+out from the centre line to leave room for scenery beside the spur), with a
 20 mm straight where each track crosses a joint, built by :func:`helix_ring`.
 The spur falls at a steady 2.28 %, leaving 3 mm spare headroom where it runs
 under M6's deck and 4 mm under the entry.  (An earlier ``radius=220`` ring,
@@ -96,7 +97,9 @@ def helix_ring(size):
               "--spoke_width=60", "--bottom=spoke",
               "--support_length=55",
               f"--track_lead_in={size.lead_in:g}",
-              "--track_width=17", "--under_track_width=35",
+              # N track, and the N double-track spacing (40 mm, the default
+              # is HO's) for a module given more than one track line.
+              "--track_width=17", "--track_spacing=40", "--under_track_width=35",
               # Every subway opening at the lower level's exit height, so they
               # line up all round (M6's edge 1 is the lower level's own).
               f"--under_track_height={size.exit:g}",
@@ -108,7 +111,7 @@ def helix_ring(size):
     trapezoid = common + ["--trapezoid=1"]
     j = size.joints
     ring = {"M1": trapezoid + [
-        "--track_routes=3:17.5-5:17.5,3:-17.5-5:-35",
+        "--track_routes=3:22.5-5:22.5,3:-17.5-5:-35",
         f"--track_openings=3:-17.5:{j[0]:g}:35,5:35:{j[1]:g}:35",
         "--deck_slots=3:-17.5-5:-35/35",
         f"--risers=3:-17.5-5:-35~{j[0]:g}..{j[1]:g}/35"]}
@@ -116,14 +119,14 @@ def helix_ring(size):
         # M2–M5: the spur 35 mm in throughout.
         a, b = j[k - 1], j[k]
         ring[f"M{k}"] = trapezoid + [
-            "--track_routes=3:17.5-5:17.5,3:-35-5:-35",
+            "--track_routes=3:22.5-5:22.5,3:-35-5:-35",
             f"--track_openings=3:-35:{a:g}:35,5:35:{b:g}:35",
             "--deck_slots=3:-35-5:-35/35",
             f"--risers=3:-35-5:-35~{a:g}..{b:g}/35"]
     s, e = size.spur_start, size.return_end
     h, x = size.slot_height, size.exit
     ring["M6"] = common + [
-        "--track_routes=1:-35-5:-17.5,3:-17.5-1:-35,1:0-5:17.5",
+        "--track_routes=1:-40-5:-22.5,3:-22.5-1:-40,1:0-5:17.5",
         "--under_track_edges=1",
         f"--track_openings=5:17.5:74:35,3:-35:{j[5]:g}:35",
         f"--deck_slots=1:0-5:17.5@{s:g}../35,3:35-1:0@..{e:g}/35",
@@ -143,11 +146,12 @@ def helix_entry(size):
     @returns HexmoRectangle options.
     """
     return [f"--radius={size.radius:g}", "--thickness=3", "--h=80", "--num_rows=3",
-            "--num_columns=2", "--track_width=17", f"--track_lead_in={size.lead_in:g}",
+            "--num_columns=2", "--track_width=17", "--track_spacing=40",
+            f"--track_lead_in={size.lead_in:g}",
             "--under_track=1",
             f"--under_track_height={size.exit:g}", "--under_track_width=35",
             "--train_envelope=43",
-            "--turnouts=10:0:-35,133.7:0:35",
+            "--turnouts=10:0:-40,133.7:0:40",
             # Peco N medium (SL-E395/396); the defaults are HO's.
             "--turnout_length=123.7", "--turnout_radius=457", "--turnout_angle=14",
             "--turnout_reverse_radius=300"] + _CUT + (
@@ -158,15 +162,18 @@ def with_ground(ring, size):
     """The same ring opened up for scenery (--lower_ground).
 
     Upper ground on the deck, lower ground at the lower level's exit height
-    on the inner side of M1–M5, and M6's side walls stepped to meet them.  The trapezoids' decks stop 15 mm inside the main line's rail edge
-    (--upper_edge_gap), so there is little to sand away; M6 takes the same
-    gap, so its side walls' deck joints (and fingers) match its neighbours'.
+    on the inner side of M1–M5, and M6's side walls stepped to meet them.  The
+    trapezoids' decks stop 5 mm inside the main line's rail edge
+    (--upper_edge_gap): a narrow shoulder, leaving about 23 mm between a long
+    car on the spur and the deck edge for the scenery between the levels.  M6
+    takes the same gap, so its side walls' deck joints (and fingers) match
+    its neighbours'.
 
     @param ring - From :func:`helix_ring`.
     @param size - Its :class:`RingSize` (for the exit height).
     @returns The ring with the scenery options added.
     """
-    return {name: args + [f"--lower_ground={size.exit:g}", "--upper_edge_gap=15"]
+    return {name: args + [f"--lower_ground={size.exit:g}", "--upper_edge_gap=5"]
             for name, args in ring.items()}
 
 
@@ -233,11 +240,12 @@ def helix_ring_ho():
 
 # The HO ring opened up for scenery (see with_ground): the lower ground at the
 # spur's lowest trapezoid joint (M5/M6, 21.8), so it meets the track there and
-# the spur climbs above it everywhere else; the decks stop 25 mm inside the main
-# line (N's 15, scaled to HO's 30 mm track).  The track-following floor's
+# the spur climbs above it everywhere else; the decks stop 10 mm inside the main
+# line (a narrow shoulder, as N's 5, leaving about 67 mm between a long car on
+# the spur and the deck edge for scenery).  The track-following floor's
 # supports keep wholly under the deck or the lower plate by themselves.
 _HO_GROUND = 21.8
-_HO_EDGE_GAP = 25
+_HO_EDGE_GAP = 10
 
 
 def helix_ring_ho_ground():

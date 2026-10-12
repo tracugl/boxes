@@ -27,7 +27,7 @@ pytestmark = IGNORE_CORE_MATMUL
 
 from boxes.generators import _hexmo_step
 from boxes.generators._hexmo_helix_ring import (
-    HELIX_ENTRY_N250, HELIX_RING_N250, HELIX_RING_N250_GROUND,
+    HELIX_ENTRY_N250, HELIX_RING_N250, HELIX_RING_N250_GROUND, helix_entry_ho,
 )
 from boxes.generators.hexmohexagon import HexmoHexagon
 from boxes.generators.hexmorectangle import HexmoRectangle
@@ -102,6 +102,23 @@ class TestAccessOpenings:
         for x0, x1, _, _ in big(holes(BASE + ["--access_openings=1"], "long wall 1")):
             for a, _ in kept:
                 assert a + 3 + 5 - 0.1 <= x0 or a - 3 - 5 + 0.1 >= x1
+
+    def test_an_inner_cell_takes_the_whole_cell(self) -> None:
+        # The HO entry has three cells.  The middle one's weight fill puts a
+        # Ø6 pair at its centre, which registers with nothing, so the opening
+        # runs the full cell (15 mm posts) and keeps no pilots; the end cells
+        # keep the pairs that register with the neighbouring modules.
+        args = helix_entry_ho()
+        box = HexmoRectangle()
+        box.parseArgs(args)
+        box.open()
+        lay = box._rectLayout()
+        wall = holes(args, "long wall 1")
+        openings = big(wall)
+        assert len(openings) == 3
+        lo = lay.row_h + lay.t
+        assert openings[1][:2] == pytest.approx((lo + 15, lo + lay.row_h - 15), abs=0.1)
+        assert not [a for a, _ in pilots(wall) if openings[0][1] < a < openings[2][0]]
 
     def test_drops_the_medium_and_weight_holes(self) -> None:
         wall = holes(BASE + ["--access_openings=1"], "long wall 1")
