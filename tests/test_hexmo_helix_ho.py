@@ -133,7 +133,7 @@ class TestGround:
     @pytest.mark.parametrize("name", ["M1", "M2", "M3", "M4", "M5", "M6"])
     def test_module_renders(self, name) -> None:
         args = self.GROUND[name]
-        assert "--lower_ground=21.8" in args and "--upper_edge_gap=25" in args
+        assert "--lower_ground=21.8" in args and "--upper_edge_gap=10" in args
         box = HexmoHexagon()
         box.parseArgs(args)
         box.open()

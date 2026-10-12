@@ -1917,7 +1917,8 @@ class HexmoRectangle(HexmoStepFormatMixin, HexmoBigHoleMixin, HexmoTrackGuideMix
             gets one opening, _ACCESS_POST mm in from each end of the cell and
             _ACCESS_BAND mm above and below; it then shrinks to keep the pairs
             of Ø6 pilots nearest its ends, where the long wall normally has
-            them (see openings_with_pilots).  Worked out once, from the long
+            them (see openings_with_pilots); an inner cell's opening keeps no
+            pilots and fills the cell.  Worked out once, from the long
             wall's normal hole layout, and shared by the long supports so every
             opening lines up.
 
@@ -1930,6 +1931,14 @@ class HexmoRectangle(HexmoStepFormatMixin, HexmoBigHoleMixin, HexmoTrackGuideMix
                 pilots = [(x, y, r) for x, y, r in holes if abs(r - self._R3) < 1e-6]
                 spans = [(j * (row_h + t) + self._ACCESS_POST,
                           j * (row_h + t) + row_h - self._ACCESS_POST) for j in range(n_cols)]
+                # Only the pilots in the two end cells register with a
+                # neighbouring module; those in an inner cell (between two
+                # dividers) come from its weight-hole fill and line up with
+                # nothing, so they give way and its opening runs the full cell.
+                inner = spans[1:-1]
+                pilots = [p for p in pilots
+                          if not any(lo - self._ACCESS_POST <= p[0] <= hi + self._ACCESS_POST
+                                     for lo, hi in inner)]
                 access_layout["v"] = openings_with_pilots(
                     spans, pilots, [div_pos(i) for i in range(n_div_h)])
             return access_layout["v"]

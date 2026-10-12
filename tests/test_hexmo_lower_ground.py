@@ -267,14 +267,14 @@ class TestUpperEdgeGap:
 
     def test_edge_follows_the_main_line(self) -> None:
         f = frames(module("M2", "--upper_edge_gap=5"))["deck"]
-        main = centreline_points(route_geometry(3, 17.5, 5, 17.5, APOTHEM, 20).segments)
+        main = centreline_points(route_geometry(3, 22.5, 5, 22.5, APOTHEM, 20).segments)
         deck = [deck_frame(p) for p in outline(f)]
         inner = [p for p in deck if abs(p[0]) < 100 and p[1] < -20]   # the curved edge
         assert min(distance(p, main) for p in inner) == pytest.approx(17 / 2 + 5, abs=0.05)
 
     def test_never_inside_the_spur_slot(self) -> None:
-        # M1's spur swings to 9 mm from the main line's rail near edge 3; a
-        # 15 mm gap would reach into its slot there, so the edge keeps to it.
+        # M1's spur slot comes within about 8 mm of the main line's rail near
+        # edge 3; a 15 mm gap would reach into it there, so the edge keeps to it.
         f = frames(module("M1", "--upper_edge_gap=15"))["deck"]
         centre = slot_centre(3, -17.5, 5, -35)
         deck = [deck_frame(p) for p in outline(f)]
