@@ -107,6 +107,8 @@ docker compose exec web /app/env/bin/pip install pytest lxml
 
 The 3D (STEP) export (`--format step` on HexmoHexagon/HexmoRectangle) needs the optional `step` extra (build123d and the OpenCascade kernel). `docker-compose.yml` builds the image with `WITH_STEP: "1"`, which installs it and the OpenGL libraries it needs, so it survives rebuilds. Without it, `--format step` fails with a clear error and the STEP tests are skipped. The whole helix ring exports from the command line: `docker compose exec web sh -c "cd /app && /app/env/bin/python -m boxes.generators._hexmo_step temp/ring.step --ring=N250"`.
 
+`scripts/hexmo-drive` serves the drivable 3D preview (Hexmo Drive) on port 4456, exporting the layouts first (in the container) if none are; `scripts/hexmo-drive --all` re-exports them after a generator change. See `docs/hexmohexagon/drive/README.md`. The exported `.glb`/`.track.json` files are generated and git-ignored.
+
 Run the Hexmo tests inside the container:
 
 ```bash
