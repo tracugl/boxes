@@ -25,3 +25,8 @@ flake.lock
 
 # Local scratch files (plans, drawings) not for the repo
 /temp/
+
+# Hexmo Drive exports (scripts/hexmo-drive writes them; large and generated)
+/docs/hexmohexagon/drive/*.glb
+/docs/hexmohexagon/drive/*.track.json
+/docs/hexmohexagon/drive/layouts.json

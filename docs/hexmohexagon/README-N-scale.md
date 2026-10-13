@@ -1181,6 +1181,20 @@ the laser formats are unaffected.
 
 ---
 
+## Drive it in 3D (Hexmo Drive)
+
+Preview the helix layout in the browser, built from the real cut parts, and
+drive a train round it: cab, chase and orbit cameras, working turnouts, and
+warnings when a car touches or comes within 2 mm of any part. Two rings joined
+entry to entry (`N250-ground-x2`) make a continuous loop. From the repository root:
+
+```bash
+scripts/hexmo-drive
+```
+
+Then open the address it prints. See [drive/README.md](./drive/README.md) for
+the layouts, controls and how it works.
+
 ## Servo turnout drive
 
 A cheap DIY drive for turnouts on the deck, built around a hobby servo (SG90 or

@@ -1,0 +1,704 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Hexmo Drive</title>
+<style>
+  :root { --bg: #dfe3e8; --panel: rgba(20, 24, 30, 0.82); --text: #eef2f6; --muted: #9aa6b2;
+          --accent: #f2b33d; --ok: #57c27a; --warn: #f08a3c; --bad: #e5484d; }
+  html, body { margin: 0; height: 100%; overflow: hidden; background: var(--bg);
+               font: 14px/1.4 system-ui, -apple-system, "Segoe UI", sans-serif; }
+  canvas { display: block; }
+  .panel { position: fixed; padding: 12px 14px; border-radius: 10px; background: var(--panel);
+           color: var(--text); user-select: none; }
+  #hud { top: 12px; left: 12px; min-width: 240px; max-width: 320px; }
+  #hud h1 { font-size: 15px; margin: 0 0 6px; display: flex; gap: 8px; align-items: center; }
+  .row { display: flex; justify-content: space-between; gap: 12px; }
+  .muted { color: var(--muted); }
+  .label { color: var(--muted); margin-top: 8px; }
+  #speed { font-size: 26px; font-weight: 700; font-variant-numeric: tabular-nums; }
+  #throttle { height: 6px; background: #3a434e; border-radius: 3px; margin: 6px 0 4px; position: relative; }
+  #throttle span { position: absolute; top: 0; bottom: 0; left: 50%; background: var(--accent); border-radius: 3px; }
+  button, select { font: inherit; border: 0; border-radius: 6px; padding: 4px 8px;
+                   margin: 2px 4px 2px 0; cursor: pointer; background: #3a434e; color: var(--text); }
+  #cams button.on { background: var(--accent); color: #111; }
+  #turnouts button.reverse { background: var(--warn); color: #111; }
+  #turnouts button.normal { background: var(--ok); color: #111; }
+  #status { font-weight: 600; }
+  #margin { width: 4.5em; font: inherit; border: 0; border-radius: 6px; padding: 3px 6px;
+            background: #3a434e; color: var(--text); }
+  .check { display: flex; gap: 6px; align-items: center; margin: 4px 0; }
+  #status.clear { color: var(--ok); }
+  #status.close { color: var(--warn); }
+  #status.touch { color: var(--bad); }
+  #log { margin: 4px 0 0; padding-left: 18px; max-height: 120px; overflow: auto; font-size: 12px; }
+  #log li.touch { color: #ff9b9e; }
+  #log li.close { color: #ffc38f; }
+  #help { bottom: 12px; left: 12px; color: var(--muted); font-size: 12px; padding: 8px 12px; }
+  #help b { color: var(--text); }
+  #loading { position: fixed; inset: 0; display: grid; place-items: center; color: #333; font-size: 18px; }
+  #msg { color: var(--warn); min-height: 1.2em; }
+</style>
+</head>
+<body>
+<div id="loading">Loading layout…</div>
+<div id="hud" class="panel">
+  <h1>Hexmo Drive <select id="layout" aria-label="Layout"></select></h1>
+  <div class="row"><span id="speed">0</span><span class="muted" id="dir">forward</span></div>
+  <div class="muted">scale km/h</div>
+  <div id="throttle"><span></span></div>
+  <div class="label">Camera</div>
+  <div id="cams"></div>
+  <div class="label">Turnouts</div>
+  <div id="turnouts"></div>
+  <div class="label">Clearance</div>
+  <label class="check">Alarm within
+    <input id="margin" type="number" min="0" max="30" step="0.5" aria-label="Alarm distance in mm"> mm</label>
+  <label class="check"><input id="stopOnAlarm" type="checkbox"> Stop the train on an alarm</label>
+  <div id="status" class="clear">Clear</div>
+  <ol id="log"></ol>
+  <button id="clearlog" hidden>Clear list</button>
+  <div id="msg"></div>
+</div>
+<div id="help" class="panel">
+  <b>W / ↑</b> faster · <b>S / ↓</b> slower / reverse · <b>Space</b> stop · <b>C</b> camera ·
+  <b>1–4</b> or click a post: throw turnout · <b>drag</b> look around · <b>wheel</b> zoom ·
+  <b>double-click</b> reset view
+</div>
+
+<script type="importmap">
+{ "imports": {
+  "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+  "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/",
+  "three-mesh-bvh": "https://cdn.jsdelivr.net/npm/three-mesh-bvh@0.9.15/src/index.js"
+} }
+</script>
+<script type="module">
+/*
+ * Hexmo Drive: drive a train round a Hexmo layout built from the real cut
+ * parts.  The layouts are exported by boxes/generators/_hexmo_drive.py into
+ * this folder: <name>.glb (the parts) and <name>.track.json (the track),
+ * listed in layouts.json.  See README.md here for how to run it.
+ */
+import * as THREE from "three";
+import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
+import { OrbitControls } from "three/addons/controls/OrbitControls.js";
+import { Train, buildGraph, leaving } from "./track.js";
+import { Clearance } from "./clearance.js";
+import { bakeLayout } from "./layout.js";
+
+const params = new URLSearchParams(location.search);
+const TOP_KMH = 100; // full throttle, in scale km/h
+
+/*
+ * Settings remembered in this browser (the alarm distance and whether an
+ * alarm stops the train).  Storage can be unavailable (private windows,
+ * blocked site data), so every read and write is guarded and the page works
+ * without it.
+ */
+const STORE = "hexmoDrive.";
+const remember = (key, value) => {
+  try {
+    localStorage.setItem(STORE + key, String(value));
+  } catch {
+    // Not saved: the setting still applies until the page is reloaded.
+  }
+};
+const recall = (key) => {
+  try {
+    return localStorage.getItem(STORE + key);
+  } catch {
+    return null;
+  }
+};
+
+// Alarm distance for the clearance check, in real mm: ?margin=3 in the
+// address, else the last one set here, else 2.
+const MARGIN_MAX = 30;
+const clampMargin = (mm) => Math.max(0, Math.min(MARGIN_MAX, Number.isFinite(mm) ? mm : 2));
+let marginMm = clampMargin(parseFloat(params.get("margin") ?? recall("margin") ?? "2"));
+
+// ------------------------------------------------------------------ scene
+
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.setSize(innerWidth, innerHeight);
+document.body.appendChild(renderer.domElement);
+
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0xdfe3e8);
+scene.add(new THREE.HemisphereLight(0xffffff, 0x8a7d6a, 1.4));
+const sun = new THREE.DirectionalLight(0xffffff, 1.6);
+sun.position.set(1.5, 3, 1);
+scene.add(sun);
+
+const camera = new THREE.PerspectiveCamera(55, innerWidth / innerHeight, 0.002, 50);
+const orbit = new OrbitControls(camera, renderer.domElement);
+orbit.enableDamping = true;
+
+addEventListener("resize", () => {
+  camera.aspect = innerWidth / innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(innerWidth, innerHeight);
+});
+
+// ------------------------------------------------------------------ vehicles
+
+const FT = 0.3048;
+const GAP = 0.004; // coupler gap between vehicles (m)
+
+/**
+ * The consist at 1:scale, front first: a six-axle diesel, 89 ft autoracks and
+ * an 89 ft flat.  Prototype feet: length, truck centres, width, height.
+ * @param {number} scale - 160 for N, 87 for HO.
+ * @returns {object[]} vehicles with sizes (m), a group to place and its body.
+ */
+function makeConsist(scale) {
+  const spec = (name, len, trucks, wide, high, colour) => ({
+    name, length: (len * FT) / scale, bogies: (trucks * FT) / scale,
+    width: (wide * FT) / scale, height: (high * FT) / scale, colour,
+  });
+  const list = [
+    spec("loco", 74, 52, 10.25, 15.5, 0xf2b33d),
+    spec("autorack 1", 89, 64, 10.67, 19, 0x3a6ea5),
+    spec("autorack 2", 89, 64, 10.67, 19, 0x7d8b99),
+    spec("flat", 89, 64, 10.0, 6, 0x6b4f3a),
+    spec("autorack 3", 89, 64, 10.67, 19, 0x3a6ea5),
+    spec("autorack 4", 89, 64, 10.67, 19, 0xa33b3b),
+  ];
+  const floor = (4 * FT) / scale; // body floor above rail (trucks underneath)
+  for (const v of list) {
+    v.group = new THREE.Group();
+    v.body = new THREE.Mesh(new THREE.BoxGeometry(v.width, v.height - floor, v.length),
+                            new THREE.MeshStandardMaterial({ color: v.colour, roughness: 0.6 }));
+    v.body.position.y = floor + (v.height - floor) / 2;
+    v.group.add(v.body);
+    for (const z of [-v.bogies / 2, v.bogies / 2]) {
+      const truck = new THREE.Mesh(new THREE.BoxGeometry(v.width * 0.8, floor * 0.9, (9 * FT) / scale),
+                                   new THREE.MeshStandardMaterial({ color: 0x222222 }));
+      truck.position.set(0, floor * 0.45, z);
+      v.group.add(truck);
+    }
+    scene.add(v.group);
+  }
+  return list;
+}
+
+/** Place every vehicle: bogies on the track, the body on the chord between. */
+function placeConsist(train) {
+  let back = 0;
+  for (const v of train.consist) {
+    const front = train.pointBehind(back + (v.length - v.bogies) / 2);
+    const rear = train.pointBehind(back + (v.length + v.bogies) / 2);
+    v.group.position.copy(front).add(rear).multiplyScalar(0.5);
+    // A group's +z axis turns to face the point it looks at.
+    v.group.lookAt(front);
+    back += v.length + GAP;
+  }
+}
+
+// ------------------------------------------------------------------ layout extras
+
+/**
+ * Staging tracks (not part of the cut layout): a plain board and track strip
+ * under each, so the train has somewhere to stand before it enters.
+ */
+function drawStaging(G) {
+  const board = new THREE.MeshStandardMaterial({ color: 0x8c8c8c });
+  const strip = new THREE.MeshStandardMaterial({ color: 0x3a3a3a });
+  for (const e of G.edges.filter((x) => x.staging)) {
+    const a = e.pts[0];
+    const b = e.pts[e.pts.length - 1];
+    const mid = a.clone().add(b).multiplyScalar(0.5);
+    for (const [w, h, mat, drop] of [[0.06, 0.006, board, 0.006], [0.017, 0.003, strip, 0.0015]]) {
+      const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, e.length), mat);
+      m.position.copy(mid).add(new THREE.Vector3(0, -drop, 0));
+      m.lookAt(b.clone().setY(m.position.y));
+      scene.add(m);
+    }
+  }
+}
+
+/** Two rails per track, gauge apart, as thin lines just above the strips. */
+function drawRails(G) {
+  const gauge = G.scale > 100 ? 0.009 : 0.0165;
+  const mat = new THREE.LineBasicMaterial({ color: 0xb8b0a4 });
+  for (const e of G.edges) {
+    for (const side of [-1, 1]) {
+      const pts = e.pts.map((p, i) => {
+        const a = e.pts[Math.max(0, i - 1)];
+        const b = e.pts[Math.min(e.pts.length - 1, i + 1)];
+        const t = new THREE.Vector3(b.x - a.x, 0, b.z - a.z).normalize();
+        // Lifted clear of the strip's surface (about 1 mm in N, 1.8 mm in HO).
+        return new THREE.Vector3(p.x - (t.z * side * gauge) / 2, p.y + 0.16 / G.scale,
+                                 p.z + (t.x * side * gauge) / 2);
+      });
+      scene.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(pts), mat));
+    }
+  }
+}
+
+const markers = [];
+
+/**
+ * A clickable post beside each turnout's toe, coloured by its setting: on
+ * the side its diverging road goes, clear of the train.
+ */
+function makeTurnoutMarkers(G) {
+  G.nodes.forEach((n, k) => {
+    if (!n.ways) return;
+    const r = G.scale > 100 ? 0.004 : 0.007;
+    const m = new THREE.Mesh(new THREE.CylinderGeometry(r, r, 3.5 * r, 16),
+                             new THREE.MeshStandardMaterial({ color: 0x57c27a }));
+    const along = leaving(G.edges, n.ways[0]);
+    const side = new THREE.Vector3(-along.z, 0, along.x);
+    if (side.dot(leaving(G.edges, n.ways[1]).sub(along)) < 0) side.negate();
+    m.position.copy(n.pos).addScaledVector(side, 5 * r).add(new THREE.Vector3(0, 1.75 * r, 0));
+    m.userData.node = k;
+    scene.add(m);
+    markers.push(m);
+  });
+}
+
+// ------------------------------------------------------------------ HUD
+
+let G;
+let train;
+let clearance;
+const ui = {
+  speed: document.getElementById("speed"), dir: document.getElementById("dir"),
+  bar: document.querySelector("#throttle span"), cams: document.getElementById("cams"),
+  turnouts: document.getElementById("turnouts"), msg: document.getElementById("msg"),
+  status: document.getElementById("status"), log: document.getElementById("log"),
+  clearlog: document.getElementById("clearlog"), margin: document.getElementById("margin"),
+  stop: document.getElementById("stopOnAlarm"),
+};
+ui.margin.value = marginMm;
+ui.stop.checked = recall("stopOnAlarm") !== "false";
+ui.stop.onchange = () => remember("stopOnAlarm", ui.stop.checked);
+ui.margin.onchange = () => {
+  marginMm = clampMargin(parseFloat(ui.margin.value));
+  ui.margin.value = marginMm;
+  remember("margin", marginMm);
+  if (clearance) clearance.margin = marginMm / 1000;
+  // The list was for the old distance; start afresh, and re-arm the alarm.
+  hits.clear();
+  renderLog();
+  alarmOn = false;
+};
+
+const CAMS = ["orbit", "chase", "cab"];
+let cam = "chase";
+for (const c of CAMS) {
+  const b = document.createElement("button");
+  b.textContent = c;
+  b.onclick = () => setCam(c);
+  ui.cams.appendChild(b);
+}
+
+// The layout's bounds, for the orbit camera's overview (set once loaded).
+const layoutBox = new THREE.Box3();
+
+/** Switch camera mode; orbit starts from an overview of the whole layout. */
+function setCam(c) {
+  if (c === "orbit" && cam !== "orbit") {
+    const centre = layoutBox.getCenter(new THREE.Vector3());
+    const size = layoutBox.getSize(new THREE.Vector3()).length();
+    orbit.target.copy(centre);
+    camera.position.copy(centre).add(new THREE.Vector3(0.45 * size, 0.55 * size, 0.35 * size));
+    camera.lookAt(orbit.target);
+  }
+  if (c !== cam) resetLook();
+  cam = c;
+  orbit.enabled = c === "orbit";
+  [...ui.cams.children].forEach((b) => b.classList.toggle("on", b.textContent === c));
+}
+
+/** Throw turnout number k (index into the markers). */
+function throwTurnout(k) {
+  const n = G.nodes[markers[k].userData.node];
+  if (train.occupies(n)) {
+    flash("Can't throw it under the train");
+    return;
+  }
+  n.state = 1 - n.state;
+  refreshTurnouts();
+}
+
+/** Redraw the turnout buttons and marker colours. */
+function refreshTurnouts() {
+  ui.turnouts.innerHTML = "";
+  markers.forEach((m, k) => {
+    const n = G.nodes[m.userData.node];
+    m.material.color.set(n.state ? 0xf08a3c : 0x57c27a);
+    const b = document.createElement("button");
+    b.textContent = `${k + 1}: ${n.state ? "diverging" : "through"}`;
+    b.className = n.state ? "reverse" : "normal";
+    b.onclick = () => throwTurnout(k);
+    ui.turnouts.appendChild(b);
+  });
+}
+
+let flashTimer;
+/** Show a short message in the HUD. */
+function flash(text) {
+  ui.msg.textContent = text;
+  clearTimeout(flashTimer);
+  flashTimer = setTimeout(() => (ui.msg.textContent = ""), 2500);
+}
+
+// Every part the train has touched or come close to, worst first per part.
+const hits = new Map();
+ui.clearlog.onclick = () => {
+  hits.clear();
+  renderLog();
+};
+
+/** Redraw the clearance list. */
+function renderLog() {
+  ui.log.innerHTML = "";
+  for (const [part, { level, vehicle }] of hits) {
+    const li = document.createElement("li");
+    li.className = level;
+    li.textContent = `${level === "touch" ? "Touches" : "Within the alarm distance of"} ${part} (${vehicle})`;
+    ui.log.appendChild(li);
+  }
+  ui.clearlog.hidden = hits.size === 0;
+}
+
+/*
+ * Highlighting what set the alarm off: each car within the alarm distance
+ * (amber) or touching (red) glows, and so does each part it is near, drawn
+ * over the layout from the part's own shape.  Both pulse (see frame()).
+ */
+const GLOW = { close: 0xff8a00, touch: 0xff1a1a };
+const highlighted = new Map(); // part name → overlay mesh
+
+/**
+ * Show exactly the offending parts, each in its level's colour.
+ * @param {Map<string, {level: string, shape: object}>} offenders
+ */
+function highlightParts(offenders) {
+  for (const [name, mesh] of highlighted) {
+    if (offenders.has(name)) continue;
+    scene.remove(mesh);
+    mesh.material.dispose();
+    highlighted.delete(name);
+  }
+  for (const [name, { level, shape }] of offenders) {
+    let mesh = highlighted.get(name);
+    if (!mesh) {
+      // Drawn just in front of the part itself (polygon offset), so it shows
+      // through instead of flickering against the same surfaces.
+      mesh = new THREE.Mesh(shape.geometry, new THREE.MeshStandardMaterial({
+        side: THREE.DoubleSide, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2,
+      }));
+      scene.add(mesh);
+      highlighted.set(name, mesh);
+    }
+    mesh.material.color.setHex(GLOW[level]);
+    mesh.material.emissive.setHex(GLOW[level]);
+  }
+}
+
+/*
+ * A marker at each spot where a car comes nearest the part it set the alarm
+ * off on: a ball on the part, joined to the car by a line.  Drawn on top of
+ * everything, so it shows through walls and decks.
+ */
+const spots = [];
+
+/**
+ * One marker per alarming car.
+ * @param {{level: string, near: object}[]} found - Each car's level and its
+ *        nearest points (from Clearance.nearest).
+ */
+function markSpots(found) {
+  while (spots.length < found.length) {
+    const r = 2.4 / G.scale; // a 2.4 m ball at scale (N 15 mm, HO 28 mm across)
+    const ball = new THREE.Mesh(new THREE.SphereGeometry(r, 16, 12),
+                                new THREE.MeshBasicMaterial({ depthTest: false, transparent: true }));
+    const line = new THREE.Line(new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(), new THREE.Vector3()]),
+                                new THREE.LineBasicMaterial({ depthTest: false, transparent: true }));
+    ball.renderOrder = line.renderOrder = 999;
+    scene.add(ball, line);
+    spots.push({ ball, line });
+  }
+  spots.forEach(({ ball, line }, k) => {
+    const f = found[k];
+    ball.visible = line.visible = Boolean(f);
+    if (!f) return;
+    ball.position.copy(f.near.onPart);
+    line.geometry.attributes.position.setXYZ(0, f.near.onPart.x, f.near.onPart.y, f.near.onPart.z);
+    line.geometry.attributes.position.setXYZ(1, f.near.onCar.x, f.near.onCar.y, f.near.onCar.z);
+    line.geometry.attributes.position.needsUpdate = true;
+    ball.material.color.setHex(GLOW[f.level]);
+    line.material.color.setHex(GLOW[f.level]);
+  });
+}
+
+/** Pulse the glowing cars and parts (t in seconds). */
+function pulse(t) {
+  const glow = 0.45 + 0.4 * Math.sin(t * 7);
+  for (const mesh of highlighted.values()) mesh.material.emissiveIntensity = glow;
+  for (const { ball } of spots) ball.material.opacity = 0.55 + 0.45 * Math.sin(t * 7);
+  for (const v of train.consist) v.body.material.emissiveIntensity = v.alarm ? glow + 0.3 : 0;
+}
+
+/**
+ * Test each vehicle; tint it, show the worst, and remember new hits.
+ * @returns {{level: string, part: string|null, vehicle: string|null}} the worst.
+ */
+function checkClearance() {
+  let worst = { level: "clear", part: null, vehicle: null };
+  const rank = { clear: 0, close: 1, touch: 2 };
+  let changed = false;
+  const offenders = new Map();
+  const found = [];
+  for (const v of train.consist) {
+    const r = clearance.check(v.body);
+    v.alarm = r.level !== "clear";
+    if (v.alarm) {
+      v.body.material.emissive.setHex(GLOW[r.level]);
+      if (r.near) found.push({ level: r.level, near: r.near });
+    }
+    if (r.shape && rank[r.level] > rank[offenders.get(r.part)?.level ?? "clear"]) {
+      offenders.set(r.part, { level: r.level, shape: r.shape });
+    }
+    if (rank[r.level] > rank[worst.level]) worst = { ...r, vehicle: v.name };
+    const seen = r.part && hits.get(r.part);
+    if (r.part && (!seen || rank[r.level] > rank[seen.level])) {
+      hits.set(r.part, { level: r.level, vehicle: v.name });
+      changed = true;
+    }
+  }
+  ui.status.className = worst.level;
+  ui.status.textContent = worst.level === "clear" ? "Clear" : describe(worst);
+  highlightParts(offenders);
+  markSpots(found);
+  if (changed) renderLog();
+  return worst;
+}
+
+/** "autorack 1 touches A M6 deck", or "… is 1.4 mm from … (alarm 2 mm)". */
+function describe({ level, part, vehicle, near }) {
+  if (level === "touch") return `${vehicle} touches ${part}`;
+  const gap = near ? `${(near.distance * 1000).toFixed(1)} mm from` : `within ${marginMm} mm of`;
+  return `${vehicle} is ${gap} ${part} (alarm ${marginMm} mm)`;
+}
+
+/*
+ * The alarm goes off when a car first comes within the alarm distance (or
+ * touches).  With "stop the train" ticked it stops the train there, once:
+ * while the alarm stays on, the driver can creep on through or back out, and
+ * it re-arms as soon as every car is clear again.
+ */
+let alarmOn = false;
+
+/** Stop the train on a new alarm (see above). */
+function soundAlarm(worst) {
+  if (worst.level === "clear") {
+    alarmOn = false;
+    return;
+  }
+  if (alarmOn) return;
+  alarmOn = true;
+  if (ui.stop.checked && Math.abs(train.speed) > 1e-5) {
+    train.speed = 0;
+    throttle = 0;
+    flash(`Stopped: ${describe(worst)}`);
+  }
+}
+
+// ------------------------------------------------------------------ input
+
+let throttle = 0; // -1 .. 1 of top speed; negative backs up
+const keys = new Set();
+addEventListener("keydown", (ev) => {
+  // Typing in the menu or the alarm box isn't driving.
+  if (ev.target.tagName === "SELECT" || ev.target.tagName === "INPUT") return;
+  keys.add(ev.key.toLowerCase());
+  if (ev.key === " ") {
+    throttle = 0;
+    ev.preventDefault();
+  }
+  if (ev.key.toLowerCase() === "c") setCam(CAMS[(CAMS.indexOf(cam) + 1) % CAMS.length]);
+  const k = parseInt(ev.key, 10) - 1;
+  if (k >= 0 && k < markers.length) throwTurnout(k);
+});
+addEventListener("keyup", (ev) => keys.delete(ev.key.toLowerCase()));
+
+/*
+ * Mouse look for the chase and cab cameras (orbit has OrbitControls).
+ * Dragging grabs the view, as OrbitControls does: the chase camera swings
+ * round and up/down about the loco; the cab camera turns its head.  The
+ * wheel moves the chase camera in and out; a double-click resets the view.
+ */
+const look = { yaw: 0, pitch: 0, zoom: 1 };
+const drag = { down: false, x: 0, y: 0, moved: 0 };
+
+/** Back to the camera's default view. */
+function resetLook() {
+  look.yaw = 0;
+  look.pitch = 0;
+  look.zoom = 1;
+}
+
+const canvas = renderer.domElement;
+canvas.addEventListener("pointerdown", (ev) => {
+  if (ev.button !== 0) return;
+  Object.assign(drag, { down: true, x: ev.clientX, y: ev.clientY, moved: 0 });
+});
+addEventListener("pointermove", (ev) => {
+  if (!drag.down) return;
+  const dx = ev.clientX - drag.x;
+  const dy = ev.clientY - drag.y;
+  drag.x = ev.clientX;
+  drag.y = ev.clientY;
+  drag.moved += Math.abs(dx) + Math.abs(dy);
+  if (cam === "orbit") return;
+  look.yaw += (cam === "cab" ? 1 : -1) * dx * 0.005;
+  look.pitch = Math.max(-1.2, Math.min(1.2, look.pitch + dy * 0.004));
+});
+addEventListener("pointerup", () => {
+  drag.down = false;
+});
+canvas.addEventListener("wheel", (ev) => {
+  if (cam !== "chase") return;
+  look.zoom = Math.max(0.25, Math.min(6, look.zoom * (ev.deltaY > 0 ? 1.1 : 1 / 1.1)));
+  ev.preventDefault();
+}, { passive: false });
+canvas.addEventListener("dblclick", () => {
+  if (cam !== "orbit") resetLook();
+});
+
+const ray = new THREE.Raycaster();
+canvas.addEventListener("click", (ev) => {
+  // A drag (to look around) is not a click on a turnout.
+  if (drag.moved > 5) return;
+  const p = new THREE.Vector2((ev.clientX / innerWidth) * 2 - 1, -(ev.clientY / innerHeight) * 2 + 1);
+  ray.setFromCamera(p, camera);
+  const hit = ray.intersectObjects(markers)[0];
+  if (hit) throwTurnout(markers.indexOf(hit.object));
+});
+
+// ------------------------------------------------------------------ main loop
+
+const clock = new THREE.Clock();
+const camGoal = new THREE.Vector3();
+const lookGoal = new THREE.Vector3();
+
+/** Place the chase or cab camera for this frame (s = one scale metre). */
+function placeCamera(dt, s) {
+  if (cam === "chase") {
+    // Behind and above the loco, swung round by the mouse (yaw about the
+    // vertical, pitch as height), zoomed by the wheel.
+    const head = train.pointBehind(0);
+    const behind = train.pointBehind(train.consist[0].length * 2.2).sub(head).setY(0).normalize();
+    const azimuth = Math.atan2(behind.x, behind.z) + look.yaw;
+    const elevation = Math.max(0.03, Math.min(1.5, Math.atan2(28, 60) + look.pitch));
+    const reach = 66 * s * look.zoom;
+    camGoal.set(Math.sin(azimuth) * Math.cos(elevation), Math.sin(elevation),
+                Math.cos(azimuth) * Math.cos(elevation)).multiplyScalar(reach).add(head);
+    // Look ahead of the loco when straight behind it, at the loco when swung round.
+    lookGoal.copy(train.pointAhead(30 * s)).lerp(head, Math.min(1, Math.abs(look.yaw)));
+    camera.position.lerp(camGoal, Math.min(1, dt * (drag.down ? 15 : 4)));
+    camera.lookAt(lookGoal);
+  } else if (cam === "cab") {
+    // At the driver's eye; the mouse turns the head from straight ahead.
+    camera.position.copy(train.pointBehind(train.consist[0].length * 0.12));
+    camera.position.y += 4.1 * s;
+    const ahead = train.pointAhead(80 * s).sub(camera.position).normalize();
+    const heading = Math.atan2(ahead.x, ahead.z) + look.yaw;
+    const tilt = Math.asin(Math.max(-1, Math.min(1, ahead.y))) + look.pitch;
+    lookGoal.set(Math.sin(heading) * Math.cos(tilt), Math.sin(tilt),
+                 Math.cos(heading) * Math.cos(tilt)).add(camera.position);
+    camera.lookAt(lookGoal);
+  } else {
+    orbit.update();
+  }
+}
+
+/** Advance the simulation and draw one frame. */
+function frame() {
+  const dt = Math.min(clock.getDelta(), 0.05);
+  if (keys.has("w") || keys.has("arrowup")) throttle = Math.min(1, throttle + dt * 0.5);
+  if (keys.has("s") || keys.has("arrowdown")) throttle = Math.max(-1, throttle - dt * 0.5);
+  const top = TOP_KMH / 3.6 / G.scale; // m/s on the model
+  // Ease the speed toward the throttle, like a loco with momentum.
+  train.speed += (throttle * top - train.speed) * Math.min(1, dt * 1.5);
+  if (Math.abs(train.speed) > 1e-5 && !train.move(train.speed * dt)) {
+    train.speed = 0;
+    throttle = 0;
+    flash("End of the line");
+  }
+  placeConsist(train);
+  soundAlarm(checkClearance());
+  pulse(clock.elapsedTime);
+
+  ui.speed.textContent = (Math.abs(train.speed) * G.scale * 3.6).toFixed(0);
+  ui.dir.textContent = throttle < 0 || train.speed < -1e-5 ? "reverse" : "forward";
+  ui.bar.style.left = `${50 + Math.min(0, throttle) * 50}%`;
+  ui.bar.style.width = `${Math.abs(throttle) * 50}%`;
+
+  placeCamera(dt, 1 / G.scale);
+  renderer.render(scene, camera);
+  requestAnimationFrame(frame);
+}
+
+// ------------------------------------------------------------------ load
+
+/**
+ * Load the chosen layout and start.
+ * @throws {Error} when the layout files are missing (not exported yet).
+ */
+async function start() {
+  const names = await fetch("layouts.json").then((r) => {
+    if (!r.ok) throw new Error("No layouts exported yet: run scripts/hexmo-drive (see README.md).");
+    return r.json();
+  });
+  const name = names.includes(params.get("layout")) ? params.get("layout") : names[0];
+  const select = document.getElementById("layout");
+  for (const n of names) select.add(new Option(n, n, n === name, n === name));
+  select.onchange = () => {
+    location.search = `?layout=${select.value}`;
+  };
+
+  const [gltf, raw] = await Promise.all([
+    new GLTFLoader().loadAsync(`${name}.glb`),
+    fetch(`${name}.track.json`).then((r) => r.json()),
+  ]);
+  // A few merged meshes to draw, one shape per part to test (layout.js).
+  const layout = bakeLayout(gltf.scene);
+  scene.add(layout.group);
+  layoutBox.setFromObject(layout.group);
+  G = buildGraph(raw);
+  G.onTurnoutChange = refreshTurnouts;
+  clearance = new Clearance(layout.parts, marginMm / 1000);
+  drawStaging(G);
+  drawRails(G);
+  makeTurnoutMarkers(G);
+  // Start in the upper staging track facing the entry rectangle; on a pair
+  // (no staging), half way down the first helix's spur on M3.
+  let first = G.edges.findIndex((e) => e.staging && e.label.includes("straight"));
+  let at = first >= 0 ? G.edges[first].length - 0.05 : null;
+  if (first < 0) {
+    first = G.edges.findIndex((e) => e.label.startsWith("A M3 3:-"));
+    at = G.edges[first].length / 2;
+  }
+  train = new Train(G, makeConsist(G.scale), GAP, first, at);
+  refreshTurnouts();
+  setCam("chase");
+  document.getElementById("loading").remove();
+  // For testing from the browser console.
+  window.hexmo = { G, train, setCam, throwTurnout, scene, camera, orbit, clearance, hits, placeConsist, checkClearance };
+  frame();
+}
+
+start().catch((err) => {
+  document.getElementById("loading").textContent = err.message;
+});
+</script>
+</body>
+</html>
