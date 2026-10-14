@@ -13,7 +13,9 @@ writes, into the viewer's folder:
 A layout is one helix ring (``N250``, ``N250-ground``, ``HO``, ``HO-ground``:
 the keys of :data:`_hexmo_helix_ring.RINGS`), or two of them joined entry to
 entry (``<ring>-x2``) for running full loops: down one helix, along the lower
-level, up the other and back along the upper level.
+level, up the other and back along the upper level.  A *dogbone*
+(:data:`DOGBONES`, e.g. ``N250-dogbone``) is a pair of rings of another kind:
+a double-track main line with a single-track loop round each ring.
 
 The track graph
 ---------------
@@ -72,25 +74,114 @@ _ANGULAR_DEFLECTION = 0.35
 DEFAULT_OUT = Path(__file__).resolve().parents[2] / "docs" / "hexmohexagon" / "drive"
 
 
-def layouts():
-    """Every layout name: each ring, alone and as a joined pair.
+def dogbone_n250():
+    """The N dogbone's ring: single-track loop, double-track main, Peco turnouts.
 
-    @returns e.g. ``["N250", "N250-x2", "N250-ground", …]``.
+    The helix ring's shape and module settings (radius 250 and the rest),
+    with no spur, risers or subway, track on the deck only.  The ring carries
+    one track (``3:20-5:20``, R355).  On M6 two legs (R315) lead from the
+    entry's double track at edge 1 into it, one towards M1 and one towards M5,
+    so the main line's two tracks are the two ends of the loop: continuous
+    running with no turnout on a curve (the ring is tighter than any Peco N
+    curved turnout).  The entry carries the double track straight (40 mm
+    apart) with a Peco N medium crossover (``--crossovers``) centred on it.
+    Two of these rings make the dogbone, joined entry to entry (a pair): the
+    second ring's entry is turned round, so its crossover goes the other way.
+
+    @returns ``(modules, entry_args)`` for :func:`_hexmo_step._ring_layout`.
+    """
+    from boxes.generators._hexmo_helix_ring import HELIX_ENTRY_N250, HELIX_RING_N250
+    helix_only = ("--track_routes", "--track_openings", "--deck_slots", "--risers",
+                  "--under_track_edges", "--trapezoid")
+    common = [a for a in HELIX_RING_N250["M6"] if not a.startswith(helix_only)]
+    modules = {f"M{k}": common + ["--trapezoid=1", "--track_routes=3:20-5:20"]
+               for k in range(1, 6)}
+    modules["M6"] = common + ["--track_routes=1:-20-5:-20,3:-20-1:-20"]
+    # The entry: double track (the N spacing, 40 mm) with the crossover
+    # centred on its 427 mm deck (284.3 mm toe to toe), and no lower level.
+    entry = [a for a in HELIX_ENTRY_N250
+             if not a.startswith(("--turnouts=", "--under_track=", "--subway"))]
+    return modules, entry + ["--track_line_count=2", "--crossovers=71:-20:20"]
+
+
+def dual_dogbone_n250():
+    """The N dual-ring dogbone's ring: double track round the ring, Peco turnouts.
+
+    As :func:`dogbone_n250`, but the ring keeps both tracks: inner
+    ``3:-15-5:-15`` (R320) and outer ``3:25-5:25`` (R360), 40 mm apart.  On
+    the entry two Peco N Code 80 medium turnouts split the main's two tracks
+    (±20) into four, the legs settling at ±60, and a crossover of the same
+    turnouts joins the main's two tracks.  The three interleave along the
+    deck (x from its far end, M6 at 427):
+
+    * the −20 track: the crossover's first turnout (toe 15), then at its heel
+      the splitting turnout (toe 138.7), its leg parallel at −60 by 406.4,
+      leaving the 20 mm lead-in at the M6 end;
+    * the +20 track: the splitting turnout (toe 20, heel 143.7), then the
+      crossover's second turnout (from 175.6), its toe at 299.3.
+
+    The crossover's diagonal stays between the main's two tracks and the
+    splitting legs go outward, so nothing crosses.  Turning the other ring
+    round doesn't mirror a crossover, so its entry is the mirror image (the
+    crossover from +20 to −20, the splitting turnouts swapped to match): the
+    two crossovers are opposite hands, one left to right and one right to
+    left.  On
+    M6 four legs carry them into the ring: ±20 to the inner track (R280) and
+    ±60 to the outer (R240, the tightest; a radius-250 hexagon has no room
+    for more).  Each loop's two ends are the main's two tracks, so the
+    turnouts choose the inner or outer loop at each end, and running is
+    continuous whichever is set.
+
+    @returns ``(modules, entry_args, second_entry_args)``: the second ring's
+             entry is the mirror image (see :func:`_pair_rings`).
+    """
+    from boxes.generators._hexmo_helix_ring import HELIX_ENTRY_N250, HELIX_RING_N250
+    helix_only = ("--track_routes", "--track_openings", "--deck_slots", "--risers",
+                  "--under_track_edges", "--trapezoid")
+    common = [a for a in HELIX_RING_N250["M6"] if not a.startswith(helix_only)]
+    modules = {f"M{k}": common + ["--trapezoid=1", "--track_routes=3:25-5:25,3:-15-5:-15"]
+               for k in range(1, 6)}
+    modules["M6"] = common + [
+        "--track_routes=1:-20-5:15,1:-60-5:-25,3:15-1:-20,3:-25-1:-60"]
+    entry = [a for a in HELIX_ENTRY_N250
+             if not a.startswith(("--turnouts=", "--under_track=", "--subway"))]
+    # All facing M6 (see above for how they interleave), and the mirror image.
+    entry += ["--track_line_count=2"]
+    return (modules,
+            entry + ["--turnouts=138.7:-20:-60,20:20:60", "--crossovers=15:-20:20"],
+            entry + ["--turnouts=20:-20:-60,138.7:20:60", "--crossovers=15:20:-20"])
+
+
+# Dogbone layouts: name → the function giving its ring.  Two of the ring,
+# joined entry to entry (as a ``-x2`` pair), make the layout.
+DOGBONES = {"N250-dogbone": dogbone_n250, "N250-dual-dogbone": dual_dogbone_n250}
+
+
+def layouts():
+    """Every layout name: the dogbones, then each helix ring alone and paired.
+
+    @returns e.g. ``["N250-dogbone", "N250", "N250-x2", …]``.
     """
     from boxes.generators._hexmo_helix_ring import RINGS
-    return [name for ring in RINGS for name in (ring, f"{ring}-x2")]
+    return list(DOGBONES) + [name for ring in RINGS for name in (ring, f"{ring}-x2")]
 
 
 def parse_layout(name):
-    """``(ring, pair)`` for a layout name.
+    """``(ring, mode)`` for a layout name.
 
-    @throws ValueError - For a name that is not a ring or ``<ring>-x2``.
+    @returns ``ring``: a key of :data:`_hexmo_helix_ring.RINGS` or a ring
+             definition (:func:`_hexmo_step._ring_layout` takes either);
+             ``mode``: ``"single"`` (one ring, with staging) or ``"pair"`` (two
+             rings, entry to entry; every dogbone is one).
+    @throws ValueError - For an unknown name.
     """
     from boxes.generators._hexmo_helix_ring import RINGS
-    ring, pair = (name[:-3], True) if name.endswith("-x2") else (name, False)
+    if name in DOGBONES:
+        return DOGBONES[name](), "pair"
+    ring, mode = (name[:-3], "pair") if name.endswith("-x2") else (name, "single")
     if ring not in RINGS:
         raise ValueError(f"unknown layout {name!r}; choose from {', '.join(layouts())}")
-    return ring, pair
+    return ring, mode
 
 
 # ------------------------------------------------------------------ polylines
@@ -130,9 +221,9 @@ def entry_subway(box, angle, offset):
 
 
 def ring_lines(ring):
-    """Every track of one helix ring as labelled polylines, in the ring frame.
+    """Every track of one ring as labelled polylines, in the ring frame.
 
-    @param ring - Key of :data:`_hexmo_helix_ring.RINGS`.
+    @param ring - Key of :data:`_hexmo_helix_ring.RINGS`, or a ring definition.
     @returns ``(lines, far_y)``: ``[{"label", "pts"}]``, and the y (mm) of the
              entry rectangle's far end, where a second ring's entry butts on.
     """
@@ -303,6 +394,20 @@ def build_graph(lines):
     return {"nodes": nodes, "edges": edges}
 
 
+def _pair_rings(ring):
+    """The two rings of a pair: ``(first, second)``.
+
+    A ring definition may give the second ring its own entry, as a third
+    element ``(modules, entry_args, second_entry_args)``: turning the second
+    ring round doesn't mirror its entry, so an entry that must be the other
+    hand (a crossover going the other way) is given separately.
+    """
+    if isinstance(ring, tuple) and len(ring) == 3:
+        modules, first, second = ring
+        return (modules, first), (modules, second)
+    return ring, ring
+
+
 def layout_track(name):
     """A layout's track graph, ready for ``<name>.track.json``.
 
@@ -310,15 +415,17 @@ def layout_track(name):
     @returns ``{"layout", "scale", "nodes", "edges"}``; ``scale`` is the
              model scale (160 for N, 87 for HO).
     """
-    ring, pair = parse_layout(name)
-    lines, far_y = ring_lines(ring)
-    if pair:
+    ring, mode = parse_layout(name)
+    if mode == "single":
+        lines, _ = ring_lines(ring)
+        lines = lines + staging(lines)
+    else:
+        first, second = _pair_rings(ring)
+        lines, far_y = ring_lines(first)
         lines = ([{**ln, "label": f"A {ln['label']}"} for ln in lines]
                  + [{**ln, "label": f"B {ln['label']}", "pts": turned(ln["pts"], far_y)}
-                    for ln in lines])
-    else:
-        lines = lines + staging(lines)
-    scale = 87.0 if ring.startswith("HO") else 160.0
+                    for ln in ring_lines(second)[0]])
+    scale = 87.0 if name.startswith("HO") else 160.0
     return {"layout": name, "scale": scale, **build_graph(split_at_touches(lines))}
 
 
@@ -391,7 +498,7 @@ def ring_parts_as_built(ring):
     As :func:`_hexmo_step.ring_parts`, with each module's deck-slot mouths
     opened.
 
-    @param ring - Key of :data:`_hexmo_helix_ring.RINGS`.
+    @param ring - Key of :data:`_hexmo_helix_ring.RINGS`, or a ring definition.
     @returns List of :class:`_hexmo_step.Part3D`.
     """
     bd = S._bd()
@@ -412,16 +519,17 @@ def layout_parts(name):
     @returns List of :class:`_hexmo_step.Part3D`.
     """
     bd = S._bd()
-    ring, pair = parse_layout(name)
-    parts = ring_parts_as_built(ring)
-    if not pair:
-        return parts
-    _, far_y = ring_lines(ring)
+    ring, mode = parse_layout(name)
+    if mode == "single":
+        return ring_parts_as_built(ring)
+    first, second = _pair_rings(ring)
+    _, far_y = ring_lines(first)
     # The second ring: turned 180° about z, then moved so the turn is about
     # the entry's far end (as :func:`turned` does to the track).
     where = bd.Location((0, 2 * far_y, 0), (0, 0, 180))
-    return ([S.Part3D(f"A {p.name}", p.kind, p.solid) for p in parts]
-            + [S.Part3D(f"B {p.name}", p.kind, where * p.solid) for p in parts])
+    return ([S.Part3D(f"A {p.name}", p.kind, p.solid) for p in ring_parts_as_built(first)]
+            + [S.Part3D(f"B {p.name}", p.kind, where * p.solid)
+               for p in ring_parts_as_built(second)])
 
 
 def export_layout(name, out=DEFAULT_OUT):
@@ -449,13 +557,21 @@ def export_layout(name, out=DEFAULT_OUT):
 def write_manifest(out):
     """List the layouts exported into ``out`` in ``layouts.json``.
 
-    Pairs first, the scenery (ground) versions first among those, so the
-    viewer opens on a full loop with scenery when no layout is asked for.
+    ``{"layouts": [...], "version": {name: stamp}}``: dogbones first, then
+    pairs, the scenery (ground) versions first among those (the viewer opens
+    on the first when no layout is asked for); and for each, a stamp from
+    its files' modification times, which the viewer adds to their URLs so a
+    re-export is never mixed with a browser's cached copy of the last one.
     """
-    names = [n for n in layouts() if (Path(out) / f"{n}.glb").exists()
-             and (Path(out) / f"{n}.track.json").exists()]
-    names.sort(key=lambda n: (not n.endswith("-x2"), "-ground" not in n, layouts().index(n)))
-    (Path(out) / "layouts.json").write_text(json.dumps(names))
+    out = Path(out)
+    names = [n for n in layouts() if (out / f"{n}.glb").exists()
+             and (out / f"{n}.track.json").exists()]
+    names.sort(key=lambda n: (n not in DOGBONES, not n.endswith("-x2"), "-ground" not in n,
+                              layouts().index(n)))
+    version = {n: int(max((out / f"{n}.glb").stat().st_mtime,
+                          (out / f"{n}.track.json").stat().st_mtime))
+               for n in names}
+    (out / "layouts.json").write_text(json.dumps({"layouts": names, "version": version}))
 
 
 def main(argv=None):

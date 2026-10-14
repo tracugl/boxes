@@ -654,7 +654,7 @@ warnings when a car touches or comes within 2 mm of any part. Two rings joined
 entry to entry (`HO-ground-x2`) make a continuous loop. From the repository root:
 
 ```bash
-scripts/hexmo-drive
+scripts/hexmo-drive.sh
 ```
 
 Then open the address it prints. See [drive/README.md](./drive/README.md) for

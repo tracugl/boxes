@@ -101,7 +101,7 @@ ready-made URLs below:
 | `--under_track_width` | **35** | a lower track's width; openings and slots are cut a sixth wider each side for long cars on curves |
 | `--under_track_height` | **23.8** | the lower level's track height (the helix's exit), so subway openings line up all round |
 | `--train_envelope` | **43** | 3 mm of N track and a 40 mm train (the default, 70, is HO's) |
-| `--turnout_length` / `_radius` / `_angle` / `_reverse_radius` | **123.7** / **457** / **14** / **300** | Peco N medium turnouts (SL-E395/396) on a rectangle (the defaults are Peco HO medium's) |
+| `--turnout_length` / `_radius` / `_angle` / `_reverse_radius` | **123.7** / **457** / **12** / **300** | Peco N Code 80 medium turnouts (SL-E395/396) on a rectangle (the defaults are Peco HO medium's) |
 | `--track_guide` / `--track_template` | **1** / **1** | the track-laying guide plate and template |
 | `--labels` / `--reference` | **0** / **0** | no part-name annotations and no 100 mm scale-reference bar in the SVG (the track labels stay on) |
 | `--access_openings` / `--subway_ports` | **1** / **1** (defaults) | access walls, with the subway opening and its cable slot in the middle post |
@@ -168,7 +168,7 @@ http://localhost:4455/HexmoHexagon?radius=250&thickness=3&h=80&edge_width=22&spo
 to carry the lower level through it:
 
 ```
-http://localhost:4455/HexmoRectangle?radius=250&thickness=3&h=80&num_rows=3&num_columns=2&track_width=17&track_spacing=40&track_lead_in=20&under_track_height=23.8&under_track_width=35&train_envelope=43&corner_holes=g2&gap_holes=g2&big_hole_shape=rounded_rect&track_guide=1&track_template=1&labels=0&reference=0&access_openings=1&subway_ports=1&turnout_length=123.7&turnout_radius=457&turnout_angle=14&turnout_reverse_radius=300
+http://localhost:4455/HexmoRectangle?radius=250&thickness=3&h=80&num_rows=3&num_columns=2&track_width=17&track_spacing=40&track_lead_in=20&under_track_height=23.8&under_track_width=35&train_envelope=43&corner_holes=g2&gap_holes=g2&big_hole_shape=rounded_rect&track_guide=1&track_template=1&labels=0&reference=0&access_openings=1&subway_ports=1&turnout_length=123.7&turnout_radius=457&turnout_angle=12&turnout_reverse_radius=300
 ```
 
 How to use it:
@@ -514,9 +514,9 @@ The leg follows the turnout's own diverging road, a `--turnout_radius` curve to
 the `--turnout_angle` crossing angle, straight on past the heel
 (`--turnout_length` after the toe), then flexible track: a
 `--turnout_reverse_radius` curve back to parallel. The defaults are Peco's N
-medium turnout (SL-E395/396: 123.7 mm, R457, 14°) and a 300 mm reverse curve,
-which puts the leg 16.9 mm off the through road at the heel and back parallel
-40 mm out (the N double-track spacing) about 253 mm after the toe. A tick marks each toe, and with
+Code 80 medium turnout (SL-E395/396: 123.7 mm, R457, 12°) and a 300 mm reverse
+curve, which puts the leg 16.1 mm off the through road at the heel and back
+parallel 40 mm out (the N double-track spacing) about 268 mm after the toe. A tick marks each toe, and with
 `--track_crossing` each leg gets the usual end tick. The generator stops with an
 error if a leg can't spread that far, isn't back parallel before the end of the
 deck, or runs off it.
@@ -524,7 +524,7 @@ deck, or runs off it.
 **The helix ring's entry rectangle** joins M6 edge 1 and splits the entry line
 into M6's three deck tracks. T1 (toe 10 mm in) sends loop A to −40, and T2 (toe
 at T1's heel, 133.7) sends loop B to +40. The centre line runs on as the spur,
-and T2's leg is parallel 387 mm along the 427 mm deck. The lower level passes
+and T2's leg is parallel 401 mm along the 427 mm deck. The lower level passes
 under the deck on the centre line, on its own level bed (a subway), through both
 end walls and the short divider (`--under_track`, at the same 23.8 mm track height
 and 35 mm track width as M6's edge 1 opening). The two long supports sit about
@@ -538,7 +538,7 @@ curl "http://localhost:4455/HexmoRectangle?render=1&radius=250&thickness=3&h=80\
 &num_rows=3&num_columns=2&track_width=17&track_spacing=40&track_lead_in=20\
 &under_track=1&under_track_height=23.8&under_track_width=35&train_envelope=43&subway=23.8\
 &turnouts=10:0:-40,133.7:0:40\
-&turnout_length=123.7&turnout_radius=457&turnout_angle=14&turnout_reverse_radius=300\
+&turnout_length=123.7&turnout_radius=457&turnout_angle=12&turnout_reverse_radius=300\
 &corner_holes=g2&gap_holes=g2&big_hole_shape=rounded_rect&track_guide=1&track_template=1\
 &labels=0&reference=0&access_openings=1&subway_ports=1" -o hexmo_n_helix_entry.svg
 ```
@@ -965,7 +965,7 @@ scenery between the levels). Each opens the form pre-filled:
 - **M6:**
   http://localhost:4455/HexmoHexagon?radius=250&thickness=3&h=80&edge_width=22&spoke_width=60&bottom=spoke&support_length=55&track_lead_in=20&track_width=17&track_spacing=40&under_track_width=35&under_track_height=23.8&train_envelope=43&center_cutout=0&corner_holes=g2&gap_holes=g2&big_hole_shape=rounded_rect&track_guide=1&track_template=1&labels=0&reference=0&access_openings=1&subway_ports=1&track_routes=1:-40-5:-22.5,3:-22.5-1:-40,1:0-5:17.5&under_track_edges=1&track_openings=5:17.5:74:35,3:-35:33.3:35&deck_slots=1:0-5:17.5@178../35,3:35-1:0@..210/35&risers=1:0-5:17.5@178..~77..74/35,3:35-1:0@..210~33.3..28.5/35,3:35-1:0@210..~28.5..23.8/35&lower_ground=23.8&upper_edge_gap=5
 - **Entry rectangle** (at M6 edge 1, with the lower level on a subway):
-  http://localhost:4455/HexmoRectangle?radius=250&thickness=3&h=80&num_rows=3&num_columns=2&track_width=17&track_spacing=40&track_lead_in=20&under_track=1&under_track_height=23.8&under_track_width=35&train_envelope=43&turnouts=10:0:-40,133.7:0:40&turnout_length=123.7&turnout_radius=457&turnout_angle=14&turnout_reverse_radius=300&corner_holes=g2&gap_holes=g2&big_hole_shape=rounded_rect&track_guide=1&track_template=1&labels=0&reference=0&subway=23.8&access_openings=1&subway_ports=1
+  http://localhost:4455/HexmoRectangle?radius=250&thickness=3&h=80&num_rows=3&num_columns=2&track_width=17&track_spacing=40&track_lead_in=20&under_track=1&under_track_height=23.8&under_track_width=35&train_envelope=43&turnouts=10:0:-40,133.7:0:40&turnout_length=123.7&turnout_radius=457&turnout_angle=12&turnout_reverse_radius=300&corner_holes=g2&gap_holes=g2&big_hole_shape=rounded_rect&track_guide=1&track_template=1&labels=0&reference=0&subway=23.8&access_openings=1&subway_ports=1
 
 The 3D export shows it all (exact parts only), and `--ring=N250-ground`
 exports the whole ring opened up this way, with these settings (see below).
@@ -1189,7 +1189,7 @@ warnings when a car touches or comes within 2 mm of any part. Two rings joined
 entry to entry (`N250-ground-x2`) make a continuous loop. From the repository root:
 
 ```bash
-scripts/hexmo-drive
+scripts/hexmo-drive.sh
 ```
 
 Then open the address it prints. See [drive/README.md](./drive/README.md) for

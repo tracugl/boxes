@@ -125,7 +125,7 @@ const pointOnEl = (G, el, s) => {
  * The element a train runs onto when leaving `el` forwards, or null at a dead
  * end.  A facing turnout follows its setting; a trailing one is run through
  * and set to match (like spring points), and the graph's onTurnoutChange is
- * told.
+ * told which turnout changed.
  * @param {object} G - The graph.
  * @param {object} el - The element being left.
  * @param {boolean} [peek] - Look only: don't change a turnout's setting.
@@ -142,7 +142,7 @@ export function nextEl(G, el, peek = false) {
     const k = node.ways.findIndex(([a, b]) => a === end[0] && b === end[1]);
     if (k >= 0 && node.state !== k) {
       node.state = k;
-      G.onTurnoutChange();
+      G.onTurnoutChange(node);
     }
   }
   const [e2, end2] = ways[0];
@@ -273,8 +273,22 @@ export class Train {
     return pointOnEl(this.G, el, s);
   }
 
-  /** Whether the train's trail uses any edge meeting at node n. */
+  /**
+   * Whether node n lies under the train: between its front and its back.
+   * The node just ahead of the head (where the train is about to run) and
+   * the trail kept spare behind the tail don't count, so a turnout can be
+   * thrown right up until the train reaches it.
+   * @param {object} n - A node of the graph.
+   * @returns {boolean}
+   */
   occupies(n) {
-    return this.trail.some((el) => n.ends.some(([e]) => e === el.e));
+    const k = this.G.nodes.indexOf(n);
+    // Distance back from the head to where each trail element was entered.
+    let back = this.head;
+    for (let i = this.trail.length - 1; i >= 0 && back <= this.length; i--) {
+      if (nodeAt(this.G, this.trail[i], "in") === k) return true;
+      if (i > 0) back += this.G.edges[this.trail[i - 1].e].length;
+    }
+    return false;
   }
 }

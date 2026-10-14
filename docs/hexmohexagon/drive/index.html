@@ -22,7 +22,7 @@
   #throttle span { position: absolute; top: 0; bottom: 0; left: 50%; background: var(--accent); border-radius: 3px; }
   button, select { font: inherit; border: 0; border-radius: 6px; padding: 4px 8px;
                    margin: 2px 4px 2px 0; cursor: pointer; background: #3a434e; color: var(--text); }
-  #cams button.on { background: var(--accent); color: #111; }
+  #cams button.on, #trains button.on { background: var(--accent); color: #111; }
   #turnouts button.reverse { background: var(--warn); color: #111; }
   #turnouts button.normal { background: var(--ok); color: #111; }
   #status { font-weight: 600; }
@@ -45,6 +45,7 @@
 <div id="loading">Loading layout…</div>
 <div id="hud" class="panel">
   <h1>Hexmo Drive <select id="layout" aria-label="Layout"></select></h1>
+  <div id="trains"></div>
   <div class="row"><span id="speed">0</span><span class="muted" id="dir">forward</span></div>
   <div class="muted">scale km/h</div>
   <div id="throttle"><span></span></div>
@@ -55,15 +56,17 @@
   <div class="label">Clearance</div>
   <label class="check">Alarm within
     <input id="margin" type="number" min="0" max="30" step="0.5" aria-label="Alarm distance in mm"> mm</label>
-  <label class="check"><input id="stopOnAlarm" type="checkbox"> Stop the train on an alarm</label>
+  <label class="check"><input id="stopOnAlarm" type="checkbox"> Stop the trains on an alarm</label>
   <div id="status" class="clear">Clear</div>
+  <div id="gap" class="muted">Between the trains: apart</div>
   <ol id="log"></ol>
   <button id="clearlog" hidden>Clear list</button>
   <div id="msg"></div>
 </div>
 <div id="help" class="panel">
-  <b>W / ↑</b> faster · <b>S / ↓</b> slower / reverse · <b>Space</b> stop · <b>C</b> camera ·
-  <b>1–4</b> or click a post: throw turnout · <b>drag</b> look around · <b>wheel</b> zoom ·
+  <b>W / ↑</b> faster · <b>S / ↓</b> slower / reverse · <b>Space</b> stop · <b>Shift+Space</b> stop all ·
+  <b>T</b> switch train · <b>C</b> camera ·
+  <b>1–9</b> or click a post or button: throw turnout · <b>drag</b> look around · <b>wheel</b> zoom ·
   <b>double-click</b> reset view
 </div>
 
@@ -85,11 +88,13 @@ import * as THREE from "three";
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 import { Train, buildGraph, leaving } from "./track.js";
-import { Clearance } from "./clearance.js";
+import { Clearance, trainGap } from "./clearance.js";
 import { bakeLayout } from "./layout.js";
 
 const params = new URLSearchParams(location.search);
 const TOP_KMH = 100; // full throttle, in scale km/h
+// How far apart (m) the trains' closest cars are still reported in the HUD.
+const GAP_WATCH = 0.05;
 
 /*
  * Settings remembered in this browser (the alarm distance and whether an
@@ -148,24 +153,34 @@ addEventListener("resize", () => {
 const FT = 0.3048;
 const GAP = 0.004; // coupler gap between vehicles (m)
 
+// Each train's colours, front first: loco, autoracks and flat (see makeConsist).
+const LIVERIES = [
+  [0xf2b33d, 0x3a6ea5, 0x7d8b99, 0x6b4f3a, 0x3a6ea5, 0xa33b3b],
+  [0x2f9e6a, 0x8a5fbf, 0xd08a3a, 0x555555, 0x8a5fbf, 0xd9d9d9],
+];
+
 /**
- * The consist at 1:scale, front first: a six-axle diesel, 89 ft autoracks and
- * an 89 ft flat.  Prototype feet: length, truck centres, width, height.
+ * A train's consist at 1:scale, front first: a six-axle diesel, 89 ft
+ * autoracks and an 89 ft flat.  Prototype feet: length, truck centres,
+ * width, height.
  * @param {number} scale - 160 for N, 87 for HO.
- * @returns {object[]} vehicles with sizes (m), a group to place and its body.
+ * @param {number} k - Which train (0, 1): its colours and name prefix.
+ * @returns {object[]} vehicles with sizes (m), a group to place and its body;
+ *          named e.g. "T2 autorack 1".
  */
-function makeConsist(scale) {
+function makeConsist(scale, k) {
+  const colours = LIVERIES[k % LIVERIES.length];
   const spec = (name, len, trucks, wide, high, colour) => ({
-    name, length: (len * FT) / scale, bogies: (trucks * FT) / scale,
+    name: `T${k + 1} ${name}`, length: (len * FT) / scale, bogies: (trucks * FT) / scale,
     width: (wide * FT) / scale, height: (high * FT) / scale, colour,
   });
   const list = [
-    spec("loco", 74, 52, 10.25, 15.5, 0xf2b33d),
-    spec("autorack 1", 89, 64, 10.67, 19, 0x3a6ea5),
-    spec("autorack 2", 89, 64, 10.67, 19, 0x7d8b99),
-    spec("flat", 89, 64, 10.0, 6, 0x6b4f3a),
-    spec("autorack 3", 89, 64, 10.67, 19, 0x3a6ea5),
-    spec("autorack 4", 89, 64, 10.67, 19, 0xa33b3b),
+    spec("loco", 74, 52, 10.25, 15.5, colours[0]),
+    spec("autorack 1", 89, 64, 10.67, 19, colours[1]),
+    spec("autorack 2", 89, 64, 10.67, 19, colours[2]),
+    spec("flat", 89, 64, 10.0, 6, colours[3]),
+    spec("autorack 3", 89, 64, 10.67, 19, colours[4]),
+    spec("autorack 4", 89, 64, 10.67, 19, colours[5]),
   ];
   const floor = (4 * FT) / scale; // body floor above rail (trucks underneath)
   for (const v of list) {
@@ -264,6 +279,8 @@ function makeTurnoutMarkers(G) {
 // ------------------------------------------------------------------ HUD
 
 let G;
+// Every train, and the one being driven (the controls and cameras follow it).
+const trains = [];
 let train;
 let clearance;
 const ui = {
@@ -271,6 +288,7 @@ const ui = {
   bar: document.querySelector("#throttle span"), cams: document.getElementById("cams"),
   turnouts: document.getElementById("turnouts"), msg: document.getElementById("msg"),
   status: document.getElementById("status"), log: document.getElementById("log"),
+  trains: document.getElementById("trains"), gap: document.getElementById("gap"),
   clearlog: document.getElementById("clearlog"), margin: document.getElementById("margin"),
   stop: document.getElementById("stopOnAlarm"),
 };
@@ -318,12 +336,52 @@ function setCam(c) {
 /** Throw turnout number k (index into the markers). */
 function throwTurnout(k) {
   const n = G.nodes[markers[k].userData.node];
-  if (train.occupies(n)) {
+  // A crossover's two turnouts are thrown together, as on the real thing.
+  const both = [n, ...crossoverPartners(n)];
+  if (both.some((m) => trains.some((t) => t.occupies(m)))) {
     flash("Can't throw it under the train");
     return;
   }
-  n.state = 1 - n.state;
+  const state = 1 - n.state;
+  for (const m of both) m.state = state;
   refreshTurnouts();
+}
+
+/**
+ * The turnout(s) at the other end of any crossover starting at node n: the
+ * nodes joined to it by a track piece labelled as a crossover.
+ * @param {object} n - A turnout node.
+ * @returns {object[]}
+ */
+function crossoverPartners(n) {
+  const out = [];
+  for (const [e] of n.ends) {
+    const edge = G.edges[e];
+    if (!edge.label.includes("crossover")) continue;
+    const other = G.nodes[edge.from === G.nodes.indexOf(n) ? edge.to : edge.from];
+    if (other !== n && other.ways) out.push(other);
+  }
+  return out;
+}
+
+/**
+ * Where a turnout is, from the track pieces meeting at it: the modules (with
+ * their ring, A or B), e.g. "A M6–M1", or "entry" on the entry rectangle.
+ * @param {object} n - A turnout node.
+ * @returns {string}
+ */
+function where(n) {
+  const names = n.ends.map(([e]) => {
+    const words = G.edges[e].label.split(" ");
+    return /^[AB]$/.test(words[0]) ? `${words[0]} ${words[1]}` : words[0];
+  });
+  const unique = [...new Set(names)];
+  if (crossoverPartners(n).length) return `${unique[0]} crossover`;
+  // "A M6", "A M1" → "A M6–M1"; a single module (an entry turnout) as is.
+  if (unique.length === 2 && unique[0][0] === unique[1][0] && unique[0].includes(" ")) {
+    return `${unique[0]}–${unique[1].split(" ")[1]}`;
+  }
+  return unique.join("–");
 }
 
 /** Redraw the turnout buttons and marker colours. */
@@ -333,7 +391,8 @@ function refreshTurnouts() {
     const n = G.nodes[m.userData.node];
     m.material.color.set(n.state ? 0xf08a3c : 0x57c27a);
     const b = document.createElement("button");
-    b.textContent = `${k + 1}: ${n.state ? "diverging" : "through"}`;
+    b.textContent = `${k + 1} ${where(n)}: ${n.state ? "diverging" : "through"}`;
+    b.title = `Turnout ${k + 1} at ${where(n)}`;
     b.className = n.state ? "reverse" : "normal";
     b.onclick = () => throwTurnout(k);
     ui.turnouts.appendChild(b);
@@ -443,7 +502,9 @@ function pulse(t) {
   const glow = 0.45 + 0.4 * Math.sin(t * 7);
   for (const mesh of highlighted.values()) mesh.material.emissiveIntensity = glow;
   for (const { ball } of spots) ball.material.opacity = 0.55 + 0.45 * Math.sin(t * 7);
-  for (const v of train.consist) v.body.material.emissiveIntensity = v.alarm ? glow + 0.3 : 0;
+  for (const t of trains) {
+    for (const v of t.consist) v.body.material.emissiveIntensity = v.alarm ? glow + 0.3 : 0;
+  }
 }
 
 /**
@@ -456,7 +517,7 @@ function checkClearance() {
   let changed = false;
   const offenders = new Map();
   const found = [];
-  for (const v of train.consist) {
+  for (const v of trains.flatMap((t) => t.consist)) {
     const r = clearance.check(v.body);
     v.alarm = r.level !== "clear";
     if (v.alarm) {
@@ -472,6 +533,30 @@ function checkClearance() {
       hits.set(r.part, { level: r.level, vehicle: v.name });
       changed = true;
     }
+  }
+  // Between the trains: the closest two of their cars come.
+  const between = trains.length > 1 ? trainGap(trains[0].consist, trains[1].consist, GAP_WATCH) : null;
+  if (between) {
+    const mm = between.distance * 1000;
+    ui.gap.textContent = `Between the trains: ${mm.toFixed(1)} mm (${between.a.name} · ${between.b.name})`;
+    if (between.distance <= clearance.margin) {
+      const level = between.distance < 1e-6 ? "touch" : "close";
+      const r = { level, part: between.b.name, vehicle: between.a.name,
+                  near: { onPart: between.onB, onCar: between.onA, distance: between.distance } };
+      for (const v of [between.a, between.b]) {
+        v.alarm = true;
+        v.body.material.emissive.setHex(GLOW[level]);
+      }
+      found.push({ level, near: r.near });
+      if (rank[level] > rank[worst.level]) worst = r;
+      const seen = hits.get(r.part);
+      if (!seen || rank[level] > rank[seen.level]) {
+        hits.set(r.part, { level, vehicle: r.vehicle });
+        changed = true;
+      }
+    }
+  } else {
+    ui.gap.textContent = trains.length > 1 ? `Between the trains: over ${GAP_WATCH * 1000} mm` : "";
   }
   ui.status.className = worst.level;
   ui.status.textContent = worst.level === "clear" ? "Clear" : describe(worst);
@@ -496,7 +581,7 @@ function describe({ level, part, vehicle, near }) {
  */
 let alarmOn = false;
 
-/** Stop the train on a new alarm (see above). */
+/** Stop every train on a new alarm (see above). */
 function soundAlarm(worst) {
   if (worst.level === "clear") {
     alarmOn = false;
@@ -504,25 +589,44 @@ function soundAlarm(worst) {
   }
   if (alarmOn) return;
   alarmOn = true;
-  if (ui.stop.checked && Math.abs(train.speed) > 1e-5) {
-    train.speed = 0;
-    throttle = 0;
+  if (ui.stop.checked && trains.some((t) => Math.abs(t.speed) > 1e-5)) {
+    stopAll();
     flash(`Stopped: ${describe(worst)}`);
+  }
+}
+
+/** Stop every train where it stands. */
+function stopAll() {
+  for (const t of trains) {
+    t.speed = 0;
+    t.throttle = 0;
   }
 }
 
 // ------------------------------------------------------------------ input
 
-let throttle = 0; // -1 .. 1 of top speed; negative backs up
+// Each train's throttle is its own `throttle`: −1 .. 1 of top speed, negative
+// backing up.  The keys drive the selected train; the others run on as set.
 const keys = new Set();
+
+/**
+ * Drive train k: the throttle keys, the HUD and the cameras follow it.
+ * @param {number} k - Index into `trains`.
+ */
+function selectTrain(k) {
+  train = trains[k];
+  [...ui.trains.children].forEach((b, i) => b.classList.toggle("on", i === k));
+}
 addEventListener("keydown", (ev) => {
   // Typing in the menu or the alarm box isn't driving.
   if (ev.target.tagName === "SELECT" || ev.target.tagName === "INPUT") return;
   keys.add(ev.key.toLowerCase());
   if (ev.key === " ") {
-    throttle = 0;
+    if (ev.shiftKey) stopAll();
+    else train.throttle = 0;
     ev.preventDefault();
   }
+  if (ev.key.toLowerCase() === "t") selectTrain((trains.indexOf(train) + 1) % trains.length);
   if (ev.key.toLowerCase() === "c") setCam(CAMS[(CAMS.indexOf(cam) + 1) % CAMS.length]);
   const k = parseInt(ev.key, 10) - 1;
   if (k >= 0 && k < markers.length) throwTurnout(k);
@@ -623,24 +727,26 @@ function placeCamera(dt, s) {
 /** Advance the simulation and draw one frame. */
 function frame() {
   const dt = Math.min(clock.getDelta(), 0.05);
-  if (keys.has("w") || keys.has("arrowup")) throttle = Math.min(1, throttle + dt * 0.5);
-  if (keys.has("s") || keys.has("arrowdown")) throttle = Math.max(-1, throttle - dt * 0.5);
+  if (keys.has("w") || keys.has("arrowup")) train.throttle = Math.min(1, train.throttle + dt * 0.5);
+  if (keys.has("s") || keys.has("arrowdown")) train.throttle = Math.max(-1, train.throttle - dt * 0.5);
   const top = TOP_KMH / 3.6 / G.scale; // m/s on the model
-  // Ease the speed toward the throttle, like a loco with momentum.
-  train.speed += (throttle * top - train.speed) * Math.min(1, dt * 1.5);
-  if (Math.abs(train.speed) > 1e-5 && !train.move(train.speed * dt)) {
-    train.speed = 0;
-    throttle = 0;
-    flash("End of the line");
+  for (const t of trains) {
+    // Ease the speed toward the throttle, like a loco with momentum.
+    t.speed += (t.throttle * top - t.speed) * Math.min(1, dt * 1.5);
+    if (Math.abs(t.speed) > 1e-5 && !t.move(t.speed * dt)) {
+      t.speed = 0;
+      t.throttle = 0;
+      flash(`T${trains.indexOf(t) + 1}: end of the line`);
+    }
+    placeConsist(t);
   }
-  placeConsist(train);
   soundAlarm(checkClearance());
   pulse(clock.elapsedTime);
 
   ui.speed.textContent = (Math.abs(train.speed) * G.scale * 3.6).toFixed(0);
-  ui.dir.textContent = throttle < 0 || train.speed < -1e-5 ? "reverse" : "forward";
-  ui.bar.style.left = `${50 + Math.min(0, throttle) * 50}%`;
-  ui.bar.style.width = `${Math.abs(throttle) * 50}%`;
+  ui.dir.textContent = train.throttle < 0 || train.speed < -1e-5 ? "reverse" : "forward";
+  ui.bar.style.left = `${50 + Math.min(0, train.throttle) * 50}%`;
+  ui.bar.style.width = `${Math.abs(train.throttle) * 50}%`;
 
   placeCamera(dt, 1 / G.scale);
   renderer.render(scene, camera);
@@ -650,14 +756,35 @@ function frame() {
 // ------------------------------------------------------------------ load
 
 /**
+ * Where the second train starts: on a track the first isn't using, half way
+ * along an M3, the other ring's where there is one (B M3), else this ring's
+ * other track; on a single ring, the lower staging track.
+ * @param {Train} first - The first train.
+ * @returns {{edge: number, at: number}|null} null if there is nowhere free.
+ */
+function secondStart(first) {
+  const used = new Set(first.trail.map((el) => el.e));
+  const free = (e, k) => !used.has(k);
+  const pick = (test) => G.edges.findIndex((e, k) => free(e, k) && test(e.label, e));
+  let edge = pick((label) => label.startsWith("B M3 3:-"));
+  if (edge < 0) edge = pick((label) => label.startsWith("B M3 "));
+  if (edge < 0) edge = pick((label) => label.startsWith("A M3 "));
+  if (edge >= 0) return { edge, at: G.edges[edge].length / 2 };
+  edge = pick((label, e) => e.staging && label.includes("lower"));
+  return edge >= 0 ? { edge, at: G.edges[edge].length - 0.05 } : null;
+}
+
+/**
  * Load the chosen layout and start.
  * @throws {Error} when the layout files are missing (not exported yet).
  */
 async function start() {
-  const names = await fetch("layouts.json").then((r) => {
-    if (!r.ok) throw new Error("No layouts exported yet: run scripts/hexmo-drive (see README.md).");
+  const manifest = await fetch("layouts.json", { cache: "no-store" }).then((r) => {
+    if (!r.ok) throw new Error("No layouts exported yet: run scripts/hexmo-drive.sh (see README.md).");
     return r.json();
   });
+  // { layouts, version }; an older export wrote just the list of names.
+  const names = Array.isArray(manifest) ? manifest : manifest.layouts;
   const name = names.includes(params.get("layout")) ? params.get("layout") : names[0];
   const select = document.getElementById("layout");
   for (const n of names) select.add(new Option(n, n, n === name, n === name));
@@ -665,34 +792,60 @@ async function start() {
     location.search = `?layout=${select.value}`;
   };
 
+  // The export's stamp in the URLs: a re-export is fetched afresh, never
+  // mixed with a cached copy of the last one (model from one, track from
+  // the other).
+  const v = manifest.version?.[name] ?? Date.now();
   const [gltf, raw] = await Promise.all([
-    new GLTFLoader().loadAsync(`${name}.glb`),
-    fetch(`${name}.track.json`).then((r) => r.json()),
+    new GLTFLoader().loadAsync(`${name}.glb?v=${v}`),
+    fetch(`${name}.track.json?v=${v}`).then((r) => r.json()),
   ]);
   // A few merged meshes to draw, one shape per part to test (layout.js).
   const layout = bakeLayout(gltf.scene);
   scene.add(layout.group);
   layoutBox.setFromObject(layout.group);
   G = buildGraph(raw);
-  G.onTurnoutChange = refreshTurnouts;
+  // A train running through a turnout from behind sets it to match; a
+  // crossover's other turnout moves with it, as on the real thing.
+  G.onTurnoutChange = (n) => {
+    for (const m of crossoverPartners(n)) m.state = n.state;
+    refreshTurnouts();
+  };
   clearance = new Clearance(layout.parts, marginMm / 1000);
   drawStaging(G);
   drawRails(G);
   makeTurnoutMarkers(G);
   // Start in the upper staging track facing the entry rectangle; on a pair
-  // (no staging), half way down the first helix's spur on M3.
+  // (no staging), half way along the first ring's M3: on the helix's spur
+  // where there is one, else on its track.
   let first = G.edges.findIndex((e) => e.staging && e.label.includes("straight"));
   let at = first >= 0 ? G.edges[first].length - 0.05 : null;
   if (first < 0) {
     first = G.edges.findIndex((e) => e.label.startsWith("A M3 3:-"));
+    if (first < 0) first = G.edges.findIndex((e) => e.label.startsWith("A M3 "));
     at = G.edges[first].length / 2;
   }
-  train = new Train(G, makeConsist(G.scale), GAP, first, at);
+  trains.push(new Train(G, makeConsist(G.scale, 0), GAP, first, at));
+  // The second train: on another track, preferably the other ring's (see
+  // secondStart), facing round the same way.
+  const second = secondStart(trains[0]);
+  if (second) trains.push(new Train(G, makeConsist(G.scale, 1), GAP, second.edge, second.at));
+  for (const [k, t] of trains.entries()) {
+    t.throttle = 0;
+    const b = document.createElement("button");
+    b.textContent = `Train ${k + 1}`;
+    b.onclick = () => selectTrain(k);
+    ui.trains.appendChild(b);
+  }
+  selectTrain(0);
   refreshTurnouts();
   setCam("chase");
   document.getElementById("loading").remove();
   // For testing from the browser console.
-  window.hexmo = { G, train, setCam, throwTurnout, scene, camera, orbit, clearance, hits, placeConsist, checkClearance };
+  window.hexmo = {
+    G, trains, get train() { return train; }, selectTrain, setCam, throwTurnout, scene, camera,
+    orbit, clearance, hits, placeConsist, checkClearance, trainGap, Train, makeConsist, GAP,
+  };
   frame();
 }
 

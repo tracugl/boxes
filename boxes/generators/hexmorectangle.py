@@ -41,7 +41,7 @@ from boxes.generators._hexmo_subway import HexmoSubwayMixin
 from boxes.generators._hexmo_track_guide import HexmoTrackGuideMixin
 from boxes.generators._hexmo_track_template import HexmoTrackTemplateMixin
 from boxes.generators._hexmo_track_routes import Arc, Line, offset_segments, segments_polyline
-from boxes.generators._hexmo_turnouts import parse_turnouts, turnout_leg
+from boxes.generators._hexmo_turnouts import crossover_leg, parse_turnouts, turnout_leg
 from boxes.generators._hexmo_under_track import HexmoUnderTrackMixin
 
 
@@ -416,9 +416,20 @@ class HexmoRectangle(HexmoStepFormatMixin, HexmoBigHoleMixin, HexmoTrackGuideMix
                  "the helix ring's entry: '10:0:-35,133.7:0:35'.  Blank (default): "
                  "none.")
         self.argparser.add_argument(
+            "--crossovers", action="store", type=str, default="",
+            help="Crossovers between two of the deck's straight tracks, "
+                 "comma-separated 'toe:from:to': two turnouts (the --turnout_* "
+                 "size) heel to heel, the first's toe this many mm along the deck "
+                 "on the track at offset 'from', crossing over to end at the "
+                 "second's toe on the track at 'to'.  Both must be track lines "
+                 "(--track_line_count, --track_spacing).  With Peco N mediums and "
+                 "tracks 40 mm apart a crossover is 284.3 mm long.  E.g. "
+                 "'71:-20:20'.  Blank (default): none.")
+        self.argparser.add_argument(
             "--turnout_length", action="store", type=float, default=219.0,
             help="Turnout length, toe to heel (mm).  Default: Peco HO medium "
-                 "(SL-E95/96, Code 100); Peco N medium (SL-E395/396) is 123.7.")
+                 "(SL-E95/96, Code 100); Peco N Code 80 medium (SL-E395/396) is "
+                 "123.7.")
         self.argparser.add_argument(
             "--turnout_radius", action="store", type=float, default=914.0,
             help="Radius (mm) of the turnout's diverging road.  Default: Peco HO "
@@ -426,7 +437,7 @@ class HexmoRectangle(HexmoStepFormatMixin, HexmoBigHoleMixin, HexmoTrackGuideMix
         self.argparser.add_argument(
             "--turnout_angle", action="store", type=float, default=12.0,
             help="Turnout crossing angle (degrees).  Default: Peco HO medium; "
-                 "Peco N medium is 14.")
+                 "Peco N Code 80 medium is 12.")
         self.argparser.add_argument(
             "--turnout_reverse_radius", action="store", type=float, default=700.0,
             help="Radius (mm) of the flexible-track curve that brings a "
@@ -1155,6 +1166,31 @@ class HexmoRectangle(HexmoStepFormatMixin, HexmoBigHoleMixin, HexmoTrackGuideMix
             legs.append(shifted)
         return legs
 
+    def _crossoverLegs(self, length, width):
+        """Solve every --crossovers leg on the deck.
+
+        @param length - Deck length along the track (H).
+        @param width  - Deck width across it (W − 2t).
+        @returns One tuple of ``Line``/``Arc`` pieces per crossover, from the
+                 first toe to the second, in the deck callback's frame (as
+                 _turnoutLegs).
+        @throws ValueError - From the crossover geometry, or if either end is
+                             not on one of the deck's straight tracks.
+        """
+        offsets = [round(o, 6) for o in self._trackOffsets()] if self.track_lines else []
+        legs = []
+        for spec in parse_turnouts(self.crossovers):
+            for end in (spec.start, spec.end):
+                if round(end, 6) not in offsets:
+                    raise ValueError(
+                        f"--crossovers {spec.toe:g}:{spec.start:g}:{spec.end:g}: there is "
+                        f"no straight track at offset {end:g} (the tracks are at "
+                        f"{', '.join(f'{o:g}' for o in offsets) or 'none'}).")
+            leg = crossover_leg(spec, length, self.turnout_length, self.turnout_radius,
+                                self.turnout_angle)
+            legs.append(tuple(_shiftY(seg, width / 2.0) for seg in leg.segments))
+        return legs
+
     def _drawEndTrackGuides(self):
         """The track guide plate(s) for the end walls.
 
@@ -1262,15 +1298,18 @@ class HexmoRectangle(HexmoStepFormatMixin, HexmoBigHoleMixin, HexmoTrackGuideMix
             self.rectangularWall(width, body, "fefe", callback=[support_cb],
                                  move="right", label=f"subway {height:g}")
 
-    def _etchTurnoutLeg(self, segments):
+    def _etchTurnoutLeg(self, segments, crossover=False):
         """Etch one turnout's diverging leg, styled like the straight track lines.
 
         Draws its centreline (--draw_center) and/or footprint edges
         (--draw_track), a tick across the through road at the toe (where the
         switch blades start), and with --track_crossing a tick --track_lead_in
-        from the end of the deck, matching the straight lines' end ticks.
+        from the end of the deck, matching the straight lines' end ticks.  A
+        crossover's leg ends at the second turnout's toe, which gets a tick
+        of its own instead.
 
-        @param segments - The leg's pieces in the deck frame (see _turnoutLegs).
+        @param segments  - The leg's pieces in the deck frame (see _turnoutLegs).
+        @param crossover - True for a --crossovers leg (see _crossoverLegs).
         """
         half = self.track_width / 2.0
         lines = []
@@ -1294,7 +1333,9 @@ class HexmoRectangle(HexmoStepFormatMixin, HexmoBigHoleMixin, HexmoTrackGuideMix
                 self.ctx.stroke()
             if lines:
                 ticks = [toe[0]]
-                if self.track_crossing and self.track_lead_in > 0:
+                if crossover:
+                    ticks.append(end[0])
+                elif self.track_crossing and self.track_lead_in > 0:
                     ticks.append(end[0] - self.track_lead_in)
                 for x, y in zip(ticks, (toe[1], end[1])):
                     self.ctx.move_to(x, y - cross_half)
@@ -1506,6 +1547,7 @@ class HexmoRectangle(HexmoStepFormatMixin, HexmoBigHoleMixin, HexmoTrackGuideMix
         # Turnout legs (--turnouts), solved and checked before anything is
         # drawn; etched on the deck by base_cb.
         turnout_legs = self._turnoutLegs(H, W - 2 * t)
+        crossover_legs = self._crossoverLegs(H, W - 2 * t)
         # Extra slot depth added to both crossing-slot sets so panels seat fully
         # despite laser kerf and material-thickness variation.
         tol = self.slot_tolerance
@@ -2088,6 +2130,8 @@ class HexmoRectangle(HexmoStepFormatMixin, HexmoBigHoleMixin, HexmoTrackGuideMix
                 self.drawRectTrackLines(H, W - 2 * t)
                 for leg in turnout_legs:
                     self._etchTurnoutLeg(leg)
+                for leg in crossover_legs:
+                    self._etchTurnoutLeg(leg, crossover=True)
 
         # --- Outer walls --------------------------------------------------------
         # Long walls (left/right, spanning H) provide tabs on their small

@@ -28,8 +28,18 @@ module only adds the diverging leg.
 4. a straight to the end of the deck.
 
 Steps 2–4 are flexible track laid after the turnout.  Peco's N medium turnout
-(SL-E395/396) is 123.7 mm long with a 457 mm diverging radius and a 14° angle,
-which puts the diverging road 16.9 mm off the through road at the heel.
+(Code 80, SL-E395/396) is 123.7 mm long with a 457 mm diverging radius and a
+12° angle, which puts the diverging road 16.1 mm off the through road at the
+heel.
+
+**Crossovers** (``--crossovers``, same ``toe:from:to`` entries) join two
+parallel tracks with a pair of the same turnouts, heel to heel: the first
+turnout's diverging road off ``from``, a straight, and the second turnout's
+diverging road (the same curve, mirrored) back onto ``to``, ending at its toe
+on that track.  Nothing runs on past it: the second turnout's through road is
+``to``'s own track line.  With Peco N mediums the tracks must be at least
+32.2 mm apart (both heels on the straight); 40 mm apart, the crossover is
+284.3 mm long, toe to toe.
 
 The module name starts with an underscore, so generator discovery skips it.
 """
@@ -94,6 +104,37 @@ def parse_turnouts(text):
                              "must end at a different offset from the through road.")
         specs.append(TurnoutSpec(toe, start, end))
     return specs
+
+
+def crossover_leg(spec, deck_length, length, radius, angle):
+    """Solve one crossover: two turnouts heel to heel between parallel tracks.
+
+    The leg is :func:`turnout_leg`'s with the second turnout's diverging road
+    as the curve back to parallel (the same radius), stopping at that
+    turnout's toe on the ``to`` track instead of running on to the end of the
+    deck.
+
+    @param spec        - The :class:`TurnoutSpec` (``toe``: the first turnout's).
+    @param deck_length - Deck length; the crossover must end on the deck.
+    @param length      - Turnout length, toe to heel.
+    @param radius      - Diverging road radius.
+    @param angle       - Crossing angle, degrees.
+    @returns :class:`TurnoutLeg`; ``parallel_from`` is the second toe's x.
+    @throws ValueError - As for :func:`turnout_leg`, or if the tracks are too
+                         close for both heels to sit on the straight.
+    """
+    theta = math.radians(angle)
+    heel_rise = radius * (1 - math.cos(theta)) + (length - radius * math.sin(theta)) * math.tan(theta)
+    spread = abs(spec.end - spec.start)
+    if spread < 2 * heel_rise - 1e-9:
+        raise ValueError(
+            f"--crossovers: tracks {spread:g} mm apart are too close for a crossover "
+            f"of these turnouts: each heel is {heel_rise:.1f} mm off its track, so "
+            f"they must be at least {2 * heel_rise:.1f} mm apart.")
+    leg = turnout_leg(spec, deck_length, length, radius, angle, radius)
+    # Drop the run-on to the end of the deck: the leg ends at the second toe.
+    segments = tuple(seg for seg in leg.segments[:3])
+    return TurnoutLeg(segments, leg.heel, leg.parallel_from)
 
 
 def turnout_leg(spec, deck_length, length, radius, angle, reverse_radius):

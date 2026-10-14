@@ -169,6 +169,99 @@ class TestPair:
         assert b["pts"][0] == pytest.approx([-x, 2 * far_y - y, z], abs=0.01)
 
 
+@pytest.fixture(scope="module")
+def track():
+    """The N dogbone's graph, built once."""
+    return D.layout_track("N250-dogbone")
+
+
+class TestDogbone:
+    """A double-track main with a single-track loop round each ring and a Peco
+    crossover on each entry rectangle; deck only."""
+
+    def test_listed_first(self) -> None:
+        assert D.layouts()[0] == "N250-dogbone"
+
+    def test_every_piece_joins(self, track) -> None:
+        assert dead_ends(track) == []
+
+    def test_the_only_turnouts_are_the_crossovers(self, track) -> None:
+        # Both ends of each entry's crossover; none on the curving modules.
+        found = turnouts(track)
+        assert len(found) == 4
+        for n in found:
+            assert all(track["edges"][e]["label"].split()[1] == "entry" for e, _ in n["ends"])
+
+    def test_one_track_round_each_ring(self, track) -> None:
+        labels = {e["label"].split("@")[0] for e in track["edges"]}
+        for ring in "AB":
+            for k in range(1, 6):
+                assert f"{ring} M{k} 3:20-5:20" in labels
+                assert f"{ring} M{k} 3:-20-5:-20" not in labels
+
+    def test_continuous_running(self, track) -> None:
+        # Straight on throughout: round ring A, along one main track into
+        # ring B, round it and back along the other, and round again.
+        start = next(e for e in track["edges"] if e["label"].startswith("A M3 "))
+        passed = drive(track, start["id"], 9000)
+        order = ["A M6 3:-20-1:-20", "A entry straight", "B M6 1:-20-5:-20", "B M3 ",
+                 "B M6 3:-20-1:-20", "B entry straight", "A M6 1:-20-5:-20", "A M3 "]
+        at = 0
+        for label in passed:
+            if at < len(order) and label.startswith(order[at]):
+                at += 1
+        assert at == len(order), passed
+
+    def test_no_staging(self, track) -> None:
+        assert not any(e["staging"] for e in track["edges"])
+
+
+@pytest.fixture(scope="module")
+def dual():
+    """The N dual-ring dogbone's graph, built once."""
+    return D.layout_track("N250-dual-dogbone")
+
+
+class TestDualDogbone:
+    """Double track round each ring; on each entry, Peco turnouts split the
+    main's two tracks into four, one pair per loop, interleaved with a
+    crossover; the two entries' crossovers go opposite ways."""
+
+    def test_every_piece_joins(self, dual) -> None:
+        assert dead_ends(dual) == []
+
+    def test_the_only_turnouts_are_on_the_entries(self, dual) -> None:
+        # Two splitting turnouts on each entry, and both ends of its crossover.
+        found = turnouts(dual)
+        assert len(found) == 8
+        for n in found:
+            assert all(dual["edges"][e]["label"].split()[1] == "entry" for e, _ in n["ends"])
+
+    def test_the_crossovers_are_opposite_hands(self, dual) -> None:
+        # In plan (the rings in line along y), one crossover's diagonal runs
+        # from −x to +x as y grows and the other from +x to −x: mirror
+        # images, not one turned round (which would be the same hand).
+        slopes = []
+        for ring in "AB":
+            leg = next(e for e in dual["edges"] if e["label"] == f"{ring} entry crossover 1")
+            (x0, y0, _), (x1, y1, _) = leg["pts"][0], leg["pts"][-1]
+            slopes.append((x1 - x0) / (y1 - y0))
+        assert slopes[0] * slopes[1] < 0
+
+    def test_both_tracks_round_both_rings(self, dual) -> None:
+        labels = {e["label"].split("@")[0] for e in dual["edges"]}
+        for ring in "AB":
+            for k in range(1, 6):
+                assert f"{ring} M{k} 3:25-5:25" in labels
+                assert f"{ring} M{k} 3:-15-5:-15" in labels
+
+    def test_through_takes_the_inner_loops(self, dual) -> None:
+        start = next(e for e in dual["edges"] if e["label"].startswith("A M3 3:-15"))
+        passed = drive(dual, start["id"], 9000)
+        assert any(label.startswith("B M3 3:-15") for label in passed), passed
+        assert not any("3:25-5:25" in label for label in passed)
+
+
 class TestAsBuiltDecks:
     """The strip left across a deck slot's mouth is cut away in the model."""
 
