@@ -500,6 +500,11 @@ def rect_pieces(box):
             moved = [_shift(seg, -H / 2, -inner / 2) for seg in leg]
             pieces.append(_piece(f"turnout {k} leg", moved, (deck_top, deck_top), False,
                                  False, True, t))
+        # A crossover's leg ends on the other track, not at a module edge.
+        for k, leg in enumerate(box._crossoverLegs(H, inner), 1):
+            moved = [_shift(seg, -H / 2, -inner / 2) for seg in leg]
+            pieces.append(_piece(f"crossover {k}", moved, (deck_top, deck_top), False,
+                                 False, False, t))
     return pieces
 
 
@@ -566,7 +571,11 @@ def _ring_layout(ring):
     M1 at 150°, … M5 at 30°.  The entry rectangle runs on from M6 edge 1,
     turnout end first.
 
-    @param ring - Key of :data:`_hexmo_helix_ring.RINGS`, e.g. ``"N250"``.
+    @param ring - Key of :data:`_hexmo_helix_ring.RINGS`, e.g. ``"N250"``,
+                  or a ring of the same shape given directly as
+                  ``(modules, entry_args)``: ``{"M1": [...], … "M6": [...]}``
+                  of HexmoHexagon options and the entry's HexmoRectangle
+                  options (as the Hexmo Drive layouts do).
     @returns ``[(name, box, kind, angle°, (dx, dy))]``: place a part by
              turning it ``angle`` about z, then moving it by (dx, dy).
     @throws KeyError - For an unknown ring.
@@ -574,7 +583,7 @@ def _ring_layout(ring):
     from boxes.generators._hexmo_helix_ring import RINGS
     from boxes.generators.hexmohexagon import HexmoHexagon
     from boxes.generators.hexmorectangle import HexmoRectangle
-    modules, entry_args = RINGS[ring]
+    modules, entry_args = RINGS[ring] if isinstance(ring, str) else ring
     layout = []
     m6_centre = a_out = None
     for k, name in enumerate(["M6", "M1", "M2", "M3", "M4", "M5"]):

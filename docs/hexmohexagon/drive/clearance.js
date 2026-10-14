@@ -95,3 +95,50 @@ export class Clearance {
              distance: onPart.distance };
   }
 }
+
+// Scratch values for trainGap (no allocation per pair).
+const _boxA = new THREE.Box3();
+const _boxB = new THREE.Box3();
+const _toB = new THREE.Matrix4();
+
+/**
+ * The closest two trains come: the smallest gap between any car body of one
+ * and any of the other, looked for out to `reach`.
+ *
+ * Each body is a box; the gap between two is found as for the layout's
+ * parts, from one body's triangles (in a bounding volume hierarchy built
+ * once per body) to the other's box.  Pairs whose overall bounds are further
+ * apart than `reach` are skipped.
+ *
+ * @param {object[]} carsA - One train's vehicles (each with a placed `body`).
+ * @param {object[]} carsB - The other train's.
+ * @param {number} reach - How far to look (scene metres).
+ * @returns {{distance: number, a: object, b: object, onA: THREE.Vector3,
+ *           onB: THREE.Vector3}|null} the closest pair within reach (world
+ *          points on each body; distance 0 when they overlap), or null.
+ */
+export function trainGap(carsA, carsB, reach) {
+  let best = null;
+  for (const a of carsA) {
+    a.body.updateWorldMatrix(true, false);
+    _boxA.setFromObject(a.body).expandByScalar(reach);
+    for (const b of carsB) {
+      b.body.updateWorldMatrix(true, false);
+      if (!_boxA.intersectsBox(_boxB.setFromObject(b.body))) continue;
+      const geometry = b.body.geometry;
+      if (!geometry.boundsTree) geometry.boundsTree = new MeshBVH(geometry);
+      // a's box into b's frame: b ← world ← a.
+      _toB.copy(b.body.matrixWorld).invert().multiply(a.body.matrixWorld);
+      const onB = {};
+      const onA = {};
+      geometry.boundsTree.closestPointToGeometry(a.body.geometry, _toB, onB, onA, 0, reach);
+      if (!onB.point || (best && onB.distance >= best.distance)) continue;
+      best = {
+        distance: onB.distance, a, b,
+        onA: onA.point.clone().applyMatrix4(a.body.matrixWorld),
+        onB: onB.point.clone().applyMatrix4(b.body.matrixWorld),
+      };
+    }
+  }
+  return best;
+}

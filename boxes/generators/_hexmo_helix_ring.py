@@ -152,8 +152,9 @@ def helix_entry(size):
             f"--under_track_height={size.exit:g}", "--under_track_width=35",
             "--train_envelope=43",
             "--turnouts=10:0:-40,133.7:0:40",
-            # Peco N medium (SL-E395/396); the defaults are HO's.
-            "--turnout_length=123.7", "--turnout_radius=457", "--turnout_angle=14",
+            # Peco N Code 80 medium (SL-E395/396: 123.7 mm, R457, 12°); the
+            # defaults are HO's.
+            "--turnout_length=123.7", "--turnout_radius=457", "--turnout_angle=12",
             "--turnout_reverse_radius=300"] + _CUT + (
         [f"--subway={size.exit:g}"] if size.subway else []) + _WALLS
 
