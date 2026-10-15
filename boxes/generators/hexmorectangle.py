@@ -36,6 +36,7 @@ from boxes.generators._hexmo_access import (
 from boxes.generators._hexmo_track_openings import rect_circle_gap
 from boxes.generators._hexmo_big_holes import HexmoBigHoleMixin
 from boxes.generators._hexmo_risers import support_stations
+from boxes.generators._hexmo_nest import HexmoSheetsMixin
 from boxes.generators._hexmo_step_format import HexmoStepFormatMixin
 from boxes.generators._hexmo_subway import HexmoSubwayMixin
 from boxes.generators._hexmo_track_guide import HexmoTrackGuideMixin
@@ -214,7 +215,7 @@ class _ShortWallTopEdge(edges.BaseEdge):
         e_edge(self._side_gap)
 
 
-class HexmoRectangle(HexmoStepFormatMixin, HexmoBigHoleMixin, HexmoTrackGuideMixin,
+class HexmoRectangle(HexmoStepFormatMixin, HexmoSheetsMixin, HexmoBigHoleMixin, HexmoTrackGuideMixin,
                      HexmoTrackTemplateMixin, HexmoUnderTrackMixin, HexmoSubwayMixin, Boxes):
     """Rectangular tray with a 3×N internal grid, compatible with HexmoHexagon stacking.
 
@@ -514,6 +515,8 @@ class HexmoRectangle(HexmoStepFormatMixin, HexmoBigHoleMixin, HexmoTrackGuideMix
                  "original walls.")
         # --format step and --step_clearance (see _hexmo_step_format).
         self._addStepFormat()
+        # --sheets: the parts packed onto laser blanks (see _hexmo_nest).
+        self._addSheetArgs()
 
     def _hexWallLength(self):
         """Hole-pattern length of the matching HexmoHexagon side wall.
@@ -1051,6 +1054,10 @@ class HexmoRectangle(HexmoStepFormatMixin, HexmoBigHoleMixin, HexmoTrackGuideMix
         # the caller only wants space reservation (e.g. move="up only").
         if self.move(panel_width, panel_height, move, True):
             return
+
+        # Mark this drawing part as the settings tag: a reference, which
+        # --sheets nesting keeps off the blanks (see _hexmo_nest).
+        self.surface._p.settings_tag = True
 
         # Outer cut border so the panel can be laser-separated from stock.
         self.set_source_color(Color.OUTER_CUT)

@@ -369,6 +369,9 @@ class HexmoTrackGuideMixin:
         arrow = arrow or "outside of curve ->"
 
         def features():
+            # Mark the drawing part as a guide plate, so an order's cut files
+            # can keep just a few of each (see _hexmo_nest).
+            self.surface._p.helper = "guide"
             for x, y, r in pins:
                 self.hole(y - shift, x - base, r)
             for cx, y0, w, h in windows:
