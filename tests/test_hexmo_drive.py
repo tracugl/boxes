@@ -33,7 +33,8 @@ from boxes.generators import _hexmo_drive as D
 @pytest.fixture(scope="module")
 def graphs():
     """Track graphs for the layouts the tests walk, built once."""
-    return {name: D.layout_track(name) for name in ("N250", "N250-x2", "HO-ground-x2")}
+    return {name: D.layout_track(name)
+            for name in ("N250", "N250-x2", "HO-ground-x2", "HO-ground-HO")}
 
 
 def dead_ends(track):
@@ -139,12 +140,12 @@ class TestSingleRing:
 class TestPair:
     """Two rings joined entry to entry: one continuous loop through both."""
 
-    @pytest.mark.parametrize("name", ["N250-x2", "HO-ground-x2"])
+    @pytest.mark.parametrize("name", ["N250-x2", "HO-ground-x2", "HO-ground-HO"])
     def test_no_dead_ends_and_four_turnouts(self, graphs, name) -> None:
         assert dead_ends(graphs[name]) == []
         assert len(turnouts(graphs[name])) == 4
 
-    @pytest.mark.parametrize("name", ["N250-x2", "HO-ground-x2"])
+    @pytest.mark.parametrize("name", ["N250-x2", "HO-ground-x2", "HO-ground-HO"])
     def test_down_one_helix_and_up_the_other(self, graphs, name) -> None:
         # From A's spur, straight on throughout: down A, along the lower level
         # into B, up B, back along the upper level into A and round again.
@@ -159,6 +160,14 @@ class TestPair:
             if at < len(order) and label.startswith(order[at]):
                 at += 1
         assert at == len(order), passed
+
+    def test_one_ring_ground_one_plain(self) -> None:
+        # HO-ground-HO: ring A opened up for scenery, ring B the plain ring.
+        from boxes.generators._hexmo_helix_ring import RINGS
+        first, second = D._pair_rings(D.parse_layout("HO-ground-HO")[0])
+        assert (first, second) == ("HO-ground", "HO")
+        assert any(a.startswith("--lower_ground=") for a in RINGS[first][0]["M1"])
+        assert not any(a.startswith("--lower_ground=") for a in RINGS[second][0]["M1"])
 
     def test_the_second_ring_is_the_first_turned(self, graphs) -> None:
         track = graphs["N250-x2"]
@@ -262,6 +271,70 @@ class TestDualDogbone:
         passed = drive(dual, start["id"], 9000)
         assert any(label.startswith("B M3 3:-15") for label in passed), passed
         assert not any("3:25-5:25" in label for label in passed)
+
+
+@pytest.fixture(scope="module")
+def ho_dual():
+    """The HO dual-ring dogbone's graph, built once."""
+    return D.layout_track("HO-dual-dogbone")
+
+
+def tightest_radius(pts, step=6):
+    """The smallest radius (mm, in plan) through points ``step`` samples apart."""
+    radii = []
+    for i in range(step, len(pts) - step):
+        a, b, c = pts[i - step][:2], pts[i][:2], pts[i + step][:2]
+        area = abs((b[0] - a[0]) * (c[1] - a[1]) - (b[1] - a[1]) * (c[0] - a[0])) / 2
+        if area > 1e-6:
+            radii.append(math.dist(a, b) * math.dist(b, c) * math.dist(a, c) / (4 * area))
+    return min(radii, default=math.inf)
+
+
+class TestHODualDogbone:
+    """The N dual-ring dogbone at HO size: double track 80 mm apart round each
+    ring, Peco HO medium turnouts and crossover on each entry."""
+
+    def test_listed(self) -> None:
+        assert "HO-dual-dogbone" in D.layouts()
+
+    def test_every_piece_joins(self, ho_dual) -> None:
+        assert dead_ends(ho_dual) == []
+
+    def test_the_only_turnouts_are_on_the_entries(self, ho_dual) -> None:
+        found = turnouts(ho_dual)
+        assert len(found) == 8
+        for n in found:
+            assert all(ho_dual["edges"][e]["label"].split()[1] == "entry" for e, _ in n["ends"])
+
+    def test_the_crossovers_are_opposite_hands(self, ho_dual) -> None:
+        slopes = []
+        for ring in "AB":
+            leg = next(e for e in ho_dual["edges"] if e["label"] == f"{ring} entry crossover 1")
+            (x0, y0, _), (x1, y1, _) = leg["pts"][0], leg["pts"][-1]
+            slopes.append((x1 - x0) / (y1 - y0))
+        assert slopes[0] * slopes[1] < 0
+
+    def test_both_tracks_round_both_rings(self, ho_dual) -> None:
+        labels = {e["label"].split("@")[0] for e in ho_dual["edges"]}
+        for ring in "AB":
+            for k in range(1, 6):
+                assert f"{ring} M{k} 3:40-5:40" in labels
+                assert f"{ring} M{k} 3:-40-5:-40" in labels
+
+    def test_through_takes_the_inner_loops(self, ho_dual) -> None:
+        start = next(e for e in ho_dual["edges"] if e["label"].startswith("A M3 3:-40"))
+        passed = drive(ho_dual, start["id"], 18000)
+        assert any(label.startswith("B M3 3:-40") for label in passed), passed
+        assert not any("3:40-5:40" in label for label in passed)
+
+    def test_ring_radii_and_legs(self, ho_dual) -> None:
+        # The ring at R740 and R660; M6's legs no tighter than about R495.
+        edges = {e["label"].split("@")[0]: e for e in ho_dual["edges"]}
+        assert tightest_radius(edges["A M3 3:40-5:40"]["pts"]) == pytest.approx(740, abs=10)
+        assert tightest_radius(edges["A M3 3:-40-5:-40"]["pts"]) == pytest.approx(660, abs=10)
+        legs = [e for label, e in edges.items() if label.startswith("A M6 ")]
+        assert len(legs) == 4
+        assert min(tightest_radius(e["pts"]) for e in legs) > 490
 
 
 class TestAsBuiltDecks:

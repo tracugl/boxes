@@ -54,6 +54,7 @@ from __future__ import annotations
 import json
 import math
 import sys
+from dataclasses import dataclass
 from pathlib import Path
 
 from boxes.generators import _hexmo_step as S
@@ -154,9 +155,74 @@ def dual_dogbone_n250():
             entry + ["--turnouts=20:-20:-60,138.7:20:60", "--crossovers=15:20:-20"])
 
 
+def dual_dogbone_ho():
+    """The HO dual-ring dogbone's ring: :func:`dual_dogbone_n250` at HO size.
+
+    The HO ring's shape and module settings (radius 500, 6 mm stock), track
+    on the deck only.  The ring keeps a double track at the HO spacing,
+    80 mm: ``3:40-5:40`` (R740) and ``3:-40-5:-40`` (R660).  On the entry's
+    866 mm deck two Peco HO medium turnouts (SL-E95/96: 219 mm, R914, 12°;
+    the rectangle's defaults) split the main's two tracks (±40) into four,
+    the legs back parallel at ±120 546 mm from their toes, and a crossover
+    of the same turnouts (568.5 mm toe to toe) joins the main's two tracks.
+    They interleave as on N (x from the deck's far end, M6 at 866):
+
+    * the −40 track: the crossover's first turnout (toe 10), then at its heel
+      the splitting turnout (toe 229), its leg parallel at −120 by 775,
+      inside the 23 mm lead-in at the M6 end;
+    * the +40 track: the splitting turnout (toe 15, heel 234), then the
+      crossover's second turnout (from 360), its toe at 578.5.
+
+    The second ring's entry is the mirror image, so the two crossovers are
+    opposite hands.  On M6 four legs carry the main's tracks (±40) into the
+    ring's inner track and the split legs (±120) into its outer, so each
+    loop's two ends are the main's two tracks and running is continuous
+    whichever way the turnouts are set.
+
+    @returns ``(modules, entry_args, second_entry_args)``.
+    """
+    from boxes.generators._hexmo_helix_ring import helix_entry_ho, helix_ring_ho
+    helix_only = ("--track_routes", "--track_openings", "--deck_slots", "--risers",
+                  "--under_track_edges", "--trapezoid")
+    common = [a for a in helix_ring_ho()["M6"] if not a.startswith(helix_only)]
+    modules = {f"M{k}": common + ["--trapezoid=1", "--track_routes=3:40-5:40,3:-40-5:-40"]
+               for k in range(1, 6)}
+    modules["M6"] = common + [
+        "--track_routes=1:-40-5:40,1:-120-5:-40,3:40-1:-40,3:-40-1:-120"]
+    entry = [a for a in helix_entry_ho()
+             if not a.startswith(("--turnouts=", "--under_track=", "--subway="))]
+    entry += ["--track_line_count=2", "--track_spacing=80"]
+    return (modules,
+            entry + ["--turnouts=229:-40:-120,15:40:120", "--crossovers=10:-40:40"],
+            entry + ["--turnouts=15:-40:-120,229:40:120", "--crossovers=10:40:-40"])
+
+
+@dataclass(frozen=True)
+class RingPair:
+    """Two different rings joined entry to entry: ``first`` as it is,
+    ``second`` turned round onto its entry's far end.  Each is a key of
+    :data:`_hexmo_helix_ring.RINGS` or a ring definition; their entries must
+    match where they meet (the same entry rectangle)."""
+
+    first: object
+    second: object
+
+
+def ho_ground_and_ho():
+    """An HO pair with the lower level between them, one ring opened up.
+
+    Ring A is ``HO-ground`` (upper and lower ground for scenery), ring B the
+    plain ``HO`` ring.  Both have the same entry rectangle, the lower level
+    running through it on the floor, so the two join as an ``HO-x2`` does.
+    """
+    return RingPair("HO-ground", "HO")
+
+
 # Dogbone layouts: name → the function giving its ring.  Two of the ring,
-# joined entry to entry (as a ``-x2`` pair), make the layout.
-DOGBONES = {"N250-dogbone": dogbone_n250, "N250-dual-dogbone": dual_dogbone_n250}
+# joined entry to entry (as a ``-x2`` pair), make the layout; a
+# :class:`RingPair` joins two different rings.
+DOGBONES = {"N250-dogbone": dogbone_n250, "N250-dual-dogbone": dual_dogbone_n250,
+            "HO-dual-dogbone": dual_dogbone_ho, "HO-ground-HO": ho_ground_and_ho}
 
 
 def layouts():
@@ -402,8 +468,11 @@ def _pair_rings(ring):
     A ring definition may give the second ring its own entry, as a third
     element ``(modules, entry_args, second_entry_args)``: turning the second
     ring round doesn't mirror its entry, so an entry that must be the other
-    hand (a crossover going the other way) is given separately.
+    hand (a crossover going the other way) is given separately.  A
+    :class:`RingPair` gives two different rings.
     """
+    if isinstance(ring, RingPair):
+        return ring.first, ring.second
     if isinstance(ring, tuple) and len(ring) == 3:
         modules, first, second = ring
         return (modules, first), (modules, second)
