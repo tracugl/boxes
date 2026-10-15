@@ -34,6 +34,10 @@ pytestmark = IGNORE_CORE_MATMUL
 
 from boxes.generators import _hexmo_step
 from boxes.generators._hexmo_helix_ring import HELIX_RING_N250
+from hexmo_testutil import flush_fingers
+
+# Measured with flush fingers (see hexmo_testutil.flush_fingers).
+HELIX_RING_N250 = flush_fingers(HELIX_RING_N250)
 from boxes.generators._hexmo_track_routes import route_geometry
 from boxes.generators._hexmo_deck_slots import centreline_points
 from boxes.generators.hexmohexagon import HexmoHexagon
@@ -414,10 +418,13 @@ def _deck_fingers(args, edge, mirror=False):
     box.parseArgs(args)
     f = next(fr for fr in _hexmo_step._render_frames(box) if fr.name == f"wall edge {edge}")
     out = max(_hexmo_step._frame_loops(f), key=len)
+    # The finger tips: one thickness above the deck's underside, plus any
+    # extra length (the N preset's fingers stand proud to sand flush).
+    tip = L + T + box.FingerJoint_extra_length * box.thickness
     spans = []
     for seg in out:
         (x0, y0), (x1, y1) = seg[1], seg[-1]
-        if seg[0] == "L" and abs(x0 - x1) < 1e-6 and abs(x0 - (L + T)) < 1e-6:
+        if seg[0] == "L" and abs(x0 - x1) < 1e-6 and abs(x0 - tip) < 1e-6:
             lo, hi = sorted((y0, y1))
             spans.append((round(SIDE_ORIG - hi, 2), round(SIDE_ORIG - lo, 2)) if mirror
                          else (round(lo, 2), round(hi, 2)))

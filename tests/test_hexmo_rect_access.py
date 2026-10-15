@@ -31,6 +31,12 @@ from boxes.generators._hexmo_helix_ring import (
 )
 from boxes.generators.hexmohexagon import HexmoHexagon
 from boxes.generators.hexmorectangle import HexmoRectangle
+from hexmo_testutil import flush_fingers
+
+# Measured with flush fingers (see hexmo_testutil.flush_fingers).
+HELIX_ENTRY_N250 = flush_fingers(HELIX_ENTRY_N250)
+HELIX_RING_N250 = flush_fingers(HELIX_RING_N250)
+HELIX_RING_N250_GROUND = flush_fingers(HELIX_RING_N250_GROUND)
 
 BASE = [a for a in HELIX_ENTRY_N250 if not a.startswith("--access_openings")]
 

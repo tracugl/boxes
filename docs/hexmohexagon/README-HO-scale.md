@@ -81,25 +81,30 @@ below:
 | Parameter | Value | Why |
 |---|---|---|
 | `--radius` | **500** (default) | outside corner radius for the 700 mm curve (see above) |
-| `--h` (height) | **100** | module/board depth; independent of track radius |
+| `--h` (height) | **100** (default) | module/board depth; independent of track radius |
 | `--thickness` | **6** (default) | material thickness |
 | `--outside` | **on** (default) | `radius` is the outside measurement |
 | `--edge_width` | **50** (default) | outer frame width of the floor |
 | `--spoke_width` | **100** (default) | floor strip width (widened where a support needs it) |
 | `--support_length` | **100** (default) | internal support walls |
 | `--bottom` / `--top` | **spoke** / **closed** (defaults) | the track-following floor and a solid deck |
-| `--corner_holes` / `--gap_holes` | **g2** / **g2** | fewer pierces, see [Reducing laser cut time](#reducing-laser-cut-time) |
-| `--big_hole_shape` | **rounded_rect** | roundness `0.3` (default), see [Big-hole shape](#big-hole-shape) |
-| `--FingerJoint_play` | **0.1** | finger-joint clearance, a multiple of thickness (0.6 mm at 6 mm) |
-| `--FingerJoint_extra_length` | **0.05** | fingers stand 0.3 mm proud, to sand flush |
+| `--corner_holes` / `--gap_holes` | **g2** / **g2** (defaults) | fewer pierces, see [Reducing laser cut time](#reducing-laser-cut-time) |
+| `--big_hole_shape` | **rounded_rect** (default) | roundness `0.3` (default), see [Big-hole shape](#big-hole-shape) |
+| `--FingerJoint_play` | **0.1** (default) | finger-joint clearance, a multiple of thickness (0.6 mm at 6 mm) |
+| `--FingerJoint_extra_length` | **0.05** (default) | fingers stand 0.3 mm proud, to sand flush |
 | `--track_width` | **30** (default) | HO track footprint |
 | `--track_lead_in` | **23** (default) | straight run at each edge crossing |
 | `--under_track_width` | **60** (default) | a lower track's width; openings and slots are cut a sixth wider each side (80 mm) for long cars on curves |
-| `--under_track_height` | **6** | the lower level on the floor (one thickness), so subway openings line up all round |
+| `--under_track_height` | **6** (default) | the lower level on the floor (one thickness), so subway openings line up all round |
 | `--train_envelope` | **70** (default) | HO track and its tallest trains, with a little margin |
-| `--track_guide` / `--track_template` | **1** / **1** | the track-laying guide plate and template |
-| `--labels` / `--reference` | **0** / **0** | no part-name annotations and no 100 mm scale-reference bar in the SVG (the track labels stay on) |
+| `--track_guide` / `--track_template` | **1** / **1** (defaults) | the track-laying guide plate and template |
+| `--labels` / `--reference` | **0** / **0** (defaults) | no part-name annotations and no 100 mm scale-reference bar in the SVG (the track labels stay on) |
 | `--access_openings` / `--subway_ports` | **1** / **1** (defaults) | access walls, with the subway opening and its cable slot in the middle post |
+
+Every setting here is the generators' default: HexmoHexagon and HexmoRectangle
+open as HO modules (HexmoRectangle with `--num_columns=3`), so a plain
+`…/HexmoHexagon` is the HO hexagon. The ready-made URLs below still
+spell every setting out, so they keep working if a default changes.
 
 Add `--trapezoid=1` for the half-hexagon module. The other track-line extras
 stay at their defaults: `--track_lines`, `--draw_track`, `--track_label` and
@@ -446,18 +451,18 @@ Most of the cut *time* on these panels is pierces, and the small Ø6 registratio
 pilot holes dominate the count. The biggest lever is the corner cluster at each
 end of every side panel:
 
-- `--corner_holes=g6` (default) — full cluster: the medium hole plus the six
+- `--corner_holes=g6` — full cluster: the medium hole plus the six
   surrounding Ø6 pilot holes.
-- `--corner_holes=g2` — keeps only the medium and the two pilot holes directly
+- `--corner_holes=g2` (default) — keeps only the medium and the two pilot holes directly
   above/below it, dropping the six corner holes per end. Big pierce savings
   (≈48 fewer holes on a trapezoid, 12 per side panel), keeping enough for
   registration. Same option on both generators.
 
 The mid-panel gap-fill clusters (between the big holes) have a matching toggle:
 
-- `--gap_holes=g4` (default) — full cluster: two mediums each with a pilot above
+- `--gap_holes=g4` — full cluster: two mediums each with a pilot above
   and below (2 medium + 4 small per gap).
-- `--gap_holes=g2` — a single centred medium with one pilot above and below
+- `--gap_holes=g2` (default) — a single centred medium with one pilot above and below
   (1 medium + 2 small per gap), mirroring the reduced corner cluster. ~6 fewer
   holes per side panel. Same option on both generators.
 
@@ -469,12 +474,12 @@ instead of `spoke`, and the track-guide extras (`--track_label=0`,
 
 ## Big-hole shape
 
-The large weight-reduction through-holes are circles by default. `--big_hole_shape`
-lets you draw them as rounded-corner squares instead — purely a look/material
+The large weight-reduction through-holes are rounded-corner squares by default.
+`--big_hole_shape=circle` draws them as circles instead — purely a look/material
 choice, applied to every big hole on both generators.
 
-- `--big_hole_shape=circle` (default) — circular holes (unchanged output).
-- `--big_hole_shape=rounded_rect` — each big hole becomes a square with rounded
+- `--big_hole_shape=circle` — circular holes.
+- `--big_hole_shape=rounded_rect` (default) — each big hole becomes a square with rounded
   corners occupying the **same bounding box** as the circle (side = the circle
   diameter), so every hole-fit and clearance check is unaffected and the count
   and positions are identical. The small registration and medium fallback holes

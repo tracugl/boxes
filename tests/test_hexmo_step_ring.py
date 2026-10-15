@@ -30,6 +30,11 @@ from hexmo_testutil import IGNORE_CORE_MATMUL
 pytestmark = IGNORE_CORE_MATMUL
 
 from boxes.generators._hexmo_helix_ring import HELIX_ENTRY_N250, HELIX_RING_N250
+from hexmo_testutil import flush_fingers
+
+# Measured with flush fingers (see hexmo_testutil.flush_fingers).
+HELIX_ENTRY_N250 = flush_fingers(HELIX_ENTRY_N250)
+HELIX_RING_N250 = flush_fingers(HELIX_RING_N250)
 from boxes.generators._hexmo_step import rect_parts, ring_parts, ring_track_ends
 from boxes.generators.hexmorectangle import HexmoRectangle
 
@@ -52,7 +57,8 @@ def entry():
 
 @pytest.fixture(scope="module")
 def ring():
-    return {p.name: p for p in ring_parts("N250")}
+    # The N250 ring, as its flush-finger presets (a ring definition).
+    return {p.name: p for p in ring_parts((HELIX_RING_N250, HELIX_ENTRY_N250))}
 
 
 class TestRectangle:

@@ -36,6 +36,7 @@ from boxes.generators._hexmo_access import (
 from boxes.generators._hexmo_track_openings import rect_circle_gap
 from boxes.generators._hexmo_big_holes import HexmoBigHoleMixin
 from boxes.generators._hexmo_risers import support_stations
+from boxes.generators._hexmo_defaults import apply_ho_defaults
 from boxes.generators._hexmo_nest import HexmoSheetsMixin
 from boxes.generators._hexmo_step_format import HexmoStepFormatMixin
 from boxes.generators._hexmo_subway import HexmoSubwayMixin
@@ -219,7 +220,7 @@ class HexmoRectangle(HexmoStepFormatMixin, HexmoSheetsMixin, HexmoBigHoleMixin, 
                      HexmoTrackTemplateMixin, HexmoUnderTrackMixin, HexmoSubwayMixin, Boxes):
     """Rectangular tray with a 3×N internal grid, compatible with HexmoHexagon stacking.
 
-    The number of column compartments N is controlled by ``--num_columns`` (default 0 = auto).
+    The number of column compartments N is controlled by ``--num_columns`` (default 3; 0 = auto).
     When auto, N is chosen based on ``--radius`` so that the compartment cells remain a
     useful size: large boxes (radius ≥ 400) use 5 columns; medium boxes
     (300 ≤ radius < 400) use 3 columns; small boxes (radius < 300) use 2 columns
@@ -324,7 +325,7 @@ class HexmoRectangle(HexmoStepFormatMixin, HexmoSheetsMixin, HexmoBigHoleMixin, 
             help="Number of column compartments along the long (H = radius × √3) axis "
                  "(they appear as columns in the SVG output).  "
                  "Determines how many horizontal dividers are cut: N columns require N−1 "
-                 "dividers.  0 (default) auto-selects based on --radius: "
+                 "dividers.  Default 3 (the HO entry).  0 auto-selects based on --radius: "
                  "radius ≥ 400 → 5 columns, 300 ≤ radius < 400 → 3 columns, "
                  "radius < 300 → 2 columns (one central divider).  "
                  "Minimum value is 1 (no horizontal dividers); maximum is 5.",
@@ -453,30 +454,31 @@ class HexmoRectangle(HexmoStepFormatMixin, HexmoSheetsMixin, HexmoBigHoleMixin, 
             "--corner_holes", action="store", type=str, default="g6",
             choices=["g6", "g2"],
             help="Small-hole cluster around each end registration medium hole.  "
-                 "'g6' (default) draws the medium plus the surrounding Ø6 pilot "
+                 "'g6' draws the medium plus the surrounding Ø6 pilot "
                  "holes.  'g2' keeps only the medium and the two pilot holes "
                  "directly above and below it, dropping the offset side pair per "
                  "end — fewer laser pierces and a shorter cut time.  Matches the "
-                 "HexmoHexagon option of the same name.")
+                 "HexmoHexagon option of the same name.  Default g2.")
         self.argparser.add_argument(
             "--gap_holes", action="store", type=str, default="g4",
             choices=["g4", "g2"],
             help="Registration cluster filling each gap between the big holes on "
-                 "the divider/support panels.  'g4' (default) draws two mediums "
+                 "the divider/support panels.  'g4' draws two mediums "
                  "with two Ø6 pilot holes each (2 medium + 4 small).  'g2' draws "
                  "a single centred medium with one pilot above and below it "
                  "(1 medium + 2 small) — fewer laser pierces.  Matches the "
-                 "HexmoHexagon option of the same name.")
+                 "HexmoHexagon option of the same name.  Default g2.")
         self.argparser.add_argument(
             "--big_hole_shape", action="store", type=str, default="circle",
             choices=["circle", "rounded_rect"],
             help="Shape of the large weight-reduction through-holes.  'circle' "
-                 "(default) draws them as circles (unchanged behaviour).  "
+                 "draws them as circles.  "
                  "'rounded_rect' draws each as a square with rounded corners "
                  "occupying the same bounding box as the circle (side = the "
                  "circle diameter), so all fit/clearance checks are unaffected.  "
                  "The small registration and medium holes are never changed by "
-                 "this option.  Matches the HexmoHexagon option of the same name.")
+                 "this option.  Matches the HexmoHexagon option of the same name.  "
+                 "Default rounded_rect.")
         self.argparser.add_argument(
             "--big_hole_roundness", action="store", type=float, default=0.3,
             help="Corner rounding for --big_hole_shape=rounded_rect, as a "
@@ -517,6 +519,8 @@ class HexmoRectangle(HexmoStepFormatMixin, HexmoSheetsMixin, HexmoBigHoleMixin, 
         self._addStepFormat()
         # --sheets: the parts packed onto laser blanks (see _hexmo_nest).
         self._addSheetArgs()
+        # Open with the HO README's settings (see _hexmo_defaults).
+        apply_ho_defaults(self, rectangle=True)
 
     def _hexWallLength(self):
         """Hole-pattern length of the matching HexmoHexagon side wall.

@@ -93,6 +93,9 @@ def helix_ring(size):
     @returns ``{"M1": [...], …, "M6": [...]}``: HexmoHexagon options.
     """
     common = [f"--radius={size.radius:g}", "--thickness=3", "--h=80", "--edge_width=22",
+              # The N finger fit in 3 mm (the generators' defaults are HO's,
+              # for 6 mm): 0.6 mm clearance, fingers 0.3 mm proud.
+              "--FingerJoint_play=0.2", "--FingerJoint_extra_length=0.1",
               # The track-following floor, whose supports place themselves.
               "--spoke_width=60", "--bottom=spoke",
               "--support_length=55",
@@ -146,6 +149,8 @@ def helix_entry(size):
     @returns HexmoRectangle options.
     """
     return [f"--radius={size.radius:g}", "--thickness=3", "--h=80", "--num_rows=3",
+            # The N finger fit, as the ring's (see helix_ring).
+            "--FingerJoint_play=0.2", "--FingerJoint_extra_length=0.1",
             "--num_columns=2", "--track_width=17", "--track_spacing=40",
             f"--track_lead_in={size.lead_in:g}",
             "--under_track=1",
