@@ -116,6 +116,19 @@ class TestPack:
         with pytest.raises(ValueError, match="fits none of the blanks"):
             N.pack([rect_part(1250, 500)], SIZES)
 
+    def test_default_margin_allows_for_blanks_cut_under_size(self) -> None:
+        # By default every part keeps 10 mm in from each edge of the nominal
+        # blank, so a blank cut a few millimetres small still takes them.
+        assert N.DEFAULT_MARGIN == 10
+        parts = [rect_part(300 + 7 * k, 200 + 5 * k) for k in range(12)]
+        blanks, _ = N.pack(parts, SIZES)
+        for blank in blanks:
+            for part, matrix in blank.parts:
+                e = placed(part, matrix).extents()
+                assert e.xmin >= 10 - 1e-6 and e.ymin >= 10 - 1e-6
+                assert e.xmax <= blank.size.width - 10 + 1e-6
+                assert e.ymax <= blank.size.height - 10 + 1e-6
+
     def test_parts_stay_apart_and_inside(self) -> None:
         parts = [rect_part(300 + 7 * k, 200 + 5 * k, x=1000 * k, y=-50 * k) for k in range(12)]
         blanks, _ = N.pack(parts, SIZES, spacing=4, margin=5)

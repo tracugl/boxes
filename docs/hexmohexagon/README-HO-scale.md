@@ -402,7 +402,11 @@ Add that to any edit link (or fill in the **sheets** field). Each blank is
 drawn as a cyan outline with a label ("Blank 1 of 2: 1200 × 900"), side by side;
 cyan is the annotation colour, so leave that layer uncut. The entries are
 `WIDTHxHEIGHT:COUNT`, the blanks one full sheet gives. `sheet_spacing` (default
-4 mm) keeps parts apart and `sheet_margin` (5 mm) off the blank's edges. Parts are
+4 mm) keeps parts apart and `sheet_margin` (10 mm) off the blank's edges. The
+margin allows for blanks that aren't cut exactly to size: each panel-saw cut loses
+3–4 mm of kerf (the sheet's "600" piece is nearer 593), the cuts can be a little
+out of square and the edges get knocked, and the blank won't sit perfectly square
+on the bed. The outlines still show the nominal size. Parts are
 nested by their true shapes, holes included: small parts go in a hexagon's
 corners, beside a trapezoid's slanted sides and inside the big cutouts in decks
 and floors. Each part is turned whichever quarter turn fits best, and a part too
