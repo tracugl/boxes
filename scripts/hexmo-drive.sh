@@ -5,7 +5,8 @@
 #   scripts/hexmo-drive.sh LAYOUT ...       re-export those layouts, then serve
 #   scripts/hexmo-drive.sh --all            re-export every layout, then serve
 #
-# Layouts: N250-dogbone and N250-dual-dogbone; and the helix rings N250,
+# Layouts: N250-dogbone, N250-dual-dogbone, HO-dual-dogbone and HO-ground-HO (one
+# ring opened up for scenery, one plain); and the helix rings N250,
 # N250-ground, HO, HO-ground, each alone or as a joined pair (append -x2,
 # e.g. HO-ground-x2).  The export runs in the Docker container
 # (it needs build123d); the web server runs here, on every interface, so
