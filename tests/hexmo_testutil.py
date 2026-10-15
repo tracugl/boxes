@@ -43,14 +43,15 @@ def apply(matrix: Affine, point):
 PLAIN_WALLS = ["--access_openings=0", "--subway_ports=0"]
 
 
-# The N presets' fingers stand 0.3 mm proud (--FingerJoint_extra_length=0.1,
-# to sand flush).  Tests that measure a feature's exact geometry against the
-# module's nominal sizes parse the presets with flush fingers instead.
-FLUSH_FINGERS = "--FingerJoint_extra_length=0"
+# The presets' finger joints have a glue gap (--FingerJoint_glue_gap: every
+# socket cut 0.3 mm deeper).  Tests that measure a feature's exact geometry
+# against the module's nominal sizes parse the presets with plain joints
+# instead: no glue gap and no extra length.
+FLUSH_FINGERS = ["--FingerJoint_extra_length=0", "--FingerJoint_glue_gap=0"]
 
 
 def flush_fingers(preset):
-    """A preset (a module's option list, or ``{name: options}``) with flush fingers."""
+    """A preset (a module's option list, or ``{name: options}``) with plain joints."""
     if isinstance(preset, dict):
-        return {name: args + [FLUSH_FINGERS] for name, args in preset.items()}
-    return list(preset) + [FLUSH_FINGERS]
+        return {name: args + FLUSH_FINGERS for name, args in preset.items()}
+    return list(preset) + FLUSH_FINGERS

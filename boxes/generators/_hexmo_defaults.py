@@ -21,9 +21,12 @@ HO_DEFAULTS = {
     "corner_holes": "g2",
     "gap_holes": "g2",
     "big_hole_shape": "rounded_rect",
-    # A snug finger-joint fit in 6 mm MDF.
+    # A snug finger-joint fit in 6 mm MDF, flush when assembled: no extra
+    # length (nothing to sand back), and a 0.3 mm glue gap at the bottom of
+    # every socket for paint and glue.
     "FingerJoint_play": 0.1,
-    "FingerJoint_extra_length": 0.05,
+    "FingerJoint_extra_length": 0.0,
+    "FingerJoint_glue_gap": 0.05,
     # The lower level runs on the floor: one thickness up.
     "under_track_height": 6.0,
     # The track-laying jigs come with every module.
