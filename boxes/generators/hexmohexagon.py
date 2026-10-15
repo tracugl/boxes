@@ -36,6 +36,7 @@ from boxes.generators._hexmo_big_holes import HexmoBigHoleMixin
 from boxes.generators._hexmo_lower_ground import HexmoLowerGroundMixin
 from boxes.generators._hexmo_subway import HexmoSubwayMixin
 from boxes.generators._hexmo_track_floor import HexmoTrackFloorMixin, TrackSupport
+from boxes.generators._hexmo_defaults import apply_ho_defaults
 from boxes.generators._hexmo_nest import HexmoSheetsMixin
 from boxes.generators._hexmo_step_format import HexmoStepFormatMixin
 from boxes.generators import _hexmo_step
@@ -146,31 +147,32 @@ class HexmoHexagon(HexmoStepFormatMixin, HexmoSheetsMixin, HexmoBigHoleMixin, He
             "--corner_holes", action="store", type=str, default="g6",
             choices=["g6", "g2"],
             help="Small-hole cluster around each end registration medium hole.  "
-                 "'g6' (default) draws the full group — the medium plus the six "
+                 "'g6' draws the full group — the medium plus the six "
                  "surrounding Ø6 pilot holes (an L-cluster at each corner plus the "
                  "pair directly above/below the medium).  'g2' keeps only the "
                  "medium and the two pilot holes directly above and below it, "
                  "dropping the six corner holes per end — far fewer laser pierces "
-                 "and a much shorter cut time.")
+                 "and a much shorter cut time.  Default g2 (the HO settings).")
         self.argparser.add_argument(
             "--gap_holes", action="store", type=str, default="g4",
             choices=["g4", "g2"],
             help="Registration cluster filling each gap between the big holes.  "
-                 "'g4' (default) draws the full group — two mediums with two Ø6 "
+                 "'g4' draws the full group — two mediums with two Ø6 "
                  "pilot holes each (2 medium + 4 small).  'g2' draws a single "
                  "centred medium with one pilot directly above and below it "
                  "(1 medium + 2 small), mirroring the reduced corner cluster — "
-                 "fewer laser pierces and a shorter cut time.")
+                 "fewer laser pierces and a shorter cut time.  Default g2 (the HO "
+                 "settings).")
         self.argparser.add_argument(
             "--big_hole_shape", action="store", type=str, default="circle",
             choices=["circle", "rounded_rect"],
             help="Shape of the large weight-reduction through-holes.  'circle' "
-                 "(default) draws them as circles (unchanged behaviour).  "
+                 "draws them as circles.  "
                  "'rounded_rect' draws each as a square with rounded corners "
                  "occupying the same bounding box as the circle (side = the "
                  "circle diameter), so all fit/clearance checks are unaffected.  "
                  "The small registration and medium fallback holes are never "
-                 "changed by this option.")
+                 "changed by this option.  Default rounded_rect (the HO settings).")
         self.argparser.add_argument(
             "--big_hole_roundness", action="store", type=float, default=0.3,
             help="Corner rounding for --big_hole_shape=rounded_rect, as a "
@@ -387,6 +389,8 @@ class HexmoHexagon(HexmoStepFormatMixin, HexmoSheetsMixin, HexmoBigHoleMixin, He
         self._addStepFormat()
         # --sheets: the parts packed onto laser blanks (see _hexmo_nest).
         self._addSheetArgs()
+        # Open with the HO README's settings (see _hexmo_defaults).
+        apply_ho_defaults(self)
 
         self.n = 6
 

@@ -41,3 +41,16 @@ def apply(matrix: Affine, point):
 # subway ports (--subway_ports) are the default; tests of the original walls'
 # hole layout switch both off.
 PLAIN_WALLS = ["--access_openings=0", "--subway_ports=0"]
+
+
+# The N presets' fingers stand 0.3 mm proud (--FingerJoint_extra_length=0.1,
+# to sand flush).  Tests that measure a feature's exact geometry against the
+# module's nominal sizes parse the presets with flush fingers instead.
+FLUSH_FINGERS = "--FingerJoint_extra_length=0"
+
+
+def flush_fingers(preset):
+    """A preset (a module's option list, or ``{name: options}``) with flush fingers."""
+    if isinstance(preset, dict):
+        return {name: args + [FLUSH_FINGERS] for name, args in preset.items()}
+    return list(preset) + [FLUSH_FINGERS]

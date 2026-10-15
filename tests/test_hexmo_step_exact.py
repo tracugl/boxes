@@ -34,6 +34,11 @@ pytestmark = IGNORE_CORE_MATMUL
 import build123d as bd
 
 from boxes.generators._hexmo_helix_ring import HELIX_ENTRY_N250, HELIX_RING_N250
+from hexmo_testutil import flush_fingers
+
+# Measured with flush fingers (see hexmo_testutil.flush_fingers).
+HELIX_ENTRY_N250 = flush_fingers(HELIX_ENTRY_N250)
+HELIX_RING_N250 = flush_fingers(HELIX_RING_N250)
 from boxes.generators._hexmo_step import (
     exact_hexmo_parts, exact_rect_parts, hexmo_parts,
 )
