@@ -29,7 +29,7 @@ blank's edges; the 2 mm cells round both up a little, never down.
 Command line (in the container, from /app)::
 
     python -m boxes.generators._hexmo_nest OUTDIR [--sheets=1200x900:2,600x900]
-        [--sheet_spacing=4] [--sheet_margin=5] [--templates=2] [--guides=3]
+        [--sheet_spacing=4] [--sheet_margin=10] [--templates=2] [--guides=3]
         [N@]EDIT_URL ...
 
 Each edit URL (``…/HexmoHexagon?radius=…``; ``N@`` in front for N of that
@@ -73,6 +73,14 @@ from boxes.generators._hexmo_nest_shape import CELL, place_matrix, shape_of
 
 # The blanks a 2400 × 1200 sheet cut at 900 gives: two 1200 × 900, one 600 × 900.
 DEFAULT_SHEETS = "1200x900:2,600x900"
+# Least gap (mm) between a part and a blank's edge.  The blanks are not cut
+# exactly to size: each panel-saw cut loses 3–4 mm of kerf (a sheet's "600"
+# piece is nearer 593), the cuts can be a little out of square and the edges
+# get knocked, and the blank is never quite square on the laser bed.  10 mm
+# all round (20 mm off each dimension) allows for all that.
+DEFAULT_MARGIN = 10.0
+# Least gap (mm) between two parts.
+DEFAULT_SPACING = 4.0
 # Gap (mm) between blanks laid out side by side in one drawing.
 _BLANK_GAP = 40.0
 # Label size (mm) above each blank.
@@ -443,7 +451,7 @@ def _downsize(bins, sizes, spacing, margin, kernels_for):
     return bins
 
 
-def pack(parts, sizes, spacing=4.0, margin=5.0):
+def pack(parts, sizes, spacing=DEFAULT_SPACING, margin=DEFAULT_MARGIN):
     """Nest parts by their true shapes onto the fewest full sheets' worth of blanks.
 
     Largest parts first, each goes on the first blank in use with room for
@@ -577,11 +585,13 @@ class HexmoSheetsMixin:
                  "annotation colour (cyan, not to be cut), side by side.  Blank "
                  "(default): the usual layout.")
         self.argparser.add_argument(
-            "--sheet_spacing", action="store", type=float, default=4.0,
+            "--sheet_spacing", action="store", type=float, default=DEFAULT_SPACING,
             help="With --sheets: least gap between two parts (mm).")
         self.argparser.add_argument(
-            "--sheet_margin", action="store", type=float, default=5.0,
-            help="With --sheets: least gap between a part and the blank's edge (mm).")
+            "--sheet_margin", action="store", type=float, default=DEFAULT_MARGIN,
+            help="With --sheets: least gap between a part and the blank's edge (mm).  The "
+                 "default 10 allows for blanks cut a little under size (saw kerf) or out "
+                 "of square, knocked edges, and placing the blank on the bed.")
 
     def close(self):
         """Pack the parts onto the --sheets blanks, then finish as usual."""
@@ -677,7 +687,8 @@ def settings_svg(box, tag):
 def main(argv=None):
     """Command line: see the module docstring."""
     argv = sys.argv[1:] if argv is None else argv
-    settings = {"sheets": DEFAULT_SHEETS, "sheet_spacing": "4", "sheet_margin": "5",
+    settings = {"sheets": DEFAULT_SHEETS, "sheet_spacing": f"{DEFAULT_SPACING:g}",
+                "sheet_margin": f"{DEFAULT_MARGIN:g}",
                 "templates": str(HELPER_LIMITS["template"]), "guides": str(HELPER_LIMITS["guide"])}
     targets = []
     for arg in argv[1:]:
