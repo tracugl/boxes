@@ -196,16 +196,18 @@ class TestDogbone:
         labels = {e["label"].split("@")[0] for e in track["edges"]}
         for ring in "AB":
             for k in range(1, 6):
-                assert f"{ring} M{k} 3:20-5:20" in labels
-                assert f"{ring} M{k} 3:-20-5:-20" not in labels
+                # Down the middle of the trapezoids, and only there.
+                assert f"{ring} M{k} 3:0-5:0" in labels
+                assert not any(lb.startswith(f"{ring} M{k} ") and lb != f"{ring} M{k} 3:0-5:0"
+                               for lb in labels)
 
     def test_continuous_running(self, track) -> None:
         # Straight on throughout: round ring A, along one main track into
         # ring B, round it and back along the other, and round again.
         start = next(e for e in track["edges"] if e["label"].startswith("A M3 "))
         passed = drive(track, start["id"], 9000)
-        order = ["A M6 3:-20-1:-20", "A entry straight", "B M6 1:-20-5:-20", "B M3 ",
-                 "B M6 3:-20-1:-20", "B entry straight", "A M6 1:-20-5:-20", "A M3 "]
+        order = ["A M6 3:0-1:-20", "A entry straight", "B M6 1:-20-5:0", "B M3 ",
+                 "B M6 3:0-1:-20", "B entry straight", "A M6 1:-20-5:0", "A M3 "]
         at = 0
         for label in passed:
             if at < len(order) and label.startswith(order[at]):

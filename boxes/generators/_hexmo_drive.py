@@ -79,8 +79,10 @@ def dogbone_n250():
 
     The helix ring's shape and module settings (radius 250 and the rest),
     with no spur, risers or subway, track on the deck only.  The ring carries
-    one track (``3:20-5:20``, R355).  On M6 two legs (R315) lead from the
-    entry's double track at edge 1 into it, one towards M1 and one towards M5,
+    one track down the middle of the trapezoids (``3:0-5:0``, R335, through
+    the middle of their slanted ends).  On M6 two legs lead from the entry's
+    double track (±20 at edge 1) into it (tightest R294, where they swing in
+    from the main), one towards M1 and one towards M5,
     so the main line's two tracks are the two ends of the loop: continuous
     running with no turnout on a curve (the ring is tighter than any Peco N
     curved turnout).  The entry carries the double track straight (40 mm
@@ -94,9 +96,9 @@ def dogbone_n250():
     helix_only = ("--track_routes", "--track_openings", "--deck_slots", "--risers",
                   "--under_track_edges", "--trapezoid")
     common = [a for a in HELIX_RING_N250["M6"] if not a.startswith(helix_only)]
-    modules = {f"M{k}": common + ["--trapezoid=1", "--track_routes=3:20-5:20"]
+    modules = {f"M{k}": common + ["--trapezoid=1", "--track_routes=3:0-5:0"]
                for k in range(1, 6)}
-    modules["M6"] = common + ["--track_routes=1:-20-5:-20,3:-20-1:-20"]
+    modules["M6"] = common + ["--track_routes=1:-20-5:0,3:0-1:-20"]
     # The entry: double track (the N spacing, 40 mm) with the crossover
     # centred on its 427 mm deck (284.3 mm toe to toe), and no lower level.
     entry = [a for a in HELIX_ENTRY_N250
