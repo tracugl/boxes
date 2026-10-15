@@ -91,8 +91,8 @@ below:
 | `--corner_holes` / `--gap_holes` | **g2** / **g2** (defaults) | fewer pierces, see [Reducing laser cut time](#reducing-laser-cut-time) |
 | `--big_hole_shape` | **rounded_rect** (default) | roundness `0.3` (default), see [Big-hole shape](#big-hole-shape) |
 | `--FingerJoint_play` | **0.1** (default) | finger-joint clearance, a multiple of thickness (0.6 mm at 6 mm) |
-| `--FingerJoint_extra_length` | **0.05** (default) | fingers stand 0.3 mm proud, to sand flush |
-| `--FingerJoint_glue_gap` | **0** (off, default) | room for paint and glue at the bottom of every socket, finger tips unchanged; **0.05** (0.3 mm) suits painted joints; assemble on a flat surface so the tips finish flush |
+| `--FingerJoint_extra_length` | **0** (default) | fingers finish flush: nothing to sand back |
+| `--FingerJoint_glue_gap` | **0.05** (default) | a 0.3 mm gap at the bottom of every socket for paint and glue, finger tips unchanged; assemble on a flat surface so the tips finish flush. Measure your sheet: if it's thicker than 6 mm, set `--thickness` to what you measured |
 | `--track_width` | **30** (default) | HO track footprint |
 | `--track_lead_in` | **23** (default) | straight run at each edge crossing |
 | `--under_track_width` | **60** (default) | a lower track's width; openings and slots are cut a sixth wider each side (80 mm) for long cars on curves |
@@ -141,7 +141,7 @@ curl "http://localhost:4455/HexmoHexagon?render=1\
 &radius=500&h=100&thickness=6&edge_width=50&spoke_width=100&support_length=100\
 &bottom=spoke&top=closed&trapezoid=1\
 &corner_holes=g2&gap_holes=g2&big_hole_shape=rounded_rect\
-&FingerJoint_play=0.1&FingerJoint_extra_length=0.05\
+&FingerJoint_play=0.1&FingerJoint_extra_length=0&FingerJoint_glue_gap=0.05\
 &track_width=30&track_lead_in=23&track_line_count=2&track_spacing=80\
 &under_track_width=60&under_track_height=6&train_envelope=70\
 &track_guide=1&track_template=1&labels=0&reference=0" -o hexmo_ho.svg
@@ -166,7 +166,7 @@ and template), so use the preset rather than the bare form.
 and `&track_line_count=2&track_spacing=80` for a double track):
 
 ```
-http://localhost:4455/HexmoHexagon?radius=500&h=100&thickness=6&edge_width=50&spoke_width=100&bottom=spoke&top=closed&corner_holes=g2&gap_holes=g2&big_hole_shape=rounded_rect&FingerJoint_play=0.1&FingerJoint_extra_length=0.05&track_lines=1&draw_track=1&track_width=30&track_lead_in=23&support_length=100&train_envelope=70&under_track_width=60&under_track_height=6&access_openings=1&subway_ports=1&track_guide=1&track_template=1&labels=0&reference=0
+http://localhost:4455/HexmoHexagon?radius=500&h=100&thickness=6&edge_width=50&spoke_width=100&bottom=spoke&top=closed&corner_holes=g2&gap_holes=g2&big_hole_shape=rounded_rect&FingerJoint_play=0.1&FingerJoint_extra_length=0&FingerJoint_glue_gap=0.05&track_lines=1&draw_track=1&track_width=30&track_lead_in=23&support_length=100&train_envelope=70&under_track_width=60&under_track_height=6&access_openings=1&subway_ports=1&track_guide=1&track_template=1&labels=0&reference=0
 ```
 
 **HO HexmoRectangle** — the helix entry's settings without its lower level:
@@ -174,7 +174,7 @@ http://localhost:4455/HexmoHexagon?radius=500&h=100&thickness=6&edge_width=50&sp
 level through it:
 
 ```
-http://localhost:4455/HexmoRectangle?radius=500&h=100&thickness=6&spoke_width=100&corner_holes=g2&gap_holes=g2&big_hole_shape=rounded_rect&FingerJoint_play=0.1&FingerJoint_extra_length=0.05&track_lines=1&draw_track=1&track_width=30&track_lead_in=23&under_track_width=60&under_track_height=6&access_openings=1&subway_ports=1&track_guide=1&track_template=1&labels=0&reference=0&slot_tolerance=1&num_columns=3&num_rows=3
+http://localhost:4455/HexmoRectangle?radius=500&h=100&thickness=6&spoke_width=100&corner_holes=g2&gap_holes=g2&big_hole_shape=rounded_rect&FingerJoint_play=0.1&FingerJoint_extra_length=0&FingerJoint_glue_gap=0.05&track_lines=1&draw_track=1&track_width=30&track_lead_in=23&under_track_width=60&under_track_height=6&access_openings=1&subway_ports=1&track_guide=1&track_template=1&labels=0&reference=0&slot_tolerance=1&num_columns=3&num_rows=3
 ```
 
 For the **N-scale** bookmarks (radius 250, the helix ring's module settings, a
@@ -575,37 +575,37 @@ whole ring in 3D):
 **M1**
 
 ```
-http://localhost:4455/HexmoHexagon?radius=500&h=100&thickness=6&edge_width=50&spoke_width=100&bottom=spoke&top=closed&corner_holes=g2&gap_holes=g2&big_hole_shape=rounded_rect&FingerJoint_play=0.1&FingerJoint_extra_length=0.05&track_lines=1&draw_track=1&track_width=30&track_lead_in=23&support_length=100&train_envelope=70&under_track_width=60&under_track_height=6&access_openings=1&subway_ports=1&track_guide=1&track_template=1&labels=0&reference=0&trapezoid=1&track_routes=3:40-5:40,3:-40-5:-80&track_openings=3:-40:88:60,5:80:74.3:60&deck_slots=3:-40-5:-80/60&risers=3:-40-5:-80~88..74.3/60
+http://localhost:4455/HexmoHexagon?radius=500&h=100&thickness=6&edge_width=50&spoke_width=100&bottom=spoke&top=closed&corner_holes=g2&gap_holes=g2&big_hole_shape=rounded_rect&FingerJoint_play=0.1&FingerJoint_extra_length=0&FingerJoint_glue_gap=0.05&track_lines=1&draw_track=1&track_width=30&track_lead_in=23&support_length=100&train_envelope=70&under_track_width=60&under_track_height=6&access_openings=1&subway_ports=1&track_guide=1&track_template=1&labels=0&reference=0&trapezoid=1&track_routes=3:40-5:40,3:-40-5:-80&track_openings=3:-40:88:60,5:80:74.3:60&deck_slots=3:-40-5:-80/60&risers=3:-40-5:-80~88..74.3/60
 ```
 
 **M2**
 
 ```
-http://localhost:4455/HexmoHexagon?radius=500&h=100&thickness=6&edge_width=50&spoke_width=100&bottom=spoke&top=closed&corner_holes=g2&gap_holes=g2&big_hole_shape=rounded_rect&FingerJoint_play=0.1&FingerJoint_extra_length=0.05&track_lines=1&draw_track=1&track_width=30&track_lead_in=23&support_length=100&train_envelope=70&under_track_width=60&under_track_height=6&access_openings=1&subway_ports=1&track_guide=1&track_template=1&labels=0&reference=0&trapezoid=1&track_routes=3:40-5:40,3:-80-5:-80&track_openings=3:-80:74.3:60,5:80:61.2:60&deck_slots=3:-80-5:-80/60&risers=3:-80-5:-80~74.3..61.2/60
+http://localhost:4455/HexmoHexagon?radius=500&h=100&thickness=6&edge_width=50&spoke_width=100&bottom=spoke&top=closed&corner_holes=g2&gap_holes=g2&big_hole_shape=rounded_rect&FingerJoint_play=0.1&FingerJoint_extra_length=0&FingerJoint_glue_gap=0.05&track_lines=1&draw_track=1&track_width=30&track_lead_in=23&support_length=100&train_envelope=70&under_track_width=60&under_track_height=6&access_openings=1&subway_ports=1&track_guide=1&track_template=1&labels=0&reference=0&trapezoid=1&track_routes=3:40-5:40,3:-80-5:-80&track_openings=3:-80:74.3:60,5:80:61.2:60&deck_slots=3:-80-5:-80/60&risers=3:-80-5:-80~74.3..61.2/60
 ```
 
 **M3**
 
 ```
-http://localhost:4455/HexmoHexagon?radius=500&h=100&thickness=6&edge_width=50&spoke_width=100&bottom=spoke&top=closed&corner_holes=g2&gap_holes=g2&big_hole_shape=rounded_rect&FingerJoint_play=0.1&FingerJoint_extra_length=0.05&track_lines=1&draw_track=1&track_width=30&track_lead_in=23&support_length=100&train_envelope=70&under_track_width=60&under_track_height=6&access_openings=1&subway_ports=1&track_guide=1&track_template=1&labels=0&reference=0&trapezoid=1&track_routes=3:40-5:40,3:-80-5:-80&track_openings=3:-80:61.2:60,5:80:48.1:60&deck_slots=3:-80-5:-80/60&risers=3:-80-5:-80~61.2..48.1/60
+http://localhost:4455/HexmoHexagon?radius=500&h=100&thickness=6&edge_width=50&spoke_width=100&bottom=spoke&top=closed&corner_holes=g2&gap_holes=g2&big_hole_shape=rounded_rect&FingerJoint_play=0.1&FingerJoint_extra_length=0&FingerJoint_glue_gap=0.05&track_lines=1&draw_track=1&track_width=30&track_lead_in=23&support_length=100&train_envelope=70&under_track_width=60&under_track_height=6&access_openings=1&subway_ports=1&track_guide=1&track_template=1&labels=0&reference=0&trapezoid=1&track_routes=3:40-5:40,3:-80-5:-80&track_openings=3:-80:61.2:60,5:80:48.1:60&deck_slots=3:-80-5:-80/60&risers=3:-80-5:-80~61.2..48.1/60
 ```
 
 **M4**
 
 ```
-http://localhost:4455/HexmoHexagon?radius=500&h=100&thickness=6&edge_width=50&spoke_width=100&bottom=spoke&top=closed&corner_holes=g2&gap_holes=g2&big_hole_shape=rounded_rect&FingerJoint_play=0.1&FingerJoint_extra_length=0.05&track_lines=1&draw_track=1&track_width=30&track_lead_in=23&support_length=100&train_envelope=70&under_track_width=60&under_track_height=6&access_openings=1&subway_ports=1&track_guide=1&track_template=1&labels=0&reference=0&trapezoid=1&track_routes=3:40-5:40,3:-80-5:-80&track_openings=3:-80:48.1:60,5:80:34.9:60&deck_slots=3:-80-5:-80/60&risers=3:-80-5:-80~48.1..34.9/60
+http://localhost:4455/HexmoHexagon?radius=500&h=100&thickness=6&edge_width=50&spoke_width=100&bottom=spoke&top=closed&corner_holes=g2&gap_holes=g2&big_hole_shape=rounded_rect&FingerJoint_play=0.1&FingerJoint_extra_length=0&FingerJoint_glue_gap=0.05&track_lines=1&draw_track=1&track_width=30&track_lead_in=23&support_length=100&train_envelope=70&under_track_width=60&under_track_height=6&access_openings=1&subway_ports=1&track_guide=1&track_template=1&labels=0&reference=0&trapezoid=1&track_routes=3:40-5:40,3:-80-5:-80&track_openings=3:-80:48.1:60,5:80:34.9:60&deck_slots=3:-80-5:-80/60&risers=3:-80-5:-80~48.1..34.9/60
 ```
 
 **M5**
 
 ```
-http://localhost:4455/HexmoHexagon?radius=500&h=100&thickness=6&edge_width=50&spoke_width=100&bottom=spoke&top=closed&corner_holes=g2&gap_holes=g2&big_hole_shape=rounded_rect&FingerJoint_play=0.1&FingerJoint_extra_length=0.05&track_lines=1&draw_track=1&track_width=30&track_lead_in=23&support_length=100&train_envelope=70&under_track_width=60&under_track_height=6&access_openings=1&subway_ports=1&track_guide=1&track_template=1&labels=0&reference=0&trapezoid=1&track_routes=3:40-5:40,3:-80-5:-80&track_openings=3:-80:34.9:60,5:80:21.8:60&deck_slots=3:-80-5:-80/60&risers=3:-80-5:-80~34.9..21.8/60
+http://localhost:4455/HexmoHexagon?radius=500&h=100&thickness=6&edge_width=50&spoke_width=100&bottom=spoke&top=closed&corner_holes=g2&gap_holes=g2&big_hole_shape=rounded_rect&FingerJoint_play=0.1&FingerJoint_extra_length=0&FingerJoint_glue_gap=0.05&track_lines=1&draw_track=1&track_width=30&track_lead_in=23&support_length=100&train_envelope=70&under_track_width=60&under_track_height=6&access_openings=1&subway_ports=1&track_guide=1&track_template=1&labels=0&reference=0&trapezoid=1&track_routes=3:40-5:40,3:-80-5:-80&track_openings=3:-80:34.9:60,5:80:21.8:60&deck_slots=3:-80-5:-80/60&risers=3:-80-5:-80~34.9..21.8/60
 ```
 
 **M6**
 
 ```
-http://localhost:4455/HexmoHexagon?radius=500&h=100&thickness=6&edge_width=50&spoke_width=100&bottom=spoke&top=closed&corner_holes=g2&gap_holes=g2&big_hole_shape=rounded_rect&FingerJoint_play=0.1&FingerJoint_extra_length=0.05&track_lines=1&draw_track=1&track_width=30&track_lead_in=23&support_length=100&train_envelope=70&under_track_width=60&under_track_height=6&access_openings=1&subway_ports=1&track_guide=1&track_template=1&labels=0&reference=0&track_routes=1:-80-5:-40,3:-40-1:-80,1:0-5:40&under_track_edges=1&track_openings=5:40:88:60,3:-80:21.8:60&deck_slots=1:0-5:40@327../60,3:80-1:0@..450/60&risers=1:0-5:40@327..~94..88/60,3:80-1:0@..450~21.8..13.3/60,3:80-1:0@450..~13.3..6/60
+http://localhost:4455/HexmoHexagon?radius=500&h=100&thickness=6&edge_width=50&spoke_width=100&bottom=spoke&top=closed&corner_holes=g2&gap_holes=g2&big_hole_shape=rounded_rect&FingerJoint_play=0.1&FingerJoint_extra_length=0&FingerJoint_glue_gap=0.05&track_lines=1&draw_track=1&track_width=30&track_lead_in=23&support_length=100&train_envelope=70&under_track_width=60&under_track_height=6&access_openings=1&subway_ports=1&track_guide=1&track_template=1&labels=0&reference=0&track_routes=1:-80-5:-40,3:-40-1:-80,1:0-5:40&under_track_edges=1&track_openings=5:40:88:60,3:-80:21.8:60&deck_slots=1:0-5:40@327../60,3:80-1:0@..450/60&risers=1:0-5:40@327..~94..88/60,3:80-1:0@..450~21.8..13.3/60,3:80-1:0@450..~13.3..6/60
 ```
 
 **Entry rectangle** (at M6 edge 1, as on the N ring: two Peco HO medium turnouts,
@@ -615,7 +615,7 @@ the centre line runs on as the spur. Each leg is back parallel by 775 mm along
 the 866 mm deck. The lower level runs on the floor underneath)
 
 ```
-http://localhost:4455/HexmoRectangle?radius=500&h=100&thickness=6&spoke_width=100&corner_holes=g2&gap_holes=g2&big_hole_shape=rounded_rect&FingerJoint_play=0.1&FingerJoint_extra_length=0.05&track_lines=1&draw_track=1&track_width=30&track_lead_in=23&under_track_width=60&under_track_height=6&access_openings=1&subway_ports=1&track_guide=1&track_template=1&labels=0&reference=0&slot_tolerance=1&num_columns=3&num_rows=3&turnouts=10:0:-80,229:0:80&under_track=1&subway=6/60
+http://localhost:4455/HexmoRectangle?radius=500&h=100&thickness=6&spoke_width=100&corner_holes=g2&gap_holes=g2&big_hole_shape=rounded_rect&FingerJoint_play=0.1&FingerJoint_extra_length=0&FingerJoint_glue_gap=0.05&track_lines=1&draw_track=1&track_width=30&track_lead_in=23&under_track_width=60&under_track_height=6&access_openings=1&subway_ports=1&track_guide=1&track_template=1&labels=0&reference=0&slot_tolerance=1&num_columns=3&num_rows=3&turnouts=10:0:-80,229:0:80&under_track=1&subway=6/60
 ```
 
 ### Scenery: upper and lower ground
@@ -645,37 +645,37 @@ whole ring this way. The entry rectangle is unchanged.
 **M1**
 
 ```
-http://localhost:4455/HexmoHexagon?radius=500&h=100&thickness=6&edge_width=50&spoke_width=100&bottom=spoke&top=closed&corner_holes=g2&gap_holes=g2&big_hole_shape=rounded_rect&FingerJoint_play=0.1&FingerJoint_extra_length=0.05&track_lines=1&draw_track=1&track_width=30&track_lead_in=23&support_length=100&train_envelope=70&under_track_width=60&under_track_height=6&access_openings=1&subway_ports=1&track_guide=1&track_template=1&labels=0&reference=0&trapezoid=1&track_routes=3:40-5:40,3:-40-5:-80&track_openings=3:-40:88:60,5:80:74.3:60&deck_slots=3:-40-5:-80/60&risers=3:-40-5:-80~88..74.3/60&lower_ground=21.8&upper_edge_gap=10
+http://localhost:4455/HexmoHexagon?radius=500&h=100&thickness=6&edge_width=50&spoke_width=100&bottom=spoke&top=closed&corner_holes=g2&gap_holes=g2&big_hole_shape=rounded_rect&FingerJoint_play=0.1&FingerJoint_extra_length=0&FingerJoint_glue_gap=0.05&track_lines=1&draw_track=1&track_width=30&track_lead_in=23&support_length=100&train_envelope=70&under_track_width=60&under_track_height=6&access_openings=1&subway_ports=1&track_guide=1&track_template=1&labels=0&reference=0&trapezoid=1&track_routes=3:40-5:40,3:-40-5:-80&track_openings=3:-40:88:60,5:80:74.3:60&deck_slots=3:-40-5:-80/60&risers=3:-40-5:-80~88..74.3/60&lower_ground=21.8&upper_edge_gap=10
 ```
 
 **M2**
 
 ```
-http://localhost:4455/HexmoHexagon?radius=500&h=100&thickness=6&edge_width=50&spoke_width=100&bottom=spoke&top=closed&corner_holes=g2&gap_holes=g2&big_hole_shape=rounded_rect&FingerJoint_play=0.1&FingerJoint_extra_length=0.05&track_lines=1&draw_track=1&track_width=30&track_lead_in=23&support_length=100&train_envelope=70&under_track_width=60&under_track_height=6&access_openings=1&subway_ports=1&track_guide=1&track_template=1&labels=0&reference=0&trapezoid=1&track_routes=3:40-5:40,3:-80-5:-80&track_openings=3:-80:74.3:60,5:80:61.2:60&deck_slots=3:-80-5:-80/60&risers=3:-80-5:-80~74.3..61.2/60&lower_ground=21.8&upper_edge_gap=10
+http://localhost:4455/HexmoHexagon?radius=500&h=100&thickness=6&edge_width=50&spoke_width=100&bottom=spoke&top=closed&corner_holes=g2&gap_holes=g2&big_hole_shape=rounded_rect&FingerJoint_play=0.1&FingerJoint_extra_length=0&FingerJoint_glue_gap=0.05&track_lines=1&draw_track=1&track_width=30&track_lead_in=23&support_length=100&train_envelope=70&under_track_width=60&under_track_height=6&access_openings=1&subway_ports=1&track_guide=1&track_template=1&labels=0&reference=0&trapezoid=1&track_routes=3:40-5:40,3:-80-5:-80&track_openings=3:-80:74.3:60,5:80:61.2:60&deck_slots=3:-80-5:-80/60&risers=3:-80-5:-80~74.3..61.2/60&lower_ground=21.8&upper_edge_gap=10
 ```
 
 **M3**
 
 ```
-http://localhost:4455/HexmoHexagon?radius=500&h=100&thickness=6&edge_width=50&spoke_width=100&bottom=spoke&top=closed&corner_holes=g2&gap_holes=g2&big_hole_shape=rounded_rect&FingerJoint_play=0.1&FingerJoint_extra_length=0.05&track_lines=1&draw_track=1&track_width=30&track_lead_in=23&support_length=100&train_envelope=70&under_track_width=60&under_track_height=6&access_openings=1&subway_ports=1&track_guide=1&track_template=1&labels=0&reference=0&trapezoid=1&track_routes=3:40-5:40,3:-80-5:-80&track_openings=3:-80:61.2:60,5:80:48.1:60&deck_slots=3:-80-5:-80/60&risers=3:-80-5:-80~61.2..48.1/60&lower_ground=21.8&upper_edge_gap=10
+http://localhost:4455/HexmoHexagon?radius=500&h=100&thickness=6&edge_width=50&spoke_width=100&bottom=spoke&top=closed&corner_holes=g2&gap_holes=g2&big_hole_shape=rounded_rect&FingerJoint_play=0.1&FingerJoint_extra_length=0&FingerJoint_glue_gap=0.05&track_lines=1&draw_track=1&track_width=30&track_lead_in=23&support_length=100&train_envelope=70&under_track_width=60&under_track_height=6&access_openings=1&subway_ports=1&track_guide=1&track_template=1&labels=0&reference=0&trapezoid=1&track_routes=3:40-5:40,3:-80-5:-80&track_openings=3:-80:61.2:60,5:80:48.1:60&deck_slots=3:-80-5:-80/60&risers=3:-80-5:-80~61.2..48.1/60&lower_ground=21.8&upper_edge_gap=10
 ```
 
 **M4**
 
 ```
-http://localhost:4455/HexmoHexagon?radius=500&h=100&thickness=6&edge_width=50&spoke_width=100&bottom=spoke&top=closed&corner_holes=g2&gap_holes=g2&big_hole_shape=rounded_rect&FingerJoint_play=0.1&FingerJoint_extra_length=0.05&track_lines=1&draw_track=1&track_width=30&track_lead_in=23&support_length=100&train_envelope=70&under_track_width=60&under_track_height=6&access_openings=1&subway_ports=1&track_guide=1&track_template=1&labels=0&reference=0&trapezoid=1&track_routes=3:40-5:40,3:-80-5:-80&track_openings=3:-80:48.1:60,5:80:34.9:60&deck_slots=3:-80-5:-80/60&risers=3:-80-5:-80~48.1..34.9/60&lower_ground=21.8&upper_edge_gap=10
+http://localhost:4455/HexmoHexagon?radius=500&h=100&thickness=6&edge_width=50&spoke_width=100&bottom=spoke&top=closed&corner_holes=g2&gap_holes=g2&big_hole_shape=rounded_rect&FingerJoint_play=0.1&FingerJoint_extra_length=0&FingerJoint_glue_gap=0.05&track_lines=1&draw_track=1&track_width=30&track_lead_in=23&support_length=100&train_envelope=70&under_track_width=60&under_track_height=6&access_openings=1&subway_ports=1&track_guide=1&track_template=1&labels=0&reference=0&trapezoid=1&track_routes=3:40-5:40,3:-80-5:-80&track_openings=3:-80:48.1:60,5:80:34.9:60&deck_slots=3:-80-5:-80/60&risers=3:-80-5:-80~48.1..34.9/60&lower_ground=21.8&upper_edge_gap=10
 ```
 
 **M5**
 
 ```
-http://localhost:4455/HexmoHexagon?radius=500&h=100&thickness=6&edge_width=50&spoke_width=100&bottom=spoke&top=closed&corner_holes=g2&gap_holes=g2&big_hole_shape=rounded_rect&FingerJoint_play=0.1&FingerJoint_extra_length=0.05&track_lines=1&draw_track=1&track_width=30&track_lead_in=23&support_length=100&train_envelope=70&under_track_width=60&under_track_height=6&access_openings=1&subway_ports=1&track_guide=1&track_template=1&labels=0&reference=0&trapezoid=1&track_routes=3:40-5:40,3:-80-5:-80&track_openings=3:-80:34.9:60,5:80:21.8:60&deck_slots=3:-80-5:-80/60&risers=3:-80-5:-80~34.9..21.8/60&lower_ground=21.8&upper_edge_gap=10
+http://localhost:4455/HexmoHexagon?radius=500&h=100&thickness=6&edge_width=50&spoke_width=100&bottom=spoke&top=closed&corner_holes=g2&gap_holes=g2&big_hole_shape=rounded_rect&FingerJoint_play=0.1&FingerJoint_extra_length=0&FingerJoint_glue_gap=0.05&track_lines=1&draw_track=1&track_width=30&track_lead_in=23&support_length=100&train_envelope=70&under_track_width=60&under_track_height=6&access_openings=1&subway_ports=1&track_guide=1&track_template=1&labels=0&reference=0&trapezoid=1&track_routes=3:40-5:40,3:-80-5:-80&track_openings=3:-80:34.9:60,5:80:21.8:60&deck_slots=3:-80-5:-80/60&risers=3:-80-5:-80~34.9..21.8/60&lower_ground=21.8&upper_edge_gap=10
 ```
 
 **M6**
 
 ```
-http://localhost:4455/HexmoHexagon?radius=500&h=100&thickness=6&edge_width=50&spoke_width=100&bottom=spoke&top=closed&corner_holes=g2&gap_holes=g2&big_hole_shape=rounded_rect&FingerJoint_play=0.1&FingerJoint_extra_length=0.05&track_lines=1&draw_track=1&track_width=30&track_lead_in=23&support_length=100&train_envelope=70&under_track_width=60&under_track_height=6&access_openings=1&subway_ports=1&track_guide=1&track_template=1&labels=0&reference=0&track_routes=1:-80-5:-40,3:-40-1:-80,1:0-5:40&under_track_edges=1&track_openings=5:40:88:60,3:-80:21.8:60&deck_slots=1:0-5:40@327../60,3:80-1:0@..450/60&risers=1:0-5:40@327..~94..88/60,3:80-1:0@..450~21.8..13.3/60,3:80-1:0@450..~13.3..6/60&lower_ground=21.8&upper_edge_gap=10
+http://localhost:4455/HexmoHexagon?radius=500&h=100&thickness=6&edge_width=50&spoke_width=100&bottom=spoke&top=closed&corner_holes=g2&gap_holes=g2&big_hole_shape=rounded_rect&FingerJoint_play=0.1&FingerJoint_extra_length=0&FingerJoint_glue_gap=0.05&track_lines=1&draw_track=1&track_width=30&track_lead_in=23&support_length=100&train_envelope=70&under_track_width=60&under_track_height=6&access_openings=1&subway_ports=1&track_guide=1&track_template=1&labels=0&reference=0&track_routes=1:-80-5:-40,3:-40-1:-80,1:0-5:40&under_track_edges=1&track_openings=5:40:88:60,3:-80:21.8:60&deck_slots=1:0-5:40@327../60,3:80-1:0@..450/60&risers=1:0-5:40@327..~94..88/60,3:80-1:0@..450~21.8..13.3/60,3:80-1:0@450..~13.3..6/60&lower_ground=21.8&upper_edge_gap=10
 ```
 
 ### Helper-part text (`--part_text`)

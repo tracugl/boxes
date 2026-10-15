@@ -88,3 +88,21 @@ def test_renders_with_no_options(cls) -> None:
     box.render()
     svg = box.close().getvalue().decode()
     assert "<path" in svg
+
+
+def test_joints_finish_flush_with_a_glue_gap() -> None:
+    # HO (the defaults): no extra length, a 0.3 mm glue gap in 6 mm stock.
+    box = parsed(HexmoHexagon)
+    assert box.FingerJoint_extra_length == 0
+    assert box.FingerJoint_glue_gap * box.thickness == pytest.approx(0.3)
+
+
+@pytest.mark.parametrize("preset", ["ring", "entry"])
+def test_n_presets_set_their_own_fit(preset) -> None:
+    # N's 3 mm stock: play 0.2, no extra length, the same 0.3 mm glue gap.
+    from boxes.generators._hexmo_helix_ring import HELIX_ENTRY_N250, HELIX_RING_N250
+    cls, args = ((HexmoHexagon, HELIX_RING_N250["M1"]) if preset == "ring"
+                 else (HexmoRectangle, HELIX_ENTRY_N250))
+    box = parsed(cls, args)
+    assert (box.FingerJoint_play, box.FingerJoint_extra_length) == (0.2, 0)
+    assert box.FingerJoint_glue_gap * box.thickness == pytest.approx(0.3)
