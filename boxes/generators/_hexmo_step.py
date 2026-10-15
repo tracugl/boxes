@@ -837,14 +837,99 @@ def _world_point(frame, p, z=0.0):
             oz + x * ex[2] + y * ey[2] + z * n[2])
 
 
+# Longest runs (mm) that _tidy_loop treats as a corner's tiny detour: two
+# glue-gap steps meeting at a corner are each a fraction of a millimetre.
+_DETOUR = 2.0
+
+
+def _crossing(p0, p1, q0, q1, tol=1e-9):
+    """Where segments p0–p1 and q0–q1 cross, or None."""
+    rx, ry = p1[0] - p0[0], p1[1] - p0[1]
+    sx, sy = q1[0] - q0[0], q1[1] - q0[1]
+    den = rx * sy - ry * sx
+    if abs(den) < tol:
+        return None
+    t = ((q0[0] - p0[0]) * sy - (q0[1] - p0[1]) * sx) / den
+    u = ((q0[0] - p0[0]) * ry - (q0[1] - p0[1]) * rx) / den
+    if -tol <= t <= 1 + tol and -tol <= u <= 1 + tol:
+        return (p0[0] + t * rx, p0[1] + t * ry)
+    return None
+
+
+def _tidy_loop(loop, tol=1e-6):
+    """A closed loop without the zero-area detours a solid can't be built from.
+
+    Finger joints with a glue gap step each edge in at a panel's corner, and
+    the next edge starts from (or ends at) the corner itself, so the outline
+    makes a detour there that encloses nothing:
+
+    * a *spike*: a straight run that turns straight back on itself (a to b,
+      then back along the same line to c) becomes the run a to c (or
+      nothing, when c is a);
+    * a *corner loop*: where both edges at a corner step in, the outline
+      runs past the true corner, round two tiny runs and back across itself;
+      the two long runs are joined at their crossing instead.
+
+    Zero-length runs go too.  Curves are kept as they are, and a loop with
+    no detours comes back unchanged.
+
+    @param loop - ``[(kind, p0, …, p_end)]`` segments, end to end, closed.
+    @returns The tidied loop.
+    """
+    segs = [seg for seg in loop
+            if seg[0] != "L" or math.dist(seg[1], seg[-1]) > tol]
+    changed = True
+    while changed and len(segs) > 3:
+        changed = False
+        n = len(segs)
+        for i in range(n):
+            a, b = segs[i], segs[(i + 1) % n]
+            if a[0] != "L" or b[0] != "L":
+                continue
+            # A spike: b runs straight back along a.
+            (x0, y0), (x1, y1), (x2, y2) = a[1], a[-1], b[-1]
+            cross = (x1 - x0) * (y2 - y1) - (y1 - y0) * (x2 - x1)
+            back = (x1 - x0) * (x2 - x1) + (y1 - y0) * (y2 - y1) < 0
+            if back and abs(cross) <= tol * max(1.0, math.dist(a[1], a[-1]) * math.dist(b[1], b[-1])):
+                merged = [] if math.dist(a[1], b[-1]) <= tol else [("L", a[1], b[-1])]
+                segs = _replace(segs, i, 2, merged)
+                changed = True
+                break
+            # A corner loop: a, two tiny runs, then d crossing back over a.
+            c, d = segs[(i + 2) % n], segs[(i + 3) % n]
+            if c[0] != "L" or d[0] != "L":
+                continue
+            if max(math.dist(b[1], b[-1]), math.dist(c[1], c[-1])) > _DETOUR:
+                continue
+            x = _crossing(a[1], a[-1], d[1], d[-1])
+            if x is None or math.dist(x, a[-1]) > _DETOUR or math.dist(x, d[1]) > _DETOUR:
+                continue
+            segs = _replace(segs, i, 4, [("L", a[1], x), ("L", x, d[-1])])
+            changed = True
+            break
+    return segs
+
+
+def _replace(segs, i, count, new):
+    """``segs`` with the ``count`` segments from ``i`` (wrapping) replaced by ``new``."""
+    n = len(segs)
+    drop = {(i + k) % n for k in range(count)}
+    kept = [seg for k, seg in enumerate(segs) if k not in drop]
+    # Insert where the first dropped segment was (counting only kept ones before it).
+    at = sum(1 for k in range(i) if k not in drop)
+    return kept[:at] + new + kept[at:]
+
+
 def _frame_loops(frame):
-    """A recorded part's cut loops in its own frame (true curves kept)."""
+    """A recorded part's cut loops in its own frame (true curves kept),
+    without zero-area detours (see :func:`_tidy_loop`)."""
     inv = ~frame.matrix
 
     def local(seg):
         return (seg[0],) + tuple(inv * p for p in seg[1:])
 
-    return [[local(seg) for seg in loop] for loop in _close_loops(_cut_chains(frame.part))]
+    return [_tidy_loop([local(seg) for seg in loop])
+            for loop in _close_loops(_cut_chains(frame.part))]
 
 
 def _wire(bd, frame, loop, z):
