@@ -256,6 +256,9 @@ class HexmoTrackTemplateMixin:
             th = max(p[1] for p in pts) - miny
             if self.move(tw, th, move, before=True):
                 continue
+            # Mark the drawing part as a track template piece, so an order's
+            # cut files can keep just a few of each (see _hexmo_nest).
+            self.surface._p.helper = "template"
             with self.saved_context():
                 self.moveTo(start[0] - minx, start[1] - miny, heading)
                 for op in ops:

@@ -36,6 +36,7 @@ from boxes.generators._hexmo_big_holes import HexmoBigHoleMixin
 from boxes.generators._hexmo_lower_ground import HexmoLowerGroundMixin
 from boxes.generators._hexmo_subway import HexmoSubwayMixin
 from boxes.generators._hexmo_track_floor import HexmoTrackFloorMixin, TrackSupport
+from boxes.generators._hexmo_nest import HexmoSheetsMixin
 from boxes.generators._hexmo_step_format import HexmoStepFormatMixin
 from boxes.generators import _hexmo_step
 from boxes.generators._hexmo_track_guide import HexmoTrackGuideMixin
@@ -58,7 +59,7 @@ from boxes.generators._hexmo_track_routes import (
 )
 
 
-class HexmoHexagon(HexmoStepFormatMixin, HexmoBigHoleMixin, HexmoTrackGuideMixin,
+class HexmoHexagon(HexmoStepFormatMixin, HexmoSheetsMixin, HexmoBigHoleMixin, HexmoTrackGuideMixin,
                    HexmoTrackTemplateMixin, HexmoUnderTrackMixin, HexmoLowerGroundMixin,
                    HexmoSubwayMixin, HexmoTrackFloorMixin, Boxes):
     """Box with a regular hexagon or half hexagon as the base. """
@@ -384,6 +385,8 @@ class HexmoHexagon(HexmoStepFormatMixin, HexmoBigHoleMixin, HexmoTrackGuideMixin
                  "Default all six.")
         # --format step and --step_clearance (see _hexmo_step_format).
         self._addStepFormat()
+        # --sheets: the parts packed onto laser blanks (see _hexmo_nest).
+        self._addSheetArgs()
 
         self.n = 6
 
@@ -2631,6 +2634,10 @@ class HexmoHexagon(HexmoStepFormatMixin, HexmoBigHoleMixin, HexmoTrackGuideMixin
         # the caller only wants space reservation (e.g. move="up only").
         if self.move(panel_width, panel_height, move, True):
             return
+
+        # Mark this drawing part as the settings tag: a reference, which
+        # --sheets nesting keeps off the blanks (see _hexmo_nest).
+        self.surface._p.settings_tag = True
 
         # Outer cut border so the panel can be laser-separated from stock.
         self.set_source_color(Color.OUTER_CUT)

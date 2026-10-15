@@ -178,11 +178,13 @@ class HexmoStepFormatMixin:
             raise ValueError(
                 f"--format {wanted} needs the optional 'step' dependency (build123d "
                 f"and the OpenCascade kernel): pip install .[step]  ({err})") from None
-        self.format = "svg"
+        # Finish (and discard) the SVG; flagged so the --sheets layout
+        # (_hexmo_nest) leaves this throw-away drawing alone.
+        self.format, self._step_discard = "svg", True
         try:
-            super().close()                 # finish (and discard) the SVG
+            super().close()
         finally:
-            self.format = wanted
+            self.format, self._step_discard = wanted, False
         data = BytesIO()
         if wanted == SVG_3D:
             _hexmo_step.line_drawing(parts, data, deck=self.view_deck)

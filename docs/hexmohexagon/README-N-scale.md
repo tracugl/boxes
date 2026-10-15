@@ -545,6 +545,52 @@ curl "http://localhost:4455/HexmoRectangle?render=1&radius=250&thickness=3&h=80\
 
 ---
 
+## Cutting on laser blanks (`--sheets`)
+
+A full sheet is bigger than most laser beds, so it is cut into blanks first:
+a 2400 × 1200 sheet cut at 900 gives two **1200 × 900** blanks and one
+**600 × 900**, which fit a 1300 × 900 bed. `--sheets` lays a module's parts out
+on those blanks, on as few full sheets as will take them, instead of the usual
+single strip:
+
+```
+&sheets=1200x900:2,600x900
+```
+
+Add that to any edit link (or fill in the **sheets** field). Each blank is
+drawn as a cyan outline with a label ("Blank 1 of 2: 1200 × 900"), side by side;
+cyan is the annotation colour, so leave that layer uncut. The entries are
+`WIDTHxHEIGHT:COUNT`, the blanks one full sheet gives. `sheet_spacing` (default
+4 mm) keeps parts apart and `sheet_margin` (5 mm) off the blank's edges. Parts are
+nested by their true shapes, holes included: small parts go in a hexagon's
+corners, beside a trapezoid's slanted sides and inside the big cutouts in decks
+and floors. Each part is turned whichever quarter turn fits best, and a part too
+big for every blank is refused.
+
+For a whole order, `scripts/hexmo-sheets.sh` takes edit links (quote them; `10@`
+in front for ten of that module), writes one SVG per blank and says how many
+full sheets to buy. It nests the whole order together, so one module's small
+parts fill the gaps around another's, and it fills a sheet's 600 × 900 blank
+before starting another sheet. The blanks are written as `blank-KK-<size>.svg`;
+a blank can hold parts from several modules:
+
+```bash
+scripts/hexmo-sheets.sh temp/sheets "10@<trapezoid edit link>" "2@<M6 edit link>" "<entry edit link>"
+```
+
+Track templates and guide plates are the same for many modules, so a whole order
+keeps at most **2 of each different template** (one to work with, one spare)
+and **3 of each different guide plate** (two to use, one spare), telling them
+apart by shape; `--templates=N` and `--guides=N` change that.
+
+The settings tag (the parameter list) is a reference, not a part to cut, so it is
+never packed onto a blank: in the form's output it sits after the blanks, and the
+command line writes it as its own `NN-<generator>-settings.svg`, both in cyan.
+For the N dual-ring dogbone (10 trapezoids, 2 M6, 2 entries) that comes to 4
+blanks of 1200 × 900 and 3 of 600 × 900: **3 full sheets**, with one 1200 × 900
+left whole. (Parts that spill onto a nearly empty blank are moved to a smaller
+one when the sheets have one spare.)
+
 ## Reducing laser cut time
 
 > The walls are **access walls** by default: hand-access openings round a middle
