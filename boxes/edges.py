@@ -871,6 +871,7 @@ Values:
   * play : 0.0 : extra space to allow finger move in and out (multiples of thickness)
   * extra_length : 0.0 : extra material to grind away burn marks (multiples of thickness)
   * bottom_lip : 0.0 : height of the bottom lips sticking out  (multiples of thickness) FingerHoleEdge only!
+  * glue_gap : 0.0 : room for paint and glue at the bottom of every socket: sockets cut this much deeper, finger tips unchanged (multiples of thickness)
 """
 
     absolute_params = {
@@ -886,6 +887,9 @@ Values:
         "play": 0.0,
         "extra_length": 0.0,
         "bottom_lip": 0.0,
+        # This fork: room for paint and glue at the bottom of each socket
+        # (see FingerJointEdge.__call__).
+        "glue_gap": 0.0,
     }
 
     angle = 90 # Angle of the walls meeting
@@ -1008,10 +1012,21 @@ class FingerJointEdge(BaseEdge, FingerJointBase):
             s -= play
             leftover -= play
 
+        # Glue gap (this fork): room for paint and glue at the bottom of every
+        # socket, the finger tips left where they are.  A socket edge cuts its
+        # notches this much deeper.  A plug edge cuts the spaces between its
+        # fingers, and its plain ends, this much deeper into the panel: the
+        # whole edge steps in by the gap, and the fingers grow by it, so their
+        # tips stay one finger length out.  (The other panel's lands sit in
+        # those spaces, so they get the same gap.)  Only an edge with fingers.
+        gap = getattr(self.settings, "glue_gap", 0.0) if fingers else 0.0
+        if gap and positive:
+            self.polyline(0, 90, gap, -90)        # step into the panel
+
         self.edge(leftover / 2.0, tabs=1)
 
         l1, l2 = self.fingerLength(self.settings.angle)
-        h = l1 - l2
+        h = l1 - l2 + gap
 
         d = (bedBoltSettings or self.bedBoltSettings)[0]
 
@@ -1029,6 +1044,8 @@ class FingerJointEdge(BaseEdge, FingerJointBase):
                              positive, i < fingers // 2)
 
         self.edge(leftover / 2.0, tabs=1)
+        if gap and positive:
+            self.polyline(0, -90, gap, 90)        # and back out to the edge line
 
     def margin(self) -> float:
         """ """

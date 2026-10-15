@@ -92,6 +92,7 @@ below:
 | `--big_hole_shape` | **rounded_rect** (default) | roundness `0.3` (default), see [Big-hole shape](#big-hole-shape) |
 | `--FingerJoint_play` | **0.1** (default) | finger-joint clearance, a multiple of thickness (0.6 mm at 6 mm) |
 | `--FingerJoint_extra_length` | **0.05** (default) | fingers stand 0.3 mm proud, to sand flush |
+| `--FingerJoint_glue_gap` | **0** (off, default) | room for paint and glue at the bottom of every socket, finger tips unchanged; **0.05** (0.3 mm) suits painted joints; assemble on a flat surface so the tips finish flush |
 | `--track_width` | **30** (default) | HO track footprint |
 | `--track_lead_in` | **23** (default) | straight run at each edge crossing |
 | `--under_track_width` | **60** (default) | a lower track's width; openings and slots are cut a sixth wider each side (80 mm) for long cars on curves |

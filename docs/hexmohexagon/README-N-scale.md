@@ -96,6 +96,7 @@ ready-made URLs below:
 | `--corner_holes` / `--gap_holes` | **g2** / **g2** | fewer pierces, see [Reducing laser cut time](#reducing-laser-cut-time) |
 | `--big_hole_shape` | **rounded_rect** | roundness `0.3` (default), see [Big-hole shape](#big-hole-shape) |
 | `--FingerJoint_play` / `--FingerJoint_extra_length` | **0.2** / **0.1** | the finger fit in 3 mm stock: 0.6 mm clearance, and fingers 0.3 mm proud to sand flush (the defaults, 0.1 / 0.05, are HO's for 6 mm) |
+| `--FingerJoint_glue_gap` | **0** (off, default) | room for paint and glue at the bottom of every socket, finger tips unchanged; **0.1** (0.3 mm in 3 mm stock) suits painted joints; assemble on a flat surface so the tips finish flush |
 | `--track_width` | **17** | N track footprint |
 | `--track_spacing` | **40** | double-track centres (the default, 80, is HO's); see above |
 | `--track_lead_in` | **20** | straight run at each edge crossing |
