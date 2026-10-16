@@ -97,7 +97,7 @@ def helix_ring(size):
               # for 6 mm): 0.6 mm clearance, flush fingers, and a 0.3 mm glue
               # gap at the bottom of every socket for paint and glue.
               "--FingerJoint_play=0.2", "--FingerJoint_extra_length=0",
-              "--FingerJoint_glue_gap=0.1",
+              "--FingerJoint_glue_gap=0.1", "--FingerJoint_surroundingspaces=0",
               # The track-following floor, whose supports place themselves.
               "--spoke_width=60", "--bottom=spoke",
               "--support_length=55",
@@ -153,7 +153,7 @@ def helix_entry(size):
     return [f"--radius={size.radius:g}", "--thickness=3", "--h=80", "--num_rows=3",
             # The N finger fit, as the ring's (see helix_ring).
             "--FingerJoint_play=0.2", "--FingerJoint_extra_length=0",
-            "--FingerJoint_glue_gap=0.1",
+            "--FingerJoint_glue_gap=0.1", "--FingerJoint_surroundingspaces=0",
             "--num_columns=2", "--track_width=17", "--track_spacing=40",
             f"--track_lead_in={size.lead_in:g}",
             "--under_track=1",
@@ -210,7 +210,7 @@ _HO_COMMON = ["--radius=500", "--h=100", "--thickness=6", "--edge_width=50",
               "--spoke_width=100", "--bottom=spoke", "--top=closed",
               "--corner_holes=g2", "--gap_holes=g2", "--big_hole_shape=rounded_rect",
               "--FingerJoint_play=0.1", "--FingerJoint_extra_length=0",
-              "--FingerJoint_glue_gap=0.05",
+              "--FingerJoint_glue_gap=0.05", "--FingerJoint_surroundingspaces=0",
               "--track_lines=1", "--draw_track=1", "--track_width=30",
               "--track_lead_in=23", "--support_length=100", "--train_envelope=70",
               "--under_track_width=60", f"--under_track_height={_HO_FLOOR}",

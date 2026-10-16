@@ -106,3 +106,13 @@ def test_n_presets_set_their_own_fit(preset) -> None:
     box = parsed(cls, args)
     assert (box.FingerJoint_play, box.FingerJoint_extra_length) == (0.2, 0)
     assert box.FingerJoint_glue_gap * box.thickness == pytest.approx(0.3)
+
+
+@pytest.mark.parametrize("cls, args", [(HexmoHexagon, []), (HexmoRectangle, []),
+                                       (HexmoHexagon, None), (HexmoRectangle, None)])
+def test_fingers_run_to_the_ends_of_every_edge(cls, args) -> None:
+    # surroundingspaces 0 for every Hexmo module: the defaults (HO) and the N presets.
+    from boxes.generators._hexmo_helix_ring import HELIX_ENTRY_N250, HELIX_RING_N250
+    if args is None:
+        args = HELIX_RING_N250["M1"] if cls is HexmoHexagon else HELIX_ENTRY_N250
+    assert parsed(cls, args).FingerJoint_surroundingspaces == 0
