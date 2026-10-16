@@ -23,7 +23,7 @@ except ImportError:
     sys.path.append(Path(__file__).resolve().parent.parent.__str__())
     import boxes
 
-from hexmo_testutil import IGNORE_CORE_MATMUL
+from hexmo_testutil import IGNORE_CORE_MATMUL, flush_fingers
 
 pytestmark = IGNORE_CORE_MATMUL
 
@@ -199,8 +199,9 @@ class TestOnTheFloor:
 
     def test_floor_strip_stays_solid_under_them(self) -> None:
         # The outline and one finger slot per short divider (two): no
-        # access openings, no support slots.
-        f = frames(HexmoRectangle, ENTRY)
+        # access openings, no support slots (with plain joints, see
+        # hexmo_testutil.flush_fingers).
+        f = frames(HexmoRectangle, flush_fingers(ENTRY))
         assert len(_hexmo_step._frame_loops(f["spoke"])) == 1 + 2
 
     def test_hexagon_subway_on_the_floor_stays_inside(self) -> None:

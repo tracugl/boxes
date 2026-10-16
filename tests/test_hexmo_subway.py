@@ -23,7 +23,7 @@ except ImportError:
     sys.path.append(Path(__file__).resolve().parent.parent.__str__())
     import boxes
 
-from hexmo_testutil import IGNORE_CORE_MATMUL
+from hexmo_testutil import IGNORE_CORE_MATMUL, flush_fingers
 
 pytestmark = IGNORE_CORE_MATMUL
 
@@ -36,7 +36,8 @@ T = 3.0
 HEX = ["--radius=250", "--thickness=3", "--h=80", "--edge_width=22", "--spoke_width=60",
        "--bottom=spoke", "--support_length=55", "--track_lead_in=20", "--track_width=17",
        "--under_track_width=35", "--corner_holes=g2", "--gap_holes=g2", "--train_envelope=43"]
-RECT = [a for a in HELIX_ENTRY_N250 if not a.startswith(("--subway", "--under_track="))]
+# With plain joints (see hexmo_testutil.flush_fingers): the slot counts below.
+RECT = flush_fingers([a for a in HELIX_ENTRY_N250 if not a.startswith(("--subway", "--under_track="))])
 
 
 def frames(cls, args):

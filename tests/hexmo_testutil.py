@@ -44,10 +44,13 @@ PLAIN_WALLS = ["--access_openings=0", "--subway_ports=0"]
 
 
 # The presets' finger joints have a glue gap (--FingerJoint_glue_gap: every
-# socket cut 0.3 mm deeper).  Tests that measure a feature's exact geometry
-# against the module's nominal sizes parse the presets with plain joints
-# instead: no glue gap and no extra length.
-FLUSH_FINGERS = ["--FingerJoint_extra_length=0", "--FingerJoint_glue_gap=0"]
+# socket cut 0.3 mm deeper) and run right up to the ends of each edge
+# (--FingerJoint_surroundingspaces=0).  Tests that measure a feature's exact
+# geometry, or count its holes and slots, against the module's nominal sizes
+# parse the presets with plain joints instead: no glue gap, no extra length,
+# and the boxes finger layout (surroundingspaces 2) they were written for.
+FLUSH_FINGERS = ["--FingerJoint_extra_length=0", "--FingerJoint_glue_gap=0",
+                 "--FingerJoint_surroundingspaces=2"]
 
 
 def flush_fingers(preset):

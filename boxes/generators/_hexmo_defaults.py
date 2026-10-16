@@ -27,6 +27,10 @@ HO_DEFAULTS = {
     "FingerJoint_play": 0.1,
     "FingerJoint_extra_length": 0.0,
     "FingerJoint_glue_gap": 0.05,
+    # Fingers right up to the ends of every edge: no plain stretch kept at
+    # the ends, so each joint gets as many fingers as fit (the N presets
+    # set the same).
+    "FingerJoint_surroundingspaces": 0.0,
     # The lower level runs on the floor: one thickness up.
     "under_track_height": 6.0,
     # The track-laying jigs come with every module.

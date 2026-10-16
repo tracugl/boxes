@@ -244,7 +244,8 @@ class HexmoRectangle(HexmoStepFormatMixin, HexmoSheetsMixin, HexmoBigHoleMixin, 
 
     # FingerJoint settings are set to match HexmoHexagon (finger=5, space=5,
     # surroundingspaces=2, play=0.2) so that joints between the two box types are
-    # compatible.
+    # compatible.  Both then open with the Hexmo settings (_hexmo_defaults),
+    # which change some of these (surroundingspaces 0, play 0.1, …) for both alike.
 
     # Internal 3×5 grid crossing-joint convention:
     #   - Vertical dividers (2, spanning H): slots cut from the **bottom** edge,
